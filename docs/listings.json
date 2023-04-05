@@ -1,0 +1,11 @@
+[
+  {
+    "listing": "/index.html",
+    "items": [
+      "/posts/pca-anomaly/pca_anomaly.html",
+      "/posts/austin-vehicle/spatial_merging.html",
+      "/posts/outlier-ensemble/alsoe_ensembling.html",
+      "/posts/hlm-osha/osha_shrinkage.html"
+    ]
+  }
+]
