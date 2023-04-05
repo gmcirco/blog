@@ -11,7 +11,7 @@
     "href": "index.html",
     "title": "Gio Circo, Ph.D.",
     "section": "",
-    "text": "Part 1: Principal components anomaly detector\n\n\n\n\n\n\n\n\n\nApr 7, 2023\n\n\nGio Circo, Ph.D.\n\n\n\n\n\n\n  \n\n\n\n\n\nCar Crashes in Austin\n\n\n\n\n\n\n\n\n\nMar 20, 2023\n\n\nGio Circo, Ph.D.\n\n\n\n\n\n\n  \n\n\n\n\n\nAdventures in outlier detection\n\n\n\n\n\n\n\n\n\nFeb 15, 2023\n\n\nGio Circo, Ph.D.\n\n\n\n\n\n\n  \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nNov 11, 2022\n\n\nGio Circo, Ph.D\n\n\n\n\n\n\nNo matching items"
+    "text": "Building an Outlier Ensemble from ‘Scratch’\n\n\nPart 1: Principal components anomaly detector\n\n\n\n\n\n\n\n\n\nApr 7, 2023\n\n\nGio Circo, Ph.D.\n\n\n\n\n\n\n  \n\n\n\n\nAn Alternative to Buffers for Spatial Merging\n\n\nCar Crashes in Austin\n\n\n\n\n\n\n\n\n\nMar 20, 2023\n\n\nGio Circo, Ph.D.\n\n\n\n\n\n\n  \n\n\n\n\nThe Power of Ensembles\n\n\nAdventures in outlier detection\n\n\n\n\n\n\n\n\n\nFeb 15, 2023\n\n\nGio Circo, Ph.D.\n\n\n\n\n\n\n  \n\n\n\n\nInjuries at Amazon Warehouses - A Bayesian Approach\n\n\n\n\n\n\n\n\n\n\n\n\nNov 11, 2022\n\n\nGio Circo, Ph.D\n\n\n\n\n\n\nNo matching items"
   },
   {
     "objectID": "posts/austin-vehicle/spatial_merging.html",
@@ -103,5 +103,19 @@
     "title": "About Me",
     "section": "Consulting",
     "text": "Consulting\nOutside of my day job I also work as a freelance statistical analyst. I work with small to medium organizations to solve data related problems. I have worked (or am currently working) with the following organizations:\n\nAustin Police Department\nCity of Milwaukee (with Michigan State University)\nSwedish National Police\nCommunity Services Incorporated (CSI)\n\nIf you are interested in my work, or would like to learn more, please reach out and schedule a free consultation."
+  },
+  {
+    "objectID": "about.html#education",
+    "href": "about.html#education",
+    "title": "About Me",
+    "section": "Education",
+    "text": "Education\nMichigan State University | Lansing, MI | PhD in Criminal Justice | August 2013 - May 2018\nIllinois State University| Normal, IL | B.A in Criminal Justice | August 2010 - June 2012"
+  },
+  {
+    "objectID": "about.html#experience",
+    "href": "about.html#experience",
+    "title": "About Me",
+    "section": "Experience",
+    "text": "Experience\nGainwell Technologies | Data Scientist | June 2022 - present\nUniversity of New Haven | Assistant Professor | August 2018 - May 2022"
   }
 ]

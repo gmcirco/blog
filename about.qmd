@@ -2,7 +2,7 @@
 title: "About Me"
 image: profile.png
 about:
-  template: jolla
+  template: broadside
   links:
     - icon: twitter
       text: Twitter
@@ -23,3 +23,17 @@ work at Gainwell technologies as a data scientist. My work primarily focuses on
 causal inference, Bayesian statistics, and anomaly detection. 
 
 I'm big into food, wine, and spirits - especially cocktails. 
+
+## Education
+
+Michigan State University | Lansing, MI |
+PhD in Criminal Justice | August 2013 - May 2018
+
+Illinois State University| Normal, IL |
+B.A in  Criminal Justice | August 2010 - June 2012
+
+## Experience
+
+Gainwell Technologies | Data Scientist | June 2022 - present
+
+University of New Haven | Assistant Professor | August 2018 - May 2022
