@@ -1,19 +1,25 @@
 ---
-title: "About"
-image: profile.jpg
+title: "About Me"
+image: profile.png
 about:
   template: jolla
   links:
     - icon: twitter
       text: Twitter
-      href: https://twitter.com
+      href: https://twitter.com/GioCirco
     - icon: linkedin
       text: LinkedIn
-      href: https://linkedin.com
+      href: https://www.linkedin.com/feed/
     - icon: github
       text: Github
-      href: https://github.com
+      href: https://github.com/gmcirco
 
 ---
 
-About this blog
+## Who Am I?
+
+I'm Gio Circo, a Ph.D. in criminology and former assistant professor. I currently
+work at Gainwell technologies as a data scientist. My work primarily focuses on
+causal inference, Bayesian statistics, and anomaly detection. 
+
+I'm big into food, wine, and spirits - especially cocktails. 
