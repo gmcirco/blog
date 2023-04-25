@@ -4,10 +4,9 @@ subtitle: "Part 1: Principal components anomaly detector"
 author: "Gio Circo, Ph.D."
 date: 2023-4-07
 categories:
-  - anomaly detection
-  - Rstats
+  - Anomaly Detection
   - PCA
-  - ensembles
+  - Ensembles
 format: 
     html:
         self-contained: false

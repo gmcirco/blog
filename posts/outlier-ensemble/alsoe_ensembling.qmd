@@ -4,9 +4,8 @@ subtitle: "Adventures in outlier detection"
 author: Gio Circo, Ph.D.
 date: 2023-2-15
 categories:
-  - anomaly detection
-  - python
-  - regression
+  - Anomaly Detection
+  - Ensembles
 format: 
     html:
         self-contained: true

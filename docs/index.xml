@@ -293,10 +293,9 @@ $ entropy     &lt;dbl&gt; 0.3585884, 0.5225069, 0.4962494, 0.3090901,…</code><
 </section>
 
  ]]></description>
-  <category>anomaly detection</category>
-  <category>Rstats</category>
+  <category>Anomaly Detection</category>
   <category>PCA</category>
-  <category>time series</category>
+  <category>Time Series</category>
   <guid>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</guid>
   <pubDate>Mon, 24 Apr 2023 04:00:00 GMT</pubDate>
   <media:content url="https://gmcirco.github.io/blog/posts/pca-timeseries/power.png" medium="image" type="image/png" height="144" width="144"/>
@@ -518,10 +517,9 @@ Note
 </section>
 
  ]]></description>
-  <category>anomaly detection</category>
-  <category>Rstats</category>
+  <category>Anomaly Detection</category>
   <category>PCA</category>
-  <category>ensembles</category>
+  <category>Ensembles</category>
   <guid>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</guid>
   <pubDate>Fri, 07 Apr 2023 04:00:00 GMT</pubDate>
   <media:content url="https://gmcirco.github.io/blog/posts/pca-anomaly/hospital.png" medium="image" type="image/png" height="144" width="144"/>
@@ -1199,9 +1197,8 @@ Avg. Prn: 0.246</code></pre>
 </section>
 
  ]]></description>
-  <category>anomaly detection</category>
-  <category>python</category>
-  <category>regression</category>
+  <category>Anomaly Detection</category>
+  <category>Ensembles</category>
   <guid>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</guid>
   <pubDate>Wed, 15 Feb 2023 05:00:00 GMT</pubDate>
   <media:content url="https://gmcirco.github.io/blog/posts/outlier-ensemble/comps.png" medium="image" type="image/png" height="144" width="144"/>
@@ -1570,8 +1567,7 @@ Gelman, Andrew, John B Carlin, Hal S Stern, and Donald B Rubin. 1995. <em>Bayesi
 </div>
 </div></section></div> ]]></description>
   <category>bayesian</category>
-  <category>hlm</category>
-  <category>Rstats</category>
+  <category>HLM</category>
   <guid>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</guid>
   <pubDate>Fri, 11 Nov 2022 05:00:00 GMT</pubDate>
   <media:content url="https://gmcirco.github.io/blog/posts/hlm-osha/box.png" medium="image" type="image/png" height="144" width="144"/>

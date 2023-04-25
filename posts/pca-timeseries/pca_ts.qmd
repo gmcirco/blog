@@ -4,10 +4,9 @@ subtitle: "Applying a PCA anomaly detector"
 author: "Gio Circo, Ph.D."
 date: 2023-4-24
 categories:
-  - anomaly detection
-  - Rstats
+  - Anomaly Detection
   - PCA
-  - time series
+  - Time Series
 format: 
     html:
         self-contained: false
