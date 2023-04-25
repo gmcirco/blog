@@ -23,11 +23,11 @@ hosp <- read_csv(unz("C:/Users/gioc4/Documents/blog/data/sparcs2.zip", "Hospital
 
 ## The Problem
 
-I strongly believe in "learning by doing". One of the things I have been working on quite a bit lately is unsupervised anomaly detection. As with many machine-learning tools, ensembles are incredibly powerful and useful for a variety of circumstances. Anomaly detection ensembles are [no exception to that rule](https://kdd.org/exploration_files/V15-01-02-Zimek.pdf). To better understand how each of the individual pieces of a anomaly detection ensemble works, I've decided two build one myself "from scratch". I put that in giant quotes here because I'll still rely on some existing frameworks in R to help built the underlying tools.
+I strongly believe in "learning by doing". One of the things I have been working on quite a bit lately is unsupervised anomaly detection. As with many machine-learning tools, ensembles are incredibly powerful and useful for a variety of circumstances. Anomaly detection ensembles are [no exception to that rule](https://kdd.org/exploration_files/V15-01-02-Zimek.pdf). To better understand how each of the individual pieces of a anomaly detection ensemble works, I've decided two build one myself "from scratch". I put that in giant quotes here becaus e I'll still rely on some existing frameworks in R to help built the underlying tools.
 
 My idea is to create an ensemble of several heterogeneous anomaly detection methods in a way that maximizes their individual benefits. Following some of the guidance proposed by [Aggarwal & Sathe](https://link.springer.com/book/10.1007/978-3-319-54765-7) I will use:
 
-1. "Soft" principal components anomaly detector
+1. **"Soft" principal components anomaly detector**
 2. K-nearest neighbors anomaly detector
 3. Isolation forest or histogram-based anomaly detector
 

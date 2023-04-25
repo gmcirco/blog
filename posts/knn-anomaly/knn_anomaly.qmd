@@ -1,0 +1,163 @@
+---
+title: "Building an Outlier Ensemble from 'Scratch'"
+subtitle: "Part 2: K-nearest neighbors anomaly detector"
+author: "Gio Circo, Ph.D."
+date: 2023-4-25
+format: 
+    html:
+        self-contained: false
+        code-fold: true
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+        draft: true
+theme: flatly
+image: "house.png"
+---
+
+```{r, include = FALSE}
+library(tidyverse)
+
+hosp <- read_csv(unz("C:/Users/gioc4/Documents/blog/data/sparcs2.zip", "Hospital_Inpatient_Discharges__SPARCS_De-Identified___2021.csv"))
+
+# compute and aggregate feature set
+df <-
+  hosp %>%
+  group_by(`CCSR Procedure Code`, `APR Severity of Illness Code`) %>%
+  mutate(
+    proc_charge = median(`Total Costs`),
+    charge_diff = (`Total Costs` - proc_charge)/proc_charge,
+    `Length of Stay` = as.numeric(ifelse(
+      `Length of Stay` == '120+', 120, `Length of Stay`
+    ))
+  ) %>%
+  group_by(id = `Permanent Facility Id`) %>%
+  summarise(
+    stay_len = mean(`Length of Stay`, na.rm = T),
+    charges = mean(`Total Charges`),
+    costs = mean(`Total Costs`),
+    diff = mean(charge_diff),
+    cost_ratio = mean(`Total Costs`/`Total Charges`),
+    cost_per_stay = costs / stay_len
+  )
+
+adKNN <- function(X, k = 5, method = 'max'){
+  
+  # compute k nearest neighbor distances
+  # using kd-trees
+  d <- RANN::nn2(X, k = k+1)
+  d <- d[[2]][,1:k+1]
+  
+  # aggregate scores
+  if(method == 'max')
+    anom <- apply(d, 1, max)
+  else if(method == 'mean')
+    anom <- apply(d, 1, mean)
+  else
+    print("Function not found")
+  
+  return(anom)
+  
+}
+```
+
+## Part 2: The K-nearest neighbor anomaly detector
+
+This is the second part of a 3-part series. In the previous post I talked a bit 
+about my desire to work on building the pieces of an outlier ensemble from 
+"scratch" (e.g. mostly base R code with some helpers). In the first post I talked
+about my approach building a [principal components analysis anomaly detector](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html). In
+this post I'll work on the K-nearest neighbors anomaly detector using the same
+base data.
+
+To date, the three parts of the ensemble contain:
+
+1. "Soft" principal components anomaly detector
+2. **K-nearest neighbors anomaly detector**
+3. Isolation forest or histogram-based anomaly detector
+
+## Creating the KNN anomaly detector
+
+### Defining distance
+
+In a way, the K-nearest neighbors anomaly detector is incredibly simple. To compute the anomalousness of a single point we measure its distance to its $k$ nearest neighbors. We then use either the maximum or average distance among those $k$ points as its anomaly score. However, there is some additional complexity here regarding the choice of $k$ in an unsupervised setting - but we'll get to that in a moment.
+
+One issue is that computing all pairs of nearest neighbors has $O(N^2)$ time complexity. However, we only need to know the number of nearest neighbors up to our value of $k$. Therefore, we can avoid computing nearest unnecessary distances by applying more efficient algorithms - like [k-d trees](https://en.wikipedia.org/wiki/K-d_tree). In the case for $k$ nearest neighbors the time complexity is $O(N * log(N)$. The `RANN` package in R does this fairly efficiently. We'll use the same data as in the [previous post](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html) for this example.
+
+```{r}
+# scale input attributes
+X <- df[, 2:7]
+X <- scale(X)
+
+# compute NN distance between all points
+# set n neighbors
+k = 5
+
+# compute k nearest neighbor distances
+# using kd-trees
+d <- RANN::nn2(X, k = k+1)
+d <- d[[2]][,1:k+1]
+```
+
+You will notice that we set $k$ to $k+1$ to avoid calculating the nearest-neighbor distance to the each point itself (which is always zero). The `nn2` package gives us the Euclidean nearest-neighbor distances for each point arranged from nearest to farthest. For example if we look at the top 3 rows of the distance matrix we see:
+
+```{r}
+d[1:3,]
+```
+
+Which gives us the standardized (Z-score) distance to the $k$ nearest neighbor of point $i$. Now all we need to do is decide on how we will summarize this distance. 
+
+## Distance Measures
+
+We have a few options for distance measures 
+
+```{r}
+anom_max <- apply(d, 1, max)
+```
+
+```{r}
+anom_mean <- adKNN(d, k = 20, method = "mean")
+```
+
+```{r}
+scored_data <- data.frame(df,anom_mean)
+
+flag <- scored_data$anom_mean >= quantile(scored_data$anom_mean, .95)
+
+ggplot() +
+  geom_point(data = scored_data, aes(x = stay_len, y = diff), color = '#004488', size = 2, alpha = .25) +
+  geom_point(data = scored_data[flag,], aes(x = stay_len, y = diff), color = '#BB5566', size = 2.5) +
+  labs(x = "Stay Length", y = "Avg. Payment Difference") +
+  theme_minimal() +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(face = "bold"))
+
+
+```
+
+### KNN Anaomaly Detector: Example Function
+
+Here's a minimal working example of the procedure above. As we build our ensemble, we'll come back to this function later.
+
+```{r, eval=FALSE}
+# Run a principal components anomaly detector
+adKNN <- function(X, k = 5, method = 'max'){
+  
+  # compute k nearest neighbor distances
+  # using kd-trees
+  d <- RANN::nn2(X, k = k+1)
+  d <- d[[2]][,1:k+1]
+  
+  # aggregate scores
+  if(method == 'max')
+    anom <- apply(d, 1, max)
+  else if(method == 'mean')
+    anom <- apply(d, 1, mean)
+  else
+    print("Function not found")
+  
+  return(anom)
+  
+}
+```

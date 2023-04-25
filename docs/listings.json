@@ -2,6 +2,8 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/knn-anomaly/knn_anomaly.html",
+      "/posts/pca-timeseries/pca_ts.html",
       "/posts/pca-anomaly/pca_anomaly.html",
       "/posts/austin-vehicle/spatial_merging.html",
       "/posts/outlier-ensemble/alsoe_ensembling.html",

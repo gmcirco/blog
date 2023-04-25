@@ -1,0 +1,193 @@
+---
+title: "Anomaly Detection for Time Series"
+subtitle: "Applying a PCA anomaly detector"
+author: "Gio Circo, Ph.D."
+date: 2023-4-24
+format: 
+    html:
+        self-contained: false
+        code-fold: true
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+theme: flatly
+image: "power.png"
+---
+
+```{r, include = FALSE}
+library(tidyverse)
+library(tsfeatures)
+library(lubridate)
+library(zoo)
+
+adPCA <- function(X){
+  
+  # pca anomaly detection
+  # extract eigenvectors & variance
+  pca <- princomp(X, cor = TRUE)
+  e <- pca$scores
+  ev <- diag(var(e))
+  mu <- apply(e, 2, mean)
+  n <- ncol(e)
+  
+  # compute anomaly scores
+  alist <- vector(mode = "list", length = n)
+  for(i in 1:n){
+    alist[[i]] <- abs( (e[, i] - mu[i])^2 / ev[i])
+  }
+  
+  # extract values & export
+  Xscore <- as.matrix(do.call(cbind, alist))
+  anom <- apply(Xscore, 1, sum)
+  
+  return(anom)
+}
+
+# Read data, conver to zoo
+elec <- read_csv("C:/Users/gioc4/Documents/blog/data/AEP_hourly.csv") %>%
+  group_by(Datetime) %>%
+  summarise(AEP_MW = sum(AEP_MW)) %>%
+  filter(year(Datetime) %in% 2017)
+
+elec_ts <- zoo(x = elec$AEP_MW, order.by = elec$Datetime, frequency = 24)
+
+# Split the hourly time series into daily time series
+daily_ts_list <- split(elec_ts, as.Date(index(elec_ts)))
+
+# Extract the first 24 observations of each daily time series
+daily_24_ts_list <- lapply(daily_ts_list, function(x) {
+  if (length(x) >= 24) {
+    return(x[1:24])
+  } else {
+    return(NA)
+  }
+})
+
+# Convert from list to dataframe, extract TS features
+daily_24_ts_list <- purrr::discard(daily_24_ts_list, ~any(is.na(.)))
+
+df <- daily_24_ts_list %>%
+  tsfeatures(features = c("acf_features", "stl_features","entropy")) %>%
+  select(-nperiods, -seasonal_period)
+
+# AD
+anom <- adPCA(df)
+p = sapply(anom, pchisq, df=ncol(df), ncp = mean(anom), lower.tail=F)
+
+scored_data <- data.frame(df, anom, p)
+scored_data$date <- as.Date(names(daily_24_ts_list))
+```
+
+## An Unsupervised Approach to Time Series Anomalies
+
+Identifying outliers in time series is one of the more common applications for unsupervised anomaly detection. Some of the most common examples come from network intrusion detection, mechanical processes, and other types of high-volume streaming data. Of course, there are just as many proposed ways of identifying outliers from the simple (basic Z-scores) to the complex (convolutional neural networks). There are also some approaches that rely on more conventional tabular approaches. Rob Hyndman proposed a few approaches [here](https://robjhyndman.com/papers/icdm2015.pdf) and [here](https://arxiv.org/ftp/arxiv/papers/1908/1908.04000.pdf) showing how many high-volume time series can be compressed into a tabular dataset. The general idea is that you can decompose many time series into tabular observations by creating a large variety of features describing each series. 
+
+### Featurizing a time series dataset
+
+The data we'll use is on [hourly power usage](https://www.kaggle.com/datasets/robikscube/hourly-energy-consumption) for a large power company (American Electric Power). From this dataset we can perform some basic aggregation (to ensure that all timestamped values are on the same day-hour), then separate each set of 24 hours into their individual days. The goal here is to make it easier to look at hours within each day. The code below does a bit of this processing. Of course, working with dates is still always a pain, despite the improvements in `R` libraries.
+
+```{r, eval = FALSE}
+# Read data, convert to zoo
+elec <- read_csv("AEP_hourly.csv") %>%
+  group_by(Datetime) %>%
+  summarise(AEP_MW = sum(AEP_MW)) %>%
+  filter(year(Datetime) %in% 2017)
+
+elec_ts <- zoo(x = elec$AEP_MW, order.by = elec$Datetime, frequency = 24)
+
+# Split the hourly time series into daily time series
+daily_ts_list <- split(elec_ts, as.Date(index(elec_ts)))
+
+# Extract the first 24 observations of each daily time series
+# dropping days with missing values
+daily_24_ts_list <- lapply(daily_ts_list, function(x) {
+  if (length(x) >= 24) {
+    return(x[1:24])
+  } else {
+    return(NA)
+  }
+})
+
+# Convert from list to dataframe
+daily_24_ts_list <- purrr::discard(daily_24_ts_list, ~any(is.na(.)))
+```
+
+After converting the list of values to a data frame, we can proceed with the featurization. As we said before, we can use the [tsfeatures](https://pkg.robjhyndman.com/tsfeatures/articles/tsfeatures.html) library to decompose each day's hourly values into a single observation. We can see this creates a data frame with 17 features, which correspond to various measures, including: autocorrelation, seasonality, entropy and other ad-hoc measures of time series behavior. 
+
+```{r, eval=FALSE}
+#| code-fold: false
+
+# Convert from list to dataframe, extract TS features
+daily_24_ts_list <- purrr::discard(daily_24_ts_list, ~ any(is.na(.)))
+
+# create time series features using `tsfeatures`
+df <- daily_24_ts_list %>%
+  tsfeatures(
+    features = c(
+      "acf_features",
+      "stl_features",
+      "entropy",
+      "lumpiness",
+      "stability",
+      "max_level_shift"
+    )
+  ) %>%
+  select(-nperiods,-seasonal_period)
+```
+
+```{r}
+glimpse(df, width = 65)
+```
+
+### Principal components anomaly detector
+
+After doing this, we can proceed as a normal tabular data problem. The PCA anomaly detector that was detailed in [an earlier post](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html#pca-anaomaly-detector-example-function) is an easy plug in here and is a natural fit for the problem. We have a lot of highly correlated measures that likely share a large amount of variance across a few dimensions. We can then weight the lower-variance dimensions *higher* to identify anomalous series. We'll use the $\chi^2$ distribution to derive a p-value, which we can then threshold for flagging outliers.
+
+```{r, eval=FALSE}
+#| code-fold: false
+
+# Perform anomaly detection
+anom <- adPCA(df)
+p = sapply(anom, pchisq, df=ncol(df), ncp = mean(anom), lower.tail=F)
+```
+
+### Results
+
+We can see which series were flagged by the model by highlighting the series which were flagged at the $p < .01$
+
+```{r, warning=FALSE, message=FALSE}
+#| fig-cap: "Anamolous days are highlighted in red. Note the unusually high spike in late 2017."
+
+# flag observations at p < 0.01
+elec_plot <- elec %>%
+  mutate(date = as.Date(format(Datetime, "%Y-%m-%d")),
+         hour = hour(Datetime)) %>%
+  left_join(scored_data) %>%
+  mutate(flag = ifelse(p < 0.01,1,0))
+
+ggplot(data = elec_plot, aes(x = Datetime, y = AEP_MW, group = date)) +
+  geom_line(color = '#004488', alpha = .125) +
+  geom_line(data = elec_plot[elec_plot$flag == 1,], color = '#BB5566') +
+  labs(x = "Date", y = "Megawatt Hours") +
+  theme_minimal() +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(face = "bold"))
+
+```
+
+We can also see what these anomalous series look like compared to the other series on a hourly basis. This plot clearly shows one series with a unusual early-morning spike, and several series with flatter trajectories compared to more normally expected seasonality - in particular, they are days with low power consumption in the afternoon when consumption is usually at its highest. 
+
+```{r, warning=FALSE, message=FALSE}
+#| fig-cap: "Anomalous days often have flatter curves and dip during high-load hours of the day."
+
+ggplot(data = elec_plot, aes(x = hour, y = AEP_MW, group = date)) +
+  geom_line(color = '#004488', alpha = .075) +
+  geom_line(data = elec_plot[elec_plot$flag == 1,], color = '#BB5566', size = .7) +
+  labs(x = "Hour of Day", y = "Megawatt Hours") +
+  theme_minimal() +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(face = "bold"))
+```
+
+Arguably this isn't an ideal approach because each sub-series is only comprised of 24 observations. That means reliably identifying seasonality via the `stl_features` is questionable. In addition, this approach loses some information that comes from day-to-day correlations. It would probably be worthwhile testing this approach against something like [STL decomposition](https://otexts.com/fpp2/stl.html).
