@@ -10,6 +10,10 @@ format:
         section-divs: true
         toc: true
         title-block-banner: true
+categories:
+  - bayesian
+  - hlm
+  - Rstats
 theme: flatly
 bibliography: refs.bib
 image: "box.png"

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://gmcirco.github.io/blog/about.html</loc>
+    <lastmod>2023-04-25T03:15:50.986Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/index.html</loc>
+    <lastmod>2023-04-25T03:17:04.891Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</loc>
+    <lastmod>2023-04-25T03:15:55.876Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
+    <lastmod>2023-04-25T03:15:57.731Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
+    <lastmod>2023-04-25T03:16:00.496Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
+    <lastmod>2023-04-25T03:16:01.134Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
+    <lastmod>2023-04-25T03:16:01.729Z</lastmod>
+  </url>
+</urlset>

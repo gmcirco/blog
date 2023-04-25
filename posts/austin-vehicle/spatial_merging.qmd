@@ -3,6 +3,10 @@ title: "An Alternative to Buffers for Spatial Merging"
 subtitle: "Car Crashes in Austin"
 author: "Gio Circo, Ph.D."
 date: 2023-3-20
+categories:
+  - spatial statistics
+  - cctv
+  - Rstats
 format: 
     html:
         self-contained: true

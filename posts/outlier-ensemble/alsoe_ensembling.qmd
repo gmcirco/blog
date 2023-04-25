@@ -3,6 +3,10 @@ title: "The Power of Ensembles"
 subtitle: "Adventures in outlier detection"
 author: Gio Circo, Ph.D.
 date: 2023-2-15
+categories:
+  - anomaly detection
+  - python
+  - regression
 format: 
     html:
         self-contained: true

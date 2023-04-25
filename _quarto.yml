@@ -4,6 +4,7 @@ project:
 
 website:
   title: "A Blog for Data Stuff"
+  site-url: https://gmcirco.github.io/blog/
   description: "A space for all things data"
   navbar:
     right:
