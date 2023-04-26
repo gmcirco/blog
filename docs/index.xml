@@ -311,10 +311,10 @@ $ entropy     &lt;dbl&gt; 0.3585884, 0.5225069, 0.4962494, 0.3090901,…</code><
 
 <section id="the-problem" class="level2">
 <h2 class="anchored" data-anchor-id="the-problem">The Problem</h2>
-<p>I strongly believe in “learning by doing”. One of the things I have been working on quite a bit lately is unsupervised anomaly detection. As with many machine-learning tools, ensembles are incredibly powerful and useful for a variety of circumstances. Anomaly detection ensembles are <a href="https://kdd.org/exploration_files/V15-01-02-Zimek.pdf">no exception to that rule</a>. To better understand how each of the individual pieces of a anomaly detection ensemble works, I’ve decided two build one myself “from scratch”. I put that in giant quotes here because I’ll still rely on some existing frameworks in R to help built the underlying tools.</p>
+<p>I strongly believe in “learning by doing”. One of the things I have been working on quite a bit lately is unsupervised anomaly detection. As with many machine-learning tools, ensembles are incredibly powerful and useful for a variety of circumstances. Anomaly detection ensembles are <a href="https://kdd.org/exploration_files/V15-01-02-Zimek.pdf">no exception to that rule</a>. To better understand how each of the individual pieces of a anomaly detection ensemble works, I’ve decided two build one myself “from scratch”. I put that in giant quotes here becaus e I’ll still rely on some existing frameworks in R to help built the underlying tools.</p>
 <p>My idea is to create an ensemble of several heterogeneous anomaly detection methods in a way that maximizes their individual benefits. Following some of the guidance proposed by <a href="https://link.springer.com/book/10.1007/978-3-319-54765-7">Aggarwal &amp; Sathe</a> I will use:</p>
 <ol type="1">
-<li>“Soft” principal components anomaly detector</li>
+<li><strong>“Soft” principal components anomaly detector</strong></li>
 <li>K-nearest neighbors anomaly detector</li>
 <li>Isolation forest or histogram-based anomaly detector</li>
 </ol>
