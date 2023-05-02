@@ -85,7 +85,9 @@ scored_data$date <- as.Date(names(daily_24_ts_list))
 
 ## An Unsupervised Approach to Time Series Anomalies
 
-Identifying outliers in time series is one of the more common applications for unsupervised anomaly detection. Some of the most common examples come from network intrusion detection, mechanical processes, and other types of high-volume streaming data. Of course, there are just as many proposed ways of identifying outliers from the simple (basic Z-scores) to the complex (convolutional neural networks). There are also some approaches that rely on more conventional tabular approaches. Rob Hyndman proposed a few approaches [here](https://robjhyndman.com/papers/icdm2015.pdf) and [here](https://arxiv.org/ftp/arxiv/papers/1908/1908.04000.pdf) showing how many high-volume time series can be compressed into a tabular dataset. The general idea is that you can decompose many time series into tabular observations by creating a large variety of features describing each series. 
+Identifying outliers in time series is one of the more common applications for unsupervised anomaly detection. Some of the most common examples come from network intrusion detection, mechanical processes, and other types of high-volume streaming data. 
+
+Of course, there are just as many proposed ways of identifying outliers from the simple (basic Z-scores) to the complex (convolutional neural networks). There are also some approaches that rely on more conventional tabular approaches. Rob Hyndman proposed a few approaches [here](https://robjhyndman.com/papers/icdm2015.pdf) and [here](https://arxiv.org/ftp/arxiv/papers/1908/1908.04000.pdf) showing how many high-volume time series can be compressed into a tabular dataset. The general idea is that you can decompose many time series into tabular observations by creating a large variety of features describing each series. 
 
 ### Featurizing a time series dataset
 

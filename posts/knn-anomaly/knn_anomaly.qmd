@@ -66,8 +66,9 @@ adKNN <- function(X, k = 5, method = 'max'){
 
 This is the second part of a 3-part series. In the previous post I talked a bit 
 about my desire to work on building the pieces of an outlier ensemble from 
-"scratch" (e.g. mostly base R code with some helpers). In the first post I talked
-about my approach building a [principal components analysis anomaly detector](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html). In
+"scratch" (e.g. mostly base R code with some helpers). 
+
+In the first post I talked about my approach building a [principal components analysis anomaly detector](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html). In
 this post I'll work on the K-nearest neighbors anomaly detector using the same
 base data.
 
@@ -86,6 +87,8 @@ In a way, the K-nearest neighbors anomaly detector is incredibly simple. To comp
 One issue is that computing all pairs of nearest neighbors has $O(N^2)$ time complexity. However, we only need to know the number of nearest neighbors up to our value of $k$. Therefore, we can avoid computing nearest unnecessary distances by applying more efficient algorithms - like [k-d trees](https://en.wikipedia.org/wiki/K-d_tree). In the case for $k$ nearest neighbors the time complexity is $O(N * log(N)$. The `RANN` package in R does this fairly efficiently. We'll use the same data as in the [previous post](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html) for this example.
 
 ```{r}
+#| code-fold: false
+
 # scale input attributes
 X <- df[, 2:7]
 X <- scale(X)
@@ -110,17 +113,26 @@ Which gives us the standardized (Z-score) distance to the $k$ nearest neighbor o
 
 ## Distance Measures
 
-We have a few options for distance measures 
+We have a few options for distance measures. The most common, and simplest to understand arguably, is to compute a score based on the distance to each observations *farthest* $k$ neighbor (so if $k=5$ the score is the largest distance among those 5 neighbors). We can accomplish this by just getting the `max` value from each row.
 
 ```{r}
+#| code-fold: false
 anom_max <- apply(d, 1, max)
 ```
 
+We also have another option. Rather than choosing the maximum of the 5 nearest neighbors, we can average over a larger number of neighbors. This has the advantage of removing some of the variance implicit in the choice of $k$. For example, imagine the distance to the 6 nearest neighbors of one point are $[1, 2, 5, 7, 8, 100]$. If we chose $k=5$ we would miss the obvious outlier that would have been found had we instead chosen $k=6$. A good alternative to is set $k$ much higher and get the *average* of all neighbors within that range. Here, we might set $k$ to 20 and average over the distances.
+
 ```{r}
+#| code-fold: false
 anom_mean <- adKNN(d, k = 20, method = "mean")
 ```
 
+In many cases there will be very strong overlap between the two metrics, but in my personal experience I find that in unsupervised cases it is usually better to err on the safe side and go with metrics that do not depend on a single decision (hence, the entire purpose of outlier ensembling!)
+
+Like before we can specify a cut-point to flag outliers. Here, it might be reasonable to set it to the highest 5% of anomaly scores. Unfortunately, there's not necessarily a clear p-value available here like there was with the PCA anomaly detector. Ideally, if we have some prior information about the expected amount of contamination we could use that as our threshold instead. The plot below displays the 10 observations with the highest anomaly scores. The values flagged here look [very similar](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html#flagging-outliers) to the ones that were identified by the PCA anomaly detector as well, which should give us some confidence. 
+
 ```{r}
+#| fig-cap: "Inliers (blue) and outliers (red) displayed in 2D space"
 scored_data <- data.frame(df,anom_mean)
 
 flag <- scored_data$anom_mean >= quantile(scored_data$anom_mean, .95)
@@ -132,8 +144,6 @@ ggplot() +
   theme_minimal() +
   theme(axis.text = element_text(size = 12),
         axis.title = element_text(face = "bold"))
-
-
 ```
 
 ### KNN Anaomaly Detector: Example Function
