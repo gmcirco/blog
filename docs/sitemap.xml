@@ -6,7 +6,7 @@
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/index.html</loc>
-    <lastmod>2023-05-02T20:58:03.563Z</lastmod>
+    <lastmod>2023-05-17T13:11:10.754Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</loc>
@@ -27,5 +27,9 @@
   <url>
     <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
     <lastmod>2023-05-02T20:48:38.253Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
+    <lastmod>2023-05-17T13:11:09.205Z</lastmod>
   </url>
 </urlset>

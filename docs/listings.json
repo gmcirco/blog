@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/hbos-anomaly/hbos_anomaly.html",
       "/posts/knn-anomaly/knn_anomaly.html",
       "/posts/pca-timeseries/pca_ts.html",
       "/posts/pca-anomaly/pca_anomaly.html",

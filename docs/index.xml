@@ -10,7 +10,291 @@
 <atom:link href="https://gmcirco.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Tue, 25 Apr 2023 04:00:00 GMT</lastBuildDate>
+<lastBuildDate>Sun, 14 May 2023 04:00:00 GMT</lastBuildDate>
+<item>
+  <title>Building an Outlier Ensemble from ‘Scratch’</title>
+  <dc:creator>Gio Circo, Ph.D.</dc:creator>
+  <link>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="part-3-the-histogram-based-anomaly-detector" class="level2">
+<h2 class="anchored" data-anchor-id="part-3-the-histogram-based-anomaly-detector">Part 3: The histogram-based anomaly detector</h2>
+<p>This is the third part of a 3-part series. In the first two posts I described how I built a <a href="https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html">principal components analysis anomaly detector</a> and a k-nearest neighbors anomaly detector as components for a ensemble model. This third post will discuss the last piece, which is a histogram-based anomaly detector.</p>
+<ol type="1">
+<li>“Soft” principal components anomaly detector</li>
+<li>K-nearest neighbors anomaly detector</li>
+<li><strong>Isolation forest or histogram-based anomaly detector</strong></li>
+</ol>
+</section>
+<section id="building-a-histogram-based-outlier-detector" class="level2">
+<h2 class="anchored" data-anchor-id="building-a-histogram-based-outlier-detector">Building a Histogram-Based Outlier Detector</h2>
+<section id="defining-sub-space-density" class="level3">
+<h3 class="anchored" data-anchor-id="defining-sub-space-density">Defining sub-space density</h3>
+<p>The core of the idea behind a histogram-based outlier detector is that it is a method to efficiently explore subspaces of the data by binning observations into discrete groups, then weighting each bin inversely by the number of observations (more on this in a moment). To start, we can provide a quick example showing how we can use histograms to partition the data into bins. Below, I create two histograms for the features representing stay length and average cost per-stay.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="co" style="color: #5E5E5E;"># define breaks</span></span>
+<span id="cb1-2">h1 <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">hist</span>(df<span class="sc" style="color: #5E5E5E;">$</span>stay_len, <span class="at" style="color: #657422;">breaks =</span> <span class="dv" style="color: #AD0000;">5</span>, <span class="at" style="color: #657422;">plot =</span> <span class="cn" style="color: #8f5902;">FALSE</span>)</span>
+<span id="cb1-3">h2 <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">hist</span>(df<span class="sc" style="color: #5E5E5E;">$</span>cost_per_stay, <span class="at" style="color: #657422;">breaks =</span> <span class="dv" style="color: #AD0000;">5</span>, <span class="at" style="color: #657422;">plot =</span> <span class="cn" style="color: #8f5902;">FALSE</span>)</span>
+<span id="cb1-4"></span>
+<span id="cb1-5"><span class="co" style="color: #5E5E5E;"># append to dataframe</span></span>
+<span id="cb1-6">hdf <span class="ot" style="color: #003B4F;">&lt;-</span> df <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-7">  <span class="fu" style="color: #4758AB;">mutate</span>(<span class="at" style="color: #657422;">d1 =</span> <span class="fu" style="color: #4758AB;">findInterval</span>(stay_len, h1<span class="sc" style="color: #5E5E5E;">$</span>breaks),</span>
+<span id="cb1-8">         <span class="at" style="color: #657422;">d2 =</span> <span class="fu" style="color: #4758AB;">findInterval</span>(cost_per_stay, h2<span class="sc" style="color: #5E5E5E;">$</span>breaks),</span>
+<span id="cb1-9">         <span class="at" style="color: #657422;">space =</span> <span class="fu" style="color: #4758AB;">paste0</span>(d1,<span class="st" style="color: #20794D;">"-"</span>,d2))</span>
+<span id="cb1-10"></span>
+<span id="cb1-11"><span class="co" style="color: #5E5E5E;"># Create a data frame with a grid of values for the predictor variables</span></span>
+<span id="cb1-12">grid <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">expand.grid</span>(<span class="at" style="color: #657422;">stay_len =</span> <span class="fu" style="color: #4758AB;">seq</span>(<span class="fu" style="color: #4758AB;">min</span>(hdf<span class="sc" style="color: #5E5E5E;">$</span>stay_len), <span class="fu" style="color: #4758AB;">max</span>(hdf<span class="sc" style="color: #5E5E5E;">$</span>stay_len), <span class="at" style="color: #657422;">length.out =</span> <span class="dv" style="color: #AD0000;">10</span>),</span>
+<span id="cb1-13">                    <span class="at" style="color: #657422;">cost_per_stay =</span> <span class="fu" style="color: #4758AB;">seq</span>(<span class="fu" style="color: #4758AB;">min</span>(hdf<span class="sc" style="color: #5E5E5E;">$</span>cost_per_stay), <span class="fu" style="color: #4758AB;">max</span>(hdf<span class="sc" style="color: #5E5E5E;">$</span>cost_per_stay), <span class="at" style="color: #657422;">length.out =</span> <span class="dv" style="color: #AD0000;">10</span>)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-14">  <span class="fu" style="color: #4758AB;">mutate</span>(<span class="at" style="color: #657422;">d1 =</span> <span class="fu" style="color: #4758AB;">findInterval</span>(stay_len, h1<span class="sc" style="color: #5E5E5E;">$</span>breaks),</span>
+<span id="cb1-15">         <span class="at" style="color: #657422;">d2 =</span> <span class="fu" style="color: #4758AB;">findInterval</span>(cost_per_stay, h2<span class="sc" style="color: #5E5E5E;">$</span>breaks),</span>
+<span id="cb1-16">         <span class="at" style="color: #657422;">space =</span> <span class="fu" style="color: #4758AB;">paste0</span>(d1,<span class="st" style="color: #20794D;">"-"</span>,d2)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-17">    <span class="fu" style="color: #4758AB;">mutate</span>(<span class="at" style="color: #657422;">space =</span> <span class="fu" style="color: #4758AB;">ifelse</span>(space <span class="sc" style="color: #5E5E5E;">%in%</span> hdf<span class="sc" style="color: #5E5E5E;">$</span>space, space, <span class="cn" style="color: #8f5902;">NA</span>)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-18">    <span class="fu" style="color: #4758AB;">fill</span>(space)</span></code></pre></div>
+</details>
+</div>
+<p>If we plot each of these histograms, we can observe that most values concentrate in a few bins, while a small number of values are in more sparsely-populated bins. Obviously this shows us that the majority of stay lengths are between 0-10 days, and the average cost per-stay is around $4,000.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><span class="fu" style="color: #4758AB;">par</span>(<span class="at" style="color: #657422;">mfrow=</span><span class="fu" style="color: #4758AB;">c</span>(<span class="dv" style="color: #AD0000;">1</span>,<span class="dv" style="color: #AD0000;">2</span>))</span>
+<span id="cb2-2"><span class="fu" style="color: #4758AB;">plot</span>(h1, <span class="at" style="color: #657422;">main =</span> <span class="st" style="color: #20794D;">"Stay Length"</span>, <span class="at" style="color: #657422;">xlab =</span> <span class="st" style="color: #20794D;">"Days"</span>, <span class="at" style="color: #657422;">col =</span> <span class="st" style="color: #20794D;">'#004488'</span>, <span class="at" style="color: #657422;">border =</span> <span class="st" style="color: #20794D;">'white'</span>)</span>
+<span id="cb2-3"><span class="fu" style="color: #4758AB;">plot</span>(h2, <span class="at" style="color: #657422;">main =</span> <span class="st" style="color: #20794D;">"Cost Per Stay"</span>, <span class="at" style="color: #657422;">xlab =</span> <span class="st" style="color: #20794D;">"Cost"</span>, <span class="at" style="color: #657422;">col =</span> <span class="st" style="color: #20794D;">'#004488'</span>, <span class="at" style="color: #657422;">border =</span> <span class="st" style="color: #20794D;">'white'</span>)</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid figure-img" width="672"></p>
+<p></p><figcaption class="figure-caption">A histogram’s bins are proportional to the number of observations.</figcaption><p></p>
+</figure>
+</div>
+</div>
+</div>
+<p>We can plot this in 2 dimensions to see how the feature space distribution is subdivided based on histogram bins. As we would expect, the majority of observations fall into a few regions, while potential outliers exist in much more sparsely populated bins. This is actually fairly similar to a decision tree, where we classify observations based on a set of rules. For example, the lone observation on the far right of the plot is in a region where <code>stay_length &gt;= 44</code> and <code>cost_per_stay &gt;= 3367</code> and <code>cost_per_stay &lt;= 4837</code>.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><span class="fu" style="color: #4758AB;">ggplot</span>() <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb3-2">  <span class="fu" style="color: #4758AB;">geom_tile</span>(<span class="at" style="color: #657422;">data =</span> grid, <span class="fu" style="color: #4758AB;">aes</span>(<span class="at" style="color: #657422;">x =</span> stay_len, <span class="at" style="color: #657422;">y =</span> cost_per_stay, <span class="at" style="color: #657422;">fill =</span> space), <span class="at" style="color: #657422;">alpha =</span> .<span class="dv" style="color: #AD0000;">6</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb3-3">  <span class="fu" style="color: #4758AB;">geom_point</span>(<span class="at" style="color: #657422;">data =</span> df, <span class="fu" style="color: #4758AB;">aes</span>(<span class="at" style="color: #657422;">x =</span> stay_len, <span class="at" style="color: #657422;">y =</span> cost_per_stay), <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#004488'</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb3-4">  <span class="fu" style="color: #4758AB;">labs</span>(<span class="at" style="color: #657422;">x =</span> <span class="st" style="color: #20794D;">'Stay Length'</span>, <span class="at" style="color: #657422;">y =</span> <span class="st" style="color: #20794D;">'Cost Per Stay'</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb3-5">  <span class="fu" style="color: #4758AB;">theme_minimal</span>() <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb3-6">  <span class="fu" style="color: #4758AB;">theme</span>(<span class="at" style="color: #657422;">legend.position =</span> <span class="st" style="color: #20794D;">"none"</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb3-7">  <span class="fu" style="color: #4758AB;">scale_fill_brewer</span>(<span class="at" style="color: #657422;">palette =</span> <span class="st" style="color: #20794D;">"Set3"</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb3-8">  <span class="fu" style="color: #4758AB;">theme</span>(<span class="at" style="color: #657422;">axis.text =</span> <span class="fu" style="color: #4758AB;">element_text</span>(<span class="at" style="color: #657422;">size =</span> <span class="dv" style="color: #AD0000;">10</span>),</span>
+<span id="cb3-9">        <span class="at" style="color: #657422;">axis.title =</span> <span class="fu" style="color: #4758AB;">element_text</span>(<span class="at" style="color: #657422;">face =</span> <span class="st" style="color: #20794D;">"bold"</span>),</span>
+<span id="cb3-10">        <span class="at" style="color: #657422;">panel.grid.minor =</span> <span class="fu" style="color: #4758AB;">element_blank</span>())</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid figure-img" width="672"></p>
+<p></p><figcaption class="figure-caption">2D histogram partitioning of observations. Colored regions represent different bin partitions. Note the sparse regions at the top left and lower right quadrants.</figcaption><p></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="scoring-observations" class="level3">
+<h3 class="anchored" data-anchor-id="scoring-observations">Scoring observations</h3>
+<p>With this in mind, we are essentially going to do the above, but in <img src="https://latex.codecogs.com/png.latex?d"> dimensions (where <img src="https://latex.codecogs.com/png.latex?d"> is the number of input features). To give each observation an anomaly score, we will follow a <a href="https://www.goldiges.de/publications/HBOS-KI-2012.pdf">very simple scoring mechanism</a> proposed by the original authors of the method where:</p>
+<p><img src="https://latex.codecogs.com/png.latex?HBOS(p)%20=%20%5Csum%5Ed_%7Bi=0%7Dlog(%5Cfrac%7B1%7D%7Bhist_i(p)%7D)"> Which states that the histogram-based anomaly score is the sum of the log of inverse histogram densities. More simply, for each feature <img src="https://latex.codecogs.com/png.latex?d"> we compute a histogram density, and each observation is scored based on the inverse of its bin density <span class="citation" data-cites="goldstein2012histogram">(Goldstein and Dengel 2012)</span>. This means observations in sparsely populated bins receive higher scores, and vice-versa. One of the trade-offs here is that we have to assume feature independence (which is a tenuous assumption in a lot of cases), but even violations of this might not be <em>too</em> bad.</p>
+</section>
+<section id="a-brief-aside-choosing-the-optimal-bin-size" class="level3">
+<h3 class="anchored" data-anchor-id="a-brief-aside-choosing-the-optimal-bin-size">A brief aside: choosing the optimal bin size</h3>
+<p>One challenge with this approach is that before we calculate histogram densities we need to define the number of bins for our histograms ahead of time. Now, one simple method might just be to choose a very rough rule-of-thumb (e.g.&nbsp;the “Sturges” rule of <img src="https://latex.codecogs.com/png.latex?1+log2(N)">) or to just choose a constant number like 5 or 10. A more principled way, however, would be to derive the optimal number of bins based on some properties of the input data.</p>
+<p>There are a lot of proposed options out here, but the one that makes a lot of sense to me (and, incidentally, is also used in the <a href="https://pyod.readthedocs.io/en/latest/_modules/pyod/models/hbos.html">pyod</a> implementation of this function) is to iteratively fit histograms, calculate a <a href="http://www.numdam.org/item/10.1051/ps:2006001.pdf">penalized maximum likelihood</a> estimate for each histogram <img src="https://latex.codecogs.com/png.latex?D">, and then select the number of bins corresponding to the maximum likelihood estimate <span class="citation" data-cites="birge2006many">(Birgé and Rozenholc 2006)</span>. A rough R implementation of this is shown below:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1">  <span class="co" style="color: #5E5E5E;"># internal function: compute optimal bins</span></span>
+<span id="cb4-2">opt_bins <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="cf" style="color: #003B4F;">function</span>(X, <span class="at" style="color: #657422;">upper_bound =</span> <span class="dv" style="color: #AD0000;">15</span>)</span>
+<span id="cb4-3">  {</span>
+<span id="cb4-4">    </span>
+<span id="cb4-5">    epsilon <span class="ot" style="color: #003B4F;">=</span> <span class="dv" style="color: #AD0000;">1</span></span>
+<span id="cb4-6">    n <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">length</span>(X)</span>
+<span id="cb4-7">    </span>
+<span id="cb4-8">    <span class="co" style="color: #5E5E5E;"># maximum likelihood estimate for bin</span></span>
+<span id="cb4-9">    maximum_likelihood <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">array</span>(<span class="dv" style="color: #AD0000;">0</span>, <span class="at" style="color: #657422;">dim =</span> <span class="fu" style="color: #4758AB;">c</span>(upper_bound <span class="sc" style="color: #5E5E5E;">-</span> <span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">1</span>))</span>
+<span id="cb4-10">    </span>
+<span id="cb4-11">    <span class="co" style="color: #5E5E5E;"># rule of thumb for upper bound</span></span>
+<span id="cb4-12">    <span class="cf" style="color: #003B4F;">if</span> (<span class="fu" style="color: #4758AB;">is.null</span>(upper_bound)) {</span>
+<span id="cb4-13">      upper_bound <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">as.integer</span>(<span class="fu" style="color: #4758AB;">sqrt</span>(<span class="fu" style="color: #4758AB;">length</span>(X)))</span>
+<span id="cb4-14">    }</span>
+<span id="cb4-15">    </span>
+<span id="cb4-16">    <span class="cf" style="color: #003B4F;">for</span> (i <span class="cf" style="color: #003B4F;">in</span> <span class="fu" style="color: #4758AB;">seq_along</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span>(upper_bound <span class="sc" style="color: #5E5E5E;">-</span> <span class="dv" style="color: #AD0000;">1</span>))) {</span>
+<span id="cb4-17">      b <span class="ot" style="color: #003B4F;">&lt;-</span> i <span class="sc" style="color: #5E5E5E;">+</span> <span class="dv" style="color: #AD0000;">1</span></span>
+<span id="cb4-18">      histogram <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">hist</span>(X, <span class="at" style="color: #657422;">breaks =</span> b, <span class="at" style="color: #657422;">plot =</span> <span class="cn" style="color: #8f5902;">FALSE</span>)<span class="sc" style="color: #5E5E5E;">$</span>counts</span>
+<span id="cb4-19">      </span>
+<span id="cb4-20">      maximum_likelihood[i] <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb4-21">        <span class="fu" style="color: #4758AB;">sum</span>(histogram <span class="sc" style="color: #5E5E5E;">*</span> <span class="fu" style="color: #4758AB;">log</span>(b <span class="sc" style="color: #5E5E5E;">*</span> histogram <span class="sc" style="color: #5E5E5E;">/</span>  n <span class="sc" style="color: #5E5E5E;">+</span> epsilon) <span class="sc" style="color: #5E5E5E;">-</span> (b <span class="sc" style="color: #5E5E5E;">-</span> <span class="dv" style="color: #AD0000;">1</span> <span class="sc" style="color: #5E5E5E;">+</span> <span class="fu" style="color: #4758AB;">log</span>(b) <span class="sc" style="color: #5E5E5E;">^</span> <span class="fl" style="color: #AD0000;">2.5</span>))</span>
+<span id="cb4-22">    }</span>
+<span id="cb4-23">    </span>
+<span id="cb4-24">    <span class="fu" style="color: #4758AB;">return</span>(<span class="fu" style="color: #4758AB;">which.max</span>(maximum_likelihood))</span>
+<span id="cb4-25">  }</span></code></pre></div>
+</div>
+<p>So, running this for the first feature <code>stay_len</code>, we get:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><span class="fu" style="color: #4758AB;">opt_bins</span>(df<span class="sc" style="color: #5E5E5E;">$</span>stay_len)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 5</code></pre>
+</div>
+</div>
+</section>
+<section id="building-the-detector" class="level3">
+<h3 class="anchored" data-anchor-id="building-the-detector">Building the detector</h3>
+<p>With the issue of histogram bins out of the way, we can procede with the rest of the model. The last bit is really quite simple. For each feature <img src="https://latex.codecogs.com/png.latex?d"> we compute the optimal number of bins (using the function we just defined above). We then build a histogram for that feature and identify which points fall within each bin. We then score each point according to the formula above, which is the log of the inverse histogram density (making outlying observations have correspondingly <em>higher</em> anomaly scores). The last thing we do after running this algorithm over all <img src="https://latex.codecogs.com/png.latex?d"> features is to scale their scores (here, I use min-max normalization) and sum them together. The code to do this is below:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><span class="co" style="color: #5E5E5E;"># run HBOS</span></span>
+<span id="cb7-2">  <span class="cf" style="color: #003B4F;">for</span>(d <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span>d){</span>
+<span id="cb7-3">    </span>
+<span id="cb7-4">    h <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">hist</span>(X[,d], <span class="at" style="color: #657422;">breaks =</span> <span class="fu" style="color: #4758AB;">opt_bins</span>(X[,d]), <span class="at" style="color: #657422;">plot =</span> <span class="cn" style="color: #8f5902;">FALSE</span>)</span>
+<span id="cb7-5">    fi <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">findInterval</span>(X[,d], h<span class="sc" style="color: #5E5E5E;">$</span>breaks)</span>
+<span id="cb7-6">    </span>
+<span id="cb7-7">    hbos[[d]] <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">log</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">/</span>h<span class="sc" style="color: #5E5E5E;">$</span>density[fi])</span>
+<span id="cb7-8">  }</span>
+<span id="cb7-9">  </span>
+<span id="cb7-10">  <span class="co" style="color: #5E5E5E;"># minmax scale feature vectors</span></span>
+<span id="cb7-11">  hbos <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">lapply</span>(hbos, <span class="cf" style="color: #003B4F;">function</span>(x){(x<span class="sc" style="color: #5E5E5E;">-</span> <span class="fu" style="color: #4758AB;">min</span>(x)) <span class="sc" style="color: #5E5E5E;">/</span>(<span class="fu" style="color: #4758AB;">max</span>(x)<span class="sc" style="color: #5E5E5E;">-</span><span class="fu" style="color: #4758AB;">min</span>(x))})</span>
+<span id="cb7-12">  </span>
+<span id="cb7-13">  <span class="co" style="color: #5E5E5E;"># return score</span></span>
+<span id="cb7-14">  <span class="fu" style="color: #4758AB;">return</span>(<span class="fu" style="color: #4758AB;">apply</span>(<span class="fu" style="color: #4758AB;">do.call</span>(cbind, hbos), <span class="dv" style="color: #AD0000;">1</span>, sum))</span></code></pre></div>
+</div>
+</section>
+</section>
+<section id="running-the-model" class="level2">
+<h2 class="anchored" data-anchor-id="running-the-model">Running the Model</h2>
+<p>Now we’re ready to run everything. For simplicity, I wrap all this code into a single <code>adHBOS</code> function that contains the optimal histogram binning and the scoring (see: Section&nbsp;3.1). For flagging anomalies we will just identify the highest 5% (a rough, but arguably acceptable heuristic).</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1">X <span class="ot" style="color: #003B4F;">&lt;-</span> df[,<span class="dv" style="color: #AD0000;">2</span><span class="sc" style="color: #5E5E5E;">:</span><span class="dv" style="color: #AD0000;">7</span>]</span>
+<span id="cb8-2"></span>
+<span id="cb8-3">df<span class="sc" style="color: #5E5E5E;">$</span>anom <span class="ot" style="color: #003B4F;">&lt;-</span>  <span class="fu" style="color: #4758AB;">adHBOS</span>(X)</span>
+<span id="cb8-4">df<span class="sc" style="color: #5E5E5E;">$</span>flag <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">ifelse</span>(df<span class="sc" style="color: #5E5E5E;">$</span>anom <span class="sc" style="color: #5E5E5E;">&gt;=</span> <span class="fu" style="color: #4758AB;">quantile</span>(df<span class="sc" style="color: #5E5E5E;">$</span>anom, .<span class="dv" style="color: #AD0000;">95</span>),<span class="dv" style="color: #AD0000;">1</span>,<span class="dv" style="color: #AD0000;">0</span>)</span></code></pre></div>
+</div>
+<p>If we look at a histogram of we see most scores are low, while the outliers are clearly visible on the right-hand side.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><span class="fu" style="color: #4758AB;">ggplot</span>(df) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb9-2">  <span class="fu" style="color: #4758AB;">geom_histogram</span>(<span class="fu" style="color: #4758AB;">aes</span>(<span class="at" style="color: #657422;">x =</span> anom), <span class="at" style="color: #657422;">bins =</span> <span class="dv" style="color: #AD0000;">10</span>, <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'white'</span>, <span class="at" style="color: #657422;">fill =</span> <span class="st" style="color: #20794D;">'#004488'</span>)<span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb9-3">  <span class="fu" style="color: #4758AB;">labs</span>(<span class="at" style="color: #657422;">x =</span> <span class="st" style="color: #20794D;">"Anomaly Score"</span>, <span class="at" style="color: #657422;">y =</span> <span class="st" style="color: #20794D;">"Observations"</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb9-4">  <span class="fu" style="color: #4758AB;">theme_minimal</span>() <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb9-5">  <span class="fu" style="color: #4758AB;">theme</span>(<span class="at" style="color: #657422;">axis.text =</span> <span class="fu" style="color: #4758AB;">element_text</span>(<span class="at" style="color: #657422;">size =</span> <span class="dv" style="color: #AD0000;">12</span>),</span>
+<span id="cb9-6">        <span class="at" style="color: #657422;">axis.title =</span> <span class="fu" style="color: #4758AB;">element_text</span>(<span class="at" style="color: #657422;">face =</span> <span class="st" style="color: #20794D;">"bold"</span>))</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly_files/figure-html/unnamed-chunk-9-1.png" class="img-fluid figure-img" width="672"></p>
+<p></p><figcaption class="figure-caption">Histogram-based anomaly scores. More anomalous observations have higher scores</figcaption><p></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Comparing this to our earlier plot we see:</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><span class="fu" style="color: #4758AB;">ggplot</span>() <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb10-2">  <span class="fu" style="color: #4758AB;">geom_tile</span>(<span class="at" style="color: #657422;">data =</span> grid, <span class="fu" style="color: #4758AB;">aes</span>(<span class="at" style="color: #657422;">x =</span> stay_len, <span class="at" style="color: #657422;">y =</span> cost_per_stay, <span class="at" style="color: #657422;">fill =</span> space), <span class="at" style="color: #657422;">alpha =</span> .<span class="dv" style="color: #AD0000;">6</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb10-3">  <span class="fu" style="color: #4758AB;">geom_point</span>(<span class="at" style="color: #657422;">data =</span> df, <span class="fu" style="color: #4758AB;">aes</span>(<span class="at" style="color: #657422;">x =</span> stay_len, <span class="at" style="color: #657422;">y =</span> cost_per_stay), <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#004488'</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb10-4">  <span class="fu" style="color: #4758AB;">geom_point</span>(<span class="at" style="color: #657422;">data =</span> df[df<span class="sc" style="color: #5E5E5E;">$</span>flag <span class="sc" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">1</span>,], <span class="fu" style="color: #4758AB;">aes</span>(<span class="at" style="color: #657422;">x =</span> stay_len, <span class="at" style="color: #657422;">y =</span> cost_per_stay, <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#BB5566'</span>), <span class="at" style="color: #657422;">size =</span> <span class="dv" style="color: #AD0000;">2</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb10-5">  <span class="fu" style="color: #4758AB;">labs</span>(<span class="at" style="color: #657422;">x =</span> <span class="st" style="color: #20794D;">'Stay Length'</span>, <span class="at" style="color: #657422;">y =</span> <span class="st" style="color: #20794D;">'Cost Per Stay'</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb10-6">  <span class="fu" style="color: #4758AB;">theme_minimal</span>() <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb10-7">  <span class="fu" style="color: #4758AB;">theme</span>(<span class="at" style="color: #657422;">legend.position =</span> <span class="st" style="color: #20794D;">"none"</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb10-8">  <span class="fu" style="color: #4758AB;">scale_fill_brewer</span>(<span class="at" style="color: #657422;">palette =</span> <span class="st" style="color: #20794D;">"Set3"</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb10-9">  <span class="fu" style="color: #4758AB;">theme</span>(<span class="at" style="color: #657422;">axis.text =</span> <span class="fu" style="color: #4758AB;">element_text</span>(<span class="at" style="color: #657422;">size =</span> <span class="dv" style="color: #AD0000;">10</span>),</span>
+<span id="cb10-10">        <span class="at" style="color: #657422;">axis.title =</span> <span class="fu" style="color: #4758AB;">element_text</span>(<span class="at" style="color: #657422;">face =</span> <span class="st" style="color: #20794D;">"bold"</span>),</span>
+<span id="cb10-11">        <span class="at" style="color: #657422;">panel.grid.minor =</span> <span class="fu" style="color: #4758AB;">element_blank</span>())</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly_files/figure-html/unnamed-chunk-10-1.png" class="img-fluid figure-img" width="672"></p>
+<p></p><figcaption class="figure-caption">Plotting inliers (blue) and outliers (red) in 2D space.</figcaption><p></p>
+</figure>
+</div>
+</div>
+</div>
+<p>As we expect, most of the observations that are flagged as outliers reside in bins with few other observations. This is pretty consistent with the other two methods we used before (PCA and KNN anomaly detectors). One specific advantage of the HBOS method is that it is very fast for even large datasets. However, with higher levels of dimensionality it is very likely that the assumption of feature independence is tenuous at best. Other methods, like the isolation forest can often perform better in higher dimensions. However, the simplicity of the method makes it easy to explain, which can be a benefit in many cases!</p>
+<section id="sec-hbos" class="level3">
+<h3 class="anchored" data-anchor-id="sec-hbos">HBOS Anaomaly Detector: Example Function</h3>
+<p>Here’s a minimal working example of the procedure above. As we build our ensemble, we’ll come back to this function later.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><span class="co" style="color: #5E5E5E;"># Run a principal components anomaly detector</span></span>
+<span id="cb11-2">adHBOS <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="cf" style="color: #003B4F;">function</span>(X, <span class="at" style="color: #657422;">ub =</span> <span class="dv" style="color: #AD0000;">15</span>){</span>
+<span id="cb11-3">  </span>
+<span id="cb11-4">  <span class="co" style="color: #5E5E5E;"># scale input features, define list to hold scores</span></span>
+<span id="cb11-5">  X <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">scale</span>(X)</span>
+<span id="cb11-6">  j <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">dim</span>(X)[<span class="dv" style="color: #AD0000;">2</span>]</span>
+<span id="cb11-7">  hbos <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">vector</span>(<span class="st" style="color: #20794D;">"list"</span>,j)</span>
+<span id="cb11-8">  </span>
+<span id="cb11-9">  <span class="co" style="color: #5E5E5E;"># internal function: compute optimal bins</span></span>
+<span id="cb11-10">  opt_bins <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="cf" style="color: #003B4F;">function</span>(X, <span class="at" style="color: #657422;">upper_bound =</span> ub)</span>
+<span id="cb11-11">  {</span>
+<span id="cb11-12">    </span>
+<span id="cb11-13">    epsilon <span class="ot" style="color: #003B4F;">=</span> <span class="dv" style="color: #AD0000;">1</span></span>
+<span id="cb11-14">    n <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">length</span>(X)</span>
+<span id="cb11-15">    </span>
+<span id="cb11-16">    <span class="co" style="color: #5E5E5E;"># maximum likelihood estimate for bin</span></span>
+<span id="cb11-17">    maximum_likelihood <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">array</span>(<span class="dv" style="color: #AD0000;">0</span>, <span class="at" style="color: #657422;">dim =</span> <span class="fu" style="color: #4758AB;">c</span>(upper_bound <span class="sc" style="color: #5E5E5E;">-</span> <span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">1</span>))</span>
+<span id="cb11-18">    </span>
+<span id="cb11-19">    <span class="co" style="color: #5E5E5E;"># rule of thumb for upper bound</span></span>
+<span id="cb11-20">    <span class="cf" style="color: #003B4F;">if</span> (<span class="fu" style="color: #4758AB;">is.null</span>(upper_bound)) {</span>
+<span id="cb11-21">      upper_bound <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">as.integer</span>(<span class="fu" style="color: #4758AB;">sqrt</span>(<span class="fu" style="color: #4758AB;">length</span>(X)))</span>
+<span id="cb11-22">    }</span>
+<span id="cb11-23">    </span>
+<span id="cb11-24">    <span class="cf" style="color: #003B4F;">for</span> (i <span class="cf" style="color: #003B4F;">in</span> <span class="fu" style="color: #4758AB;">seq_along</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span>(upper_bound <span class="sc" style="color: #5E5E5E;">-</span> <span class="dv" style="color: #AD0000;">1</span>))) {</span>
+<span id="cb11-25">      b <span class="ot" style="color: #003B4F;">&lt;-</span> i <span class="sc" style="color: #5E5E5E;">+</span> <span class="dv" style="color: #AD0000;">1</span></span>
+<span id="cb11-26">      histogram <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">hist</span>(X, <span class="at" style="color: #657422;">breaks =</span> b, <span class="at" style="color: #657422;">plot =</span> <span class="cn" style="color: #8f5902;">FALSE</span>)<span class="sc" style="color: #5E5E5E;">$</span>counts</span>
+<span id="cb11-27">      </span>
+<span id="cb11-28">      maximum_likelihood[i] <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb11-29">        <span class="fu" style="color: #4758AB;">sum</span>(histogram <span class="sc" style="color: #5E5E5E;">*</span> <span class="fu" style="color: #4758AB;">log</span>(b <span class="sc" style="color: #5E5E5E;">*</span> histogram <span class="sc" style="color: #5E5E5E;">/</span>  n <span class="sc" style="color: #5E5E5E;">+</span> epsilon) <span class="sc" style="color: #5E5E5E;">-</span> (b <span class="sc" style="color: #5E5E5E;">-</span> <span class="dv" style="color: #AD0000;">1</span> <span class="sc" style="color: #5E5E5E;">+</span> <span class="fu" style="color: #4758AB;">log</span>(b) <span class="sc" style="color: #5E5E5E;">^</span> <span class="fl" style="color: #AD0000;">2.5</span>))</span>
+<span id="cb11-30">    }</span>
+<span id="cb11-31">    </span>
+<span id="cb11-32">    <span class="fu" style="color: #4758AB;">return</span>(<span class="fu" style="color: #4758AB;">which.max</span>(maximum_likelihood))</span>
+<span id="cb11-33">  }</span>
+<span id="cb11-34">  </span>
+<span id="cb11-35">  <span class="co" style="color: #5E5E5E;"># run HBOS</span></span>
+<span id="cb11-36">  <span class="cf" style="color: #003B4F;">for</span>(j <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span>j){</span>
+<span id="cb11-37">    </span>
+<span id="cb11-38">    h <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">hist</span>(X[,j], <span class="at" style="color: #657422;">breaks =</span> <span class="fu" style="color: #4758AB;">opt_bins</span>(X[,j]), <span class="at" style="color: #657422;">plot =</span> <span class="cn" style="color: #8f5902;">FALSE</span>)</span>
+<span id="cb11-39">    fi <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">findInterval</span>(X[,j], h<span class="sc" style="color: #5E5E5E;">$</span>breaks)</span>
+<span id="cb11-40">    </span>
+<span id="cb11-41">    hbos[[j]] <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">log</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">/</span>h<span class="sc" style="color: #5E5E5E;">$</span>density[fi])</span>
+<span id="cb11-42">  }</span>
+<span id="cb11-43">  </span>
+<span id="cb11-44">  <span class="co" style="color: #5E5E5E;"># minmax scale feature vectors</span></span>
+<span id="cb11-45">  hbos <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">lapply</span>(hbos, <span class="cf" style="color: #003B4F;">function</span>(x){(x<span class="sc" style="color: #5E5E5E;">-</span> <span class="fu" style="color: #4758AB;">min</span>(x)) <span class="sc" style="color: #5E5E5E;">/</span>(<span class="fu" style="color: #4758AB;">max</span>(x)<span class="sc" style="color: #5E5E5E;">-</span><span class="fu" style="color: #4758AB;">min</span>(x))})</span>
+<span id="cb11-46">  </span>
+<span id="cb11-47">  <span class="co" style="color: #5E5E5E;"># return score</span></span>
+<span id="cb11-48">  <span class="fu" style="color: #4758AB;">return</span>(<span class="fu" style="color: #4758AB;">apply</span>(<span class="fu" style="color: #4758AB;">do.call</span>(cbind, hbos), <span class="dv" style="color: #AD0000;">1</span>, sum))</span>
+<span id="cb11-49">  </span>
+<span id="cb11-50">}</span></code></pre></div>
+</details>
+</div>
+
+
+
+</section>
+</section>
+
+<div id="quarto-appendix" class="default"><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">References</h2><div id="refs" class="references csl-bib-body hanging-indent">
+<div id="ref-birge2006many" class="csl-entry">
+Birgé, Lucien, and Yves Rozenholc. 2006. <span>“How Many Bins Should Be Put in a Regular Histogram.”</span> <em>ESAIM: Probability and Statistics</em> 10: 24–45.
+</div>
+<div id="ref-goldstein2012histogram" class="csl-entry">
+Goldstein, Markus, and Andreas Dengel. 2012. <span>“Histogram-Based Outlier Score (Hbos): A Fast Unsupervised Anomaly Detection Algorithm.”</span> <em>KI-2012: Poster and Demo Track</em> 1: 59–63.
+</div>
+</div></section></div> ]]></description>
+  <guid>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</guid>
+  <pubDate>Sun, 14 May 2023 04:00:00 GMT</pubDate>
+  <media:content url="https://gmcirco.github.io/blog/posts/hbos-anomaly/hist.png" medium="image" type="image/png" height="144" width="144"/>
+</item>
 <item>
   <title>Building an Outlier Ensemble from ‘Scratch’</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>
