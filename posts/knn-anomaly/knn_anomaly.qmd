@@ -12,6 +12,8 @@ format:
         toc: true
         title-block-banner: true
         draft: true
+categories:
+  - Anomaly Detection
 theme: flatly
 image: "house.png"
 ---

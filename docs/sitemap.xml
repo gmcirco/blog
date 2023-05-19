@@ -2,34 +2,34 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://gmcirco.github.io/blog/about.html</loc>
-    <lastmod>2023-05-02T20:48:28.825Z</lastmod>
+    <lastmod>2023-05-19T13:06:40.435Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/index.html</loc>
-    <lastmod>2023-05-17T13:11:10.754Z</lastmod>
+    <lastmod>2023-05-19T13:06:42.174Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</loc>
-    <lastmod>2023-05-02T20:48:33.322Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
-    <lastmod>2023-05-02T20:48:35.066Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
-    <lastmod>2023-05-02T20:58:02.412Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
-    <lastmod>2023-05-02T20:48:37.785Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
-    <lastmod>2023-05-02T20:48:38.253Z</lastmod>
+    <lastmod>2023-05-19T13:06:44.448Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
-    <lastmod>2023-05-17T13:11:09.205Z</lastmod>
+    <lastmod>2023-05-19T13:06:45.172Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
+    <lastmod>2023-05-19T13:06:47.335Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
+    <lastmod>2023-05-19T13:06:49.684Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
+    <lastmod>2023-05-19T13:06:50.282Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
+    <lastmod>2023-05-19T13:06:50.822Z</lastmod>
   </url>
 </urlset>

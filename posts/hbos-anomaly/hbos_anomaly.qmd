@@ -11,6 +11,8 @@ format:
         section-divs: true
         toc: true
         title-block-banner: true
+categories:
+  - Anomaly Detection
 bibliography: refs.bib
 theme: flatly
 image: "hist.png"
@@ -277,12 +279,12 @@ ggplot() +
 
 As we expect, most of the observations that are flagged as outliers reside in bins with few other observations. This is pretty consistent with the other two methods we used before (PCA and KNN anomaly detectors). One specific advantage of the HBOS method is that it is very fast for even large datasets. However, with higher levels of dimensionality it is very likely that the assumption of feature independence is tenuous at best. Other methods, like the isolation forest can often perform better in higher dimensions. However, the simplicity of the method makes it easy to explain, which can be a benefit in many cases!
 
-### HBOS Anaomaly Detector: Example Function{#sec-hbos}
+### HBOS Anomaly Detector: Example Function{#sec-hbos}
 
 Here's a minimal working example of the procedure above. As we build our ensemble, we'll come back to this function later.
 
 ```{r, eval=FALSE}
-# Run a principal components anomaly detector
+# Run a histogram-based anomaly score detector
 adHBOS <- function(X, ub = 15){
   
   # scale input features, define list to hold scores
