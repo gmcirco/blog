@@ -11,7 +11,7 @@ format:
         toc: true
         title-block-banner: true
 categories:
-  - bayesian
+  - Bayesian Statistics
   - HLM
 theme: flatly
 bibliography: refs.bib
@@ -179,8 +179,3 @@ inj_wh_pred %>%
         digits = 2,
         col.names = c("Company","Injury Rate","(Pred) Injury Rate", "Employees","Total Hours Worked"))
 ```
-
-### References
-
-::: {#refs}
-:::

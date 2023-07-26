@@ -12,7 +12,7 @@ format:
         toc: true
         title-block-banner: true
 categories:
-  - spatial statistics
+  - Spatial Statistics
 theme: flatly
 image: "car.png"
 ---
