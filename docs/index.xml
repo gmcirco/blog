@@ -10,7 +10,348 @@
 <atom:link href="https://gmcirco.github.io/blog//index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-0.9.434</generator>
-<lastBuildDate>Thu, 27 Jul 2023 04:00:00 GMT</lastBuildDate>
+<lastBuildDate>Fri, 06 Oct 2023 04:00:00 GMT</lastBuildDate>
+<item>
+  <title>Generating Spatial Risk Features using R</title>
+  <dc:creator>Gio Circo, Ph.D.</dc:creator>
+  <link>https://gmcirco.github.io/blog//posts/rtm-spatial/rtm.html</link>
+  <description><![CDATA[ 
+
+
+
+
+<div class="cell">
+
+</div>
+<section id="spatial-features" class="level2">
+<h2 class="anchored" data-anchor-id="spatial-features">Spatial Features</h2>
+<p>In criminology there is a considerable research on the role that fixed spatial features in the environment have on crime. These spatial risk factors have criminogenic qualities that make them “attractors” or “generators”<span class="citation" data-cites="brantingham1995criminality">(Brantingham and Brantingham 1995)</span>. Absent some change, these places typically contribute a disproportionate share of crime that is largely stable over time<span class="citation" data-cites="sherman1989hot">(Sherman, Gartin, and Buerger 1989)</span>. The classic example is a bar or night club. Alcohol plays a large role in a lot of crime, and locations where many people congregate and become intoxicated also have higher incidences of crime. We can use information about the environment to help solve problems or prioritize patrol areas.</p>
+<p>One challenge in research is obtaining the point locations for these features. Generally when we perform some kind of spatial analysis we have a study area (e.g.&nbsp;a city or other boundary file) and a set of labeled point features corresponding to the locations of interest. However, reliable places to get this information is often hard to come by. Some cities provide open data portals with commercial information, but these are typically limited to larger cities. In my work I’ve had people ask how to get spatial risk factors for their research, often times for something related to the “Risk Terrain Modeling” approach of spatial analysis. I’ve worked on a few projects now where I’ve had to generate these myself, and have had some success using open data sources like Google to help with it.</p>
+</section>
+<section id="querying-google-places" class="level2">
+<h2 class="anchored" data-anchor-id="querying-google-places">Querying Google Places</h2>
+<p>Google has a lot of paid API services which are quite useful for researchers. In most cases there is a free tier, and for smaller one-off projects this makes their API services attractive for research. Let’s walk through an example of how we might do this. For our example we will use the Swedish city of Malmö (which, incidentially is a very lovely city I’ve been lucky enough to visit). We have a shapefile that looks like this:</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="https://gmcirco.github.io/blog//posts\rtm-spatial\rtm_files\figure-html\unnamed-chunk-2-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Our goal is to query the<a href="https://developers.google.com/maps/documentation/places/web-service/overview"><strong>Google Places API</strong></a> to get the locations of criminogenic spatial risk factors (here, bars and gas stations). One significant limitation with the Google Places API is that there is a limit to the number of locations that will show up for a single query. This means if you ran the query on the entire city, it would only return up to 20 locations. However, we can bypass this by running multiple queries on smaller spatial regions. Other bloggers have provided similar advice as well (see <a href="https://blog.apify.com/google-maps-how-to-overcome-google-api-limit-120-places/"><strong>here</strong></a> and <a href="https://andrewpwheeler.com/2021/06/20/using-google-places-api-in-criminology-research/"><strong>here</strong></a>).</p>
+<p>To do the actual interfacing with the Google Places API we will use the very handy <a href="https://cran.r-project.org/web/packages/googleway/vignettes/googleway-vignette.html"><strong>googleway</strong></a> package.</p>
+<section id="splitting-up-into-a-grid" class="level3">
+<h3 class="anchored" data-anchor-id="splitting-up-into-a-grid">Splitting up into a grid</h3>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="co" style="color: #5E5E5E;"># GOOGLE PLACES API CODE</span></span>
+<span id="cb1-2"><span class="co" style="color: #5E5E5E;"># ================================================= #</span></span>
+<span id="cb1-3"><span class="co" style="color: #5E5E5E;"># Giovanni Circo</span></span>
+<span id="cb1-4"><span class="co" style="color: #5E5E5E;"># gmcirco42@gmail.com</span></span>
+<span id="cb1-5"><span class="co" style="color: #5E5E5E;">#</span></span>
+<span id="cb1-6"><span class="co" style="color: #5E5E5E;"># Code to query google place api</span></span>
+<span id="cb1-7"><span class="co" style="color: #5E5E5E;"># Divides a boundry shapefile into grid cells</span></span>
+<span id="cb1-8"><span class="co" style="color: #5E5E5E;"># of radius r, then queries the api for each cell</span></span>
+<span id="cb1-9"><span class="co" style="color: #5E5E5E;">#</span></span>
+<span id="cb1-10"><span class="co" style="color: #5E5E5E;"># </span><span class="al" style="color: #AD0000;">NOTE</span><span class="co" style="color: #5E5E5E;">:</span></span>
+<span id="cb1-11"><span class="co" style="color: #5E5E5E;"># Only requires a free version of the API. Doesn't</span></span>
+<span id="cb1-12"><span class="co" style="color: #5E5E5E;"># incur any costs.</span></span>
+<span id="cb1-13"><span class="co" style="color: #5E5E5E;"># ================================================= #</span></span>
+<span id="cb1-14"></span>
+<span id="cb1-15"><span class="fu" style="color: #4758AB;">library</span>(googleway)</span>
+<span id="cb1-16"><span class="fu" style="color: #4758AB;">library</span>(sf)</span>
+<span id="cb1-17"><span class="fu" style="color: #4758AB;">library</span>(tidyverse)</span>
+<span id="cb1-18"></span>
+<span id="cb1-19"><span class="co" style="color: #5E5E5E;"># API Key</span></span>
+<span id="cb1-20"><span class="co" style="color: #5E5E5E;"># instructions here:</span></span>
+<span id="cb1-21"><span class="co" style="color: #5E5E5E;"># https://developers.google.com/maps/documentation/places/web-service/get-api-key</span></span>
+<span id="cb1-22">mykey <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="st" style="color: #20794D;">"[INSERT GOOGLE PLACES API KEY HERE]"</span></span>
+<span id="cb1-23"></span>
+<span id="cb1-24"><span class="co" style="color: #5E5E5E;"># Location shapefile</span></span>
+<span id="cb1-25">boundry <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_read</span>(<span class="st" style="color: #20794D;">"...\DeSo_Malmö.shp"</span>)</span>
+<span id="cb1-26"></span>
+<span id="cb1-27"><span class="co" style="color: #5E5E5E;"># specify grid size (meters)</span></span>
+<span id="cb1-28">r <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="dv" style="color: #AD0000;">1200</span></span>
+<span id="cb1-29"></span>
+<span id="cb1-30"><span class="co" style="color: #5E5E5E;"># Make a grid</span></span>
+<span id="cb1-31">boundry_grid <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_make_grid</span>(boundry, <span class="at" style="color: #657422;">cellsize =</span> r)</span>
+<span id="cb1-32">boundry_grid <span class="ot" style="color: #003B4F;">&lt;-</span> boundry_grid[boundry]</span>
+<span id="cb1-33"></span>
+<span id="cb1-34"><span class="co" style="color: #5E5E5E;"># Transform to lat\lon</span></span>
+<span id="cb1-35"><span class="co" style="color: #5E5E5E;"># Extract coords</span></span>
+<span id="cb1-36">area_coords <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_transform</span>(boundry_grid, <span class="at" style="color: #657422;">crs =</span> <span class="dv" style="color: #AD0000;">4326</span>) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-37">  <span class="fu" style="color: #4758AB;">st_centroid</span>() <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-38">  <span class="fu" style="color: #4758AB;">st_coordinates</span>() <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-39">  <span class="fu" style="color: #4758AB;">data.frame</span>() <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-40">  <span class="fu" style="color: #4758AB;">select</span>(<span class="at" style="color: #657422;">lat =</span> Y, <span class="at" style="color: #657422;">lon =</span> X)</span></code></pre></div>
+</details>
+</div>
+<p>We can divide the city into a series of grids, then iterate through each grid cell and query within it. This way we are more likely to obtain all of the relevant features in that grid cell without hitting the limit. Here, I create 150 1200 square meter grid cells, which gives us something like this:</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="https://gmcirco.github.io/blog//posts\rtm-spatial\rtm_files\figure-html\unnamed-chunk-4-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>In addition we extract the X-Y coordinates for the grid centroid, which we will use as our location for the API query. This means we hit the API 150 times, once for each grid cell. This is well within the free number that Google allows.</p>
+</section>
+<section id="querying-our-features" class="level3">
+<h3 class="anchored" data-anchor-id="querying-our-features">Querying our features</h3>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><span class="co" style="color: #5E5E5E;"># EXTRACT FEATURES ON GRID</span></span>
+<span id="cb2-2"><span class="co" style="color: #5E5E5E;">#----------------------------#</span></span>
+<span id="cb2-3"></span>
+<span id="cb2-4"><span class="co" style="color: #5E5E5E;"># Supported place type names:</span></span>
+<span id="cb2-5"><span class="co" style="color: #5E5E5E;"># https://developers.google.com/maps/documentation/places/web-service/supported_types</span></span>
+<span id="cb2-6"><span class="co" style="color: #5E5E5E;"># Features: gas_station, bar, liquor_store, night_club, pharmacy, restaurant</span></span>
+<span id="cb2-7"></span>
+<span id="cb2-8"><span class="co" style="color: #5E5E5E;"># Specify feature type</span></span>
+<span id="cb2-9"><span class="co" style="color: #5E5E5E;"># number of grid cells</span></span>
+<span id="cb2-10">feature <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="st" style="color: #20794D;">"bar"</span></span>
+<span id="cb2-11">n <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">nrow</span>(area_coords)</span>
+<span id="cb2-12"></span>
+<span id="cb2-13"><span class="co" style="color: #5E5E5E;"># First, set up function to query google places</span></span>
+<span id="cb2-14"><span class="co" style="color: #5E5E5E;"># for each grid centroid</span></span>
+<span id="cb2-15"><span class="co" style="color: #5E5E5E;"># add to a list</span></span>
+<span id="cb2-16"></span>
+<span id="cb2-17">area_list <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">list</span>()</span>
+<span id="cb2-18"><span class="cf" style="color: #003B4F;">for</span>(i <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span>n){</span>
+<span id="cb2-19">  </span>
+<span id="cb2-20">  area_list[[i]] <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb2-21">    <span class="fu" style="color: #4758AB;">google_places</span>(<span class="at" style="color: #657422;">location =</span> <span class="fu" style="color: #4758AB;">unlist</span>(area_coords[i,]),</span>
+<span id="cb2-22">                  <span class="at" style="color: #657422;">place_type =</span> feature,</span>
+<span id="cb2-23">                  <span class="at" style="color: #657422;">radius =</span> r,</span>
+<span id="cb2-24">                  <span class="at" style="color: #657422;">key =</span> mykey)</span>
+<span id="cb2-25">}</span>
+<span id="cb2-26"></span>
+<span id="cb2-27"><span class="co" style="color: #5E5E5E;"># Function to convert results from above</span></span>
+<span id="cb2-28"><span class="co" style="color: #5E5E5E;"># to a dataframe suitable for rbinding</span></span>
+<span id="cb2-29"><span class="co" style="color: #5E5E5E;"># then conversion to an sf object</span></span>
+<span id="cb2-30">convert_to_dataframe <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb2-31">  <span class="cf" style="color: #003B4F;">function</span>(x) {</span>
+<span id="cb2-32">    </span>
+<span id="cb2-33">a <span class="ot" style="color: #003B4F;">&lt;-</span> x<span class="sc" style="color: #5E5E5E;">$</span>results</span>
+<span id="cb2-34"></span>
+<span id="cb2-35">b <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">tibble</span>(</span>
+<span id="cb2-36">  <span class="at" style="color: #657422;">lat =</span> a<span class="sc" style="color: #5E5E5E;">$</span>geometry<span class="sc" style="color: #5E5E5E;">$</span>location<span class="sc" style="color: #5E5E5E;">$</span>lat,</span>
+<span id="cb2-37">  <span class="at" style="color: #657422;">lon =</span> a<span class="sc" style="color: #5E5E5E;">$</span>geometry<span class="sc" style="color: #5E5E5E;">$</span>location<span class="sc" style="color: #5E5E5E;">$</span>lng,</span>
+<span id="cb2-38">  <span class="at" style="color: #657422;">name =</span> a<span class="sc" style="color: #5E5E5E;">$</span>name,</span>
+<span id="cb2-39">  <span class="at" style="color: #657422;">types =</span> a<span class="sc" style="color: #5E5E5E;">$</span>types,</span>
+<span id="cb2-40">  <span class="at" style="color: #657422;">address =</span> a<span class="sc" style="color: #5E5E5E;">$</span>vicinity,</span>
+<span id="cb2-41">  <span class="at" style="color: #657422;">place_id =</span> a<span class="sc" style="color: #5E5E5E;">$</span>place_id</span>
+<span id="cb2-42">)</span>
+<span id="cb2-43"></span>
+<span id="cb2-44"><span class="fu" style="color: #4758AB;">return</span>(b)</span>
+<span id="cb2-45">  }</span>
+<span id="cb2-46"></span>
+<span id="cb2-47"><span class="co" style="color: #5E5E5E;"># Rbind the results, and then un-nest on feature type</span></span>
+<span id="cb2-48"><span class="co" style="color: #5E5E5E;"># This creates a long-form dataframe that you can then filter</span></span>
+<span id="cb2-49"><span class="co" style="color: #5E5E5E;"># based on feature type</span></span>
+<span id="cb2-50">area_dataframe <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb2-51">  <span class="fu" style="color: #4758AB;">do.call</span>(rbind, <span class="fu" style="color: #4758AB;">lapply</span>(area_list, convert_to_dataframe)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb2-52">  <span class="fu" style="color: #4758AB;">distinct</span>(place_id, <span class="at" style="color: #657422;">.keep_all =</span> <span class="cn" style="color: #8f5902;">TRUE</span>) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb2-53">  <span class="fu" style="color: #4758AB;">unnest</span>(types)</span>
+<span id="cb2-54"></span>
+<span id="cb2-55"><span class="co" style="color: #5E5E5E;"># Get just feature requested</span></span>
+<span id="cb2-56">feature_out <span class="ot" style="color: #003B4F;">&lt;-</span> area_dataframe <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb2-57">  <span class="fu" style="color: #4758AB;">filter</span>(types <span class="sc" style="color: #5E5E5E;">%in%</span> feature) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb2-58">  <span class="fu" style="color: #4758AB;">distinct</span>(address, <span class="at" style="color: #657422;">.keep_all =</span> <span class="cn" style="color: #8f5902;">TRUE</span>)</span></code></pre></div>
+</details>
+</div>
+<p>We can use the code above to iterate through each grid cell, hit the API, and then store the results in a list. I include a few helper functions to assist with pulling out the names and coordinates, binding them into a dataframe, and setting them up to export. The key bit of code is below, which is the part that queries the API for each of the grid cells:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1">area_list <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">list</span>()</span>
+<span id="cb3-2"><span class="cf" style="color: #003B4F;">for</span>(i <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span>n){</span>
+<span id="cb3-3">  </span>
+<span id="cb3-4">  area_list[[i]] <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb3-5">    <span class="fu" style="color: #4758AB;">google_places</span>(<span class="at" style="color: #657422;">location =</span> <span class="fu" style="color: #4758AB;">unlist</span>(area_coords[i,]),</span>
+<span id="cb3-6">                  <span class="at" style="color: #657422;">place_type =</span> feature,</span>
+<span id="cb3-7">                  <span class="at" style="color: #657422;">radius =</span> r,</span>
+<span id="cb3-8">                  <span class="at" style="color: #657422;">key =</span> mykey)</span>
+<span id="cb3-9">}</span></code></pre></div>
+</div>
+</section>
+</section>
+<section id="calculating-grid-cell-distances" class="level2">
+<h2 class="anchored" data-anchor-id="calculating-grid-cell-distances">Calculating Grid Cell Distances</h2>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1">compute_distance <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="cf" style="color: #003B4F;">function</span>(grid, feature){</span>
+<span id="cb4-2">  <span class="co" style="color: #5E5E5E;"># get nearest point from grid to feature</span></span>
+<span id="cb4-3">  nearest <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_nearest_feature</span>(grid,feature)</span>
+<span id="cb4-4">  nearest_dist <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_distance</span>(grid, feature[nearest,], <span class="at" style="color: #657422;">by_element =</span> <span class="cn" style="color: #8f5902;">TRUE</span>)</span>
+<span id="cb4-5">  </span>
+<span id="cb4-6">  <span class="fu" style="color: #4758AB;">return</span>(nearest_dist)</span>
+<span id="cb4-7">}</span>
+<span id="cb4-8"></span>
+<span id="cb4-9"><span class="co" style="color: #5E5E5E;"># specify grid size (meters)</span></span>
+<span id="cb4-10">r <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="dv" style="color: #AD0000;">250</span></span>
+<span id="cb4-11"></span>
+<span id="cb4-12"><span class="co" style="color: #5E5E5E;"># Make a city grid</span></span>
+<span id="cb4-13">city <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_make_grid</span>(boundry, <span class="at" style="color: #657422;">cellsize =</span> r, <span class="at" style="color: #657422;">square =</span> <span class="cn" style="color: #8f5902;">FALSE</span>)</span>
+<span id="cb4-14">city <span class="ot" style="color: #003B4F;">&lt;-</span> city[boundry]</span>
+<span id="cb4-15"></span>
+<span id="cb4-16"><span class="co" style="color: #5E5E5E;"># get distances</span></span>
+<span id="cb4-17">bar_dist <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">compute_distance</span>(city, bar)</span>
+<span id="cb4-18">gas_dist <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">compute_distance</span>(city, gas)</span>
+<span id="cb4-19">  </span>
+<span id="cb4-20"><span class="co" style="color: #5E5E5E;"># create long-form dataframe</span></span>
+<span id="cb4-21">tbl <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">tibble</span>(city) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb4-22">  <span class="fu" style="color: #4758AB;">mutate</span>(<span class="at" style="color: #657422;">bar =</span> bar_dist,</span>
+<span id="cb4-23">         <span class="at" style="color: #657422;">gas_station =</span> gas_dist) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb4-24">  <span class="fu" style="color: #4758AB;">pivot_longer</span>(<span class="sc" style="color: #5E5E5E;">-</span>city, </span>
+<span id="cb4-25">               <span class="at" style="color: #657422;">names_to =</span> <span class="st" style="color: #20794D;">"feature"</span>, </span>
+<span id="cb4-26">               <span class="at" style="color: #657422;">values_to =</span> <span class="st" style="color: #20794D;">"dist"</span>) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb4-27">  <span class="fu" style="color: #4758AB;">mutate</span>(<span class="at" style="color: #657422;">dist =</span> <span class="fu" style="color: #4758AB;">as.numeric</span>(dist)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb4-28">  <span class="fu" style="color: #4758AB;">st_as_sf</span>()</span></code></pre></div>
+</details>
+</div>
+<p>Now that we have our city boundary and our spatial risk factors, all we need to do now is compute the distance from each grid cell to its nearest risk factor. In the end, what we will want is a dataframe with grid cell ids, and columns corresponding to distance to the nearest feature. After merging them, we can create a nice map like this - showing the location sand distances of our risk factors.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="https://gmcirco.github.io/blog//posts\rtm-spatial\rtm_files\figure-html\unnamed-chunk-8-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>You can then use these features in other kinds of spatial risk models (for a great walk through, see <span class="citation" data-cites="wheeler2021mapping">(Wheeler and Steenbeek 2021)</span>.The big advantage of this approach is that you have the flexibility to implement any kind of model you want at this point - whether it is a conventional RTM model, or a <a href="https://github.com/gmcirco/quickGrid"><strong>boosted tree model</strong></a>.</p>
+</section>
+<section id="full-code" class="level2">
+<h2 class="anchored" data-anchor-id="full-code">Full Code</h2>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><span class="co" style="color: #5E5E5E;"># GOOGLE PLACES API CODE</span></span>
+<span id="cb5-2"><span class="co" style="color: #5E5E5E;"># ================================================= #</span></span>
+<span id="cb5-3"><span class="co" style="color: #5E5E5E;"># Giovanni Circo</span></span>
+<span id="cb5-4"><span class="co" style="color: #5E5E5E;"># gmcirco42@gmail.com</span></span>
+<span id="cb5-5"><span class="co" style="color: #5E5E5E;">#</span></span>
+<span id="cb5-6"><span class="co" style="color: #5E5E5E;"># Code to query google place api</span></span>
+<span id="cb5-7"><span class="co" style="color: #5E5E5E;"># Divides a boundry shapefile into grid cells</span></span>
+<span id="cb5-8"><span class="co" style="color: #5E5E5E;"># of radius r, then queries the api for each cell</span></span>
+<span id="cb5-9"><span class="co" style="color: #5E5E5E;">#</span></span>
+<span id="cb5-10"><span class="co" style="color: #5E5E5E;"># </span><span class="al" style="color: #AD0000;">NOTE</span><span class="co" style="color: #5E5E5E;">:</span></span>
+<span id="cb5-11"><span class="co" style="color: #5E5E5E;"># Only requires a free version of the API. Doesn't</span></span>
+<span id="cb5-12"><span class="co" style="color: #5E5E5E;"># incur any costs.</span></span>
+<span id="cb5-13"><span class="co" style="color: #5E5E5E;"># ================================================= #</span></span>
+<span id="cb5-14"></span>
+<span id="cb5-15"><span class="fu" style="color: #4758AB;">library</span>(googleway)</span>
+<span id="cb5-16"><span class="fu" style="color: #4758AB;">library</span>(sf)</span>
+<span id="cb5-17"><span class="fu" style="color: #4758AB;">library</span>(tidyverse)</span>
+<span id="cb5-18"></span>
+<span id="cb5-19"><span class="co" style="color: #5E5E5E;"># API Key</span></span>
+<span id="cb5-20"><span class="co" style="color: #5E5E5E;"># instructions here:</span></span>
+<span id="cb5-21"><span class="co" style="color: #5E5E5E;"># https://developers.google.com/maps/documentation/places/web-service/get-api-key</span></span>
+<span id="cb5-22">mykey <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="st" style="color: #20794D;">"[INSERT GOOGLE PLACES API KEY HERE]"</span></span>
+<span id="cb5-23"></span>
+<span id="cb5-24"><span class="co" style="color: #5E5E5E;"># Location shapefile</span></span>
+<span id="cb5-25">boundry <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_read</span>(<span class="st" style="color: #20794D;">"DeSo_Malmö.shp"</span>)</span>
+<span id="cb5-26"></span>
+<span id="cb5-27"><span class="co" style="color: #5E5E5E;"># specify grid size (meters)</span></span>
+<span id="cb5-28">r <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="dv" style="color: #AD0000;">1200</span></span>
+<span id="cb5-29"></span>
+<span id="cb5-30"><span class="co" style="color: #5E5E5E;"># Make a grid</span></span>
+<span id="cb5-31">boundry_grid <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_make_grid</span>(boundry, <span class="at" style="color: #657422;">cellsize =</span> r)</span>
+<span id="cb5-32">boundry_grid <span class="ot" style="color: #003B4F;">&lt;-</span> boundry_grid[boundry]</span>
+<span id="cb5-33"></span>
+<span id="cb5-34"><span class="co" style="color: #5E5E5E;"># Transform to lat\lon</span></span>
+<span id="cb5-35"><span class="co" style="color: #5E5E5E;"># Extract coords</span></span>
+<span id="cb5-36">area_coords <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_transform</span>(boundry_grid, <span class="at" style="color: #657422;">crs =</span> <span class="dv" style="color: #AD0000;">4326</span>) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-37">  <span class="fu" style="color: #4758AB;">st_centroid</span>() <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-38">  <span class="fu" style="color: #4758AB;">st_coordinates</span>() <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-39">  <span class="fu" style="color: #4758AB;">data.frame</span>() <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-40">  <span class="fu" style="color: #4758AB;">select</span>(<span class="at" style="color: #657422;">lat =</span> Y, <span class="at" style="color: #657422;">lon =</span> X)</span>
+<span id="cb5-41"></span>
+<span id="cb5-42"><span class="fu" style="color: #4758AB;">plot</span>(boundry_grid)</span>
+<span id="cb5-43">  </span>
+<span id="cb5-44"><span class="co" style="color: #5E5E5E;"># EXTRACT FEATURES ON GRID</span></span>
+<span id="cb5-45"><span class="co" style="color: #5E5E5E;">#----------------------------#</span></span>
+<span id="cb5-46"></span>
+<span id="cb5-47"><span class="co" style="color: #5E5E5E;"># Supported place type names:</span></span>
+<span id="cb5-48"><span class="co" style="color: #5E5E5E;"># https://developers.google.com/maps/documentation/places/web-service/supported_types</span></span>
+<span id="cb5-49"><span class="co" style="color: #5E5E5E;"># Features: gas_station, bar, liquor_store, night_club, pharmacy, restaurant</span></span>
+<span id="cb5-50"></span>
+<span id="cb5-51"><span class="co" style="color: #5E5E5E;"># Specify feature type</span></span>
+<span id="cb5-52"><span class="co" style="color: #5E5E5E;"># number of grid cells</span></span>
+<span id="cb5-53">feature <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="st" style="color: #20794D;">"bar"</span></span>
+<span id="cb5-54">n <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">nrow</span>(area_coords)</span>
+<span id="cb5-55"></span>
+<span id="cb5-56"><span class="co" style="color: #5E5E5E;"># First, set up function to query google places</span></span>
+<span id="cb5-57"><span class="co" style="color: #5E5E5E;"># for each grid centroid</span></span>
+<span id="cb5-58"><span class="co" style="color: #5E5E5E;"># add to a list</span></span>
+<span id="cb5-59"></span>
+<span id="cb5-60">area_list <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">list</span>()</span>
+<span id="cb5-61"><span class="cf" style="color: #003B4F;">for</span>(i <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span>n){</span>
+<span id="cb5-62">  </span>
+<span id="cb5-63">  area_list[[i]] <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb5-64">    <span class="fu" style="color: #4758AB;">google_places</span>(<span class="at" style="color: #657422;">location =</span> <span class="fu" style="color: #4758AB;">unlist</span>(area_coords[i,]),</span>
+<span id="cb5-65">                  <span class="at" style="color: #657422;">place_type =</span> feature,</span>
+<span id="cb5-66">                  <span class="at" style="color: #657422;">radius =</span> r,</span>
+<span id="cb5-67">                  <span class="at" style="color: #657422;">key =</span> mykey)</span>
+<span id="cb5-68">}</span>
+<span id="cb5-69"></span>
+<span id="cb5-70"><span class="co" style="color: #5E5E5E;"># Function to convert results from above</span></span>
+<span id="cb5-71"><span class="co" style="color: #5E5E5E;"># to a dataframe suitable for rbinding</span></span>
+<span id="cb5-72"><span class="co" style="color: #5E5E5E;"># then conversion to an sf object</span></span>
+<span id="cb5-73">convert_to_dataframe <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb5-74">  <span class="cf" style="color: #003B4F;">function</span>(x) {</span>
+<span id="cb5-75">    </span>
+<span id="cb5-76">a <span class="ot" style="color: #003B4F;">&lt;-</span> x<span class="sc" style="color: #5E5E5E;">$</span>results</span>
+<span id="cb5-77"></span>
+<span id="cb5-78">b <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">tibble</span>(</span>
+<span id="cb5-79">  <span class="at" style="color: #657422;">lat =</span> a<span class="sc" style="color: #5E5E5E;">$</span>geometry<span class="sc" style="color: #5E5E5E;">$</span>location<span class="sc" style="color: #5E5E5E;">$</span>lat,</span>
+<span id="cb5-80">  <span class="at" style="color: #657422;">lon =</span> a<span class="sc" style="color: #5E5E5E;">$</span>geometry<span class="sc" style="color: #5E5E5E;">$</span>location<span class="sc" style="color: #5E5E5E;">$</span>lng,</span>
+<span id="cb5-81">  <span class="at" style="color: #657422;">name =</span> a<span class="sc" style="color: #5E5E5E;">$</span>name,</span>
+<span id="cb5-82">  <span class="at" style="color: #657422;">types =</span> a<span class="sc" style="color: #5E5E5E;">$</span>types,</span>
+<span id="cb5-83">  <span class="at" style="color: #657422;">address =</span> a<span class="sc" style="color: #5E5E5E;">$</span>vicinity,</span>
+<span id="cb5-84">  <span class="at" style="color: #657422;">place_id =</span> a<span class="sc" style="color: #5E5E5E;">$</span>place_id</span>
+<span id="cb5-85">)</span>
+<span id="cb5-86"></span>
+<span id="cb5-87"><span class="fu" style="color: #4758AB;">return</span>(b)</span>
+<span id="cb5-88">  }</span>
+<span id="cb5-89"></span>
+<span id="cb5-90"><span class="co" style="color: #5E5E5E;"># Rbind the results, and then un-nest on feature type</span></span>
+<span id="cb5-91"><span class="co" style="color: #5E5E5E;"># This creates a long-form dataframe that you can then filter</span></span>
+<span id="cb5-92"><span class="co" style="color: #5E5E5E;"># based on feature type</span></span>
+<span id="cb5-93">area_dataframe <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb5-94">  <span class="fu" style="color: #4758AB;">do.call</span>(rbind, <span class="fu" style="color: #4758AB;">lapply</span>(area_list, convert_to_dataframe)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-95">  <span class="fu" style="color: #4758AB;">distinct</span>(place_id, <span class="at" style="color: #657422;">.keep_all =</span> <span class="cn" style="color: #8f5902;">TRUE</span>) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-96">  <span class="fu" style="color: #4758AB;">unnest</span>(types)</span>
+<span id="cb5-97"></span>
+<span id="cb5-98"><span class="co" style="color: #5E5E5E;"># Get just feature requested</span></span>
+<span id="cb5-99">feature_out <span class="ot" style="color: #003B4F;">&lt;-</span> area_dataframe <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-100">  <span class="fu" style="color: #4758AB;">filter</span>(types <span class="sc" style="color: #5E5E5E;">%in%</span> feature) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-101">  <span class="fu" style="color: #4758AB;">distinct</span>(address, <span class="at" style="color: #657422;">.keep_all =</span> <span class="cn" style="color: #8f5902;">TRUE</span>)</span>
+<span id="cb5-102"></span>
+<span id="cb5-103"><span class="co" style="color: #5E5E5E;"># Now export as a shapefile</span></span>
+<span id="cb5-104"><span class="co" style="color: #5E5E5E;"># re-assign the crs of the boundry shapefile</span></span>
+<span id="cb5-105">feature_out <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-106">  <span class="fu" style="color: #4758AB;">st_as_sf</span>(<span class="at" style="color: #657422;">coords =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'lon'</span>,<span class="st" style="color: #20794D;">'lat'</span>), <span class="at" style="color: #657422;">crs =</span> <span class="dv" style="color: #AD0000;">4326</span>) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-107">  <span class="fu" style="color: #4758AB;">st_transform</span>(<span class="at" style="color: #657422;">crs =</span> <span class="fu" style="color: #4758AB;">st_crs</span>(boundry)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-108">  <span class="fu" style="color: #4758AB;">st_write</span>(<span class="fu" style="color: #4758AB;">paste0</span>(<span class="st" style="color: #20794D;">"Desktop</span><span class="sc" style="color: #5E5E5E;">\\</span><span class="st" style="color: #20794D;">"</span>,feature,<span class="st" style="color: #20794D;">".shp"</span>))</span></code></pre></div>
+</details>
+</div>
+
+
+
+</section>
+
+<div id="quarto-appendix" class="default"><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">References</h2><div id="refs" class="references csl-bib-body hanging-indent">
+<div id="ref-brantingham1995criminality" class="csl-entry">
+Brantingham, Patricia, and Paul Brantingham. 1995. <span>“Criminality of Place: Crime Generators and Crime Attractors.”</span> <em>European Journal on Criminal Policy and Research</em> 3: 5–26.
+</div>
+<div id="ref-sherman1989hot" class="csl-entry">
+Sherman, Lawrence W, Patrick R Gartin, and Michael E Buerger. 1989. <span>“Hot Spots of Predatory Crime: Routine Activities and the Criminology of Place.”</span> <em>Criminology</em> 27 (1): 27–56.
+</div>
+<div id="ref-wheeler2021mapping" class="csl-entry">
+Wheeler, Andrew P, and Wouter Steenbeek. 2021. <span>“Mapping the Risk Terrain for Crime Using Machine Learning.”</span> <em>Journal of Quantitative Criminology</em> 37: 445–80.
+</div>
+</div></section></div> ]]></description>
+  <category>R</category>
+  <category>Spatial Statistics</category>
+  <guid>https://gmcirco.github.io/blog//posts/rtm-spatial/rtm.html</guid>
+  <pubDate>Fri, 06 Oct 2023 04:00:00 GMT</pubDate>
+  <media:content url="https://gmcirco.github.io/blog///posts/rtm-spatial/city.jpg" medium="image" type="image/jpeg"/>
+</item>
 <item>
   <title>Good Mythical Morning: Blind Fast Food Taste Tests</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>

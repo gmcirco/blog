@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/rtm-spatial/rtm.html",
       "/posts/gmm/gmm.html",
       "/posts/hbos-anomaly/hbos_anomaly.html",
       "/posts/knn-anomaly/knn_anomaly.html",
