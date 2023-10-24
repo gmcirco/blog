@@ -2,42 +2,46 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://gmcirco.github.io/blog/about.html</loc>
-    <lastmod>2023-10-07T18:12:28.724Z</lastmod>
+    <lastmod>2023-10-24T13:34:55.260Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/index.html</loc>
-    <lastmod>2023-10-07T18:12:30.602Z</lastmod>
+    <lastmod>2023-10-24T13:34:57.172Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</loc>
-    <lastmod>2023-10-07T18:12:32.890Z</lastmod>
+    <lastmod>2023-10-24T13:34:59.383Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/gmm/gmm.html</loc>
-    <lastmod>2023-10-07T18:12:33.396Z</lastmod>
+    <lastmod>2023-10-24T13:34:59.902Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
-    <lastmod>2023-10-07T18:12:33.979Z</lastmod>
+    <lastmod>2023-10-24T13:35:00.486Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
-    <lastmod>2023-10-07T18:12:35.602Z</lastmod>
+    <lastmod>2023-10-24T13:35:02.067Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
-    <lastmod>2023-10-07T18:12:37.709Z</lastmod>
+    <lastmod>2023-10-24T13:35:04.173Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
-    <lastmod>2023-10-07T18:12:38.193Z</lastmod>
+    <lastmod>2023-10-24T13:35:04.659Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
-    <lastmod>2023-10-07T18:12:38.645Z</lastmod>
+    <lastmod>2023-10-24T13:35:05.112Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/rtm-spatial/rtm.html</loc>
-    <lastmod>2023-10-07T18:12:39.207Z</lastmod>
+    <lastmod>2023-10-24T13:35:05.700Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/synth-impact/synth_impact.html</loc>
+    <lastmod>2023-10-24T13:35:06.286Z</lastmod>
   </url>
 </urlset>

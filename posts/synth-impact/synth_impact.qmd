@@ -1,0 +1,247 @@
+---
+title: "Synthetic Controls and Small Areas"
+subtitle: "A short discussion on 'microsynthetic' controls"
+author: "Gio Circo, Ph.D."
+date: 2023-10-25
+format: 
+    html:
+        self-contained: false
+        code-fold: true
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+categories:
+  - R
+  - Causal Inference
+theme: flatly
+image: "data.jpg"
+bibliography: refs.bib
+---
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(microsynth)
+library(knitr)
+library(kableExtra)
+
+# read into R
+nyc_impact <- read.csv("C:/Users/gioc4/Dropbox/smart_suite/nyc_impact_long.csv")
+
+set.seed(1)
+
+fit <-
+  microsynth(
+    nyc_impact,
+    idvar = 'geoid',
+    timevar = 'month',
+    intvar = 'impact',
+    start.pre = 1,
+    end.pre = 9,
+    end.post = 12,
+    match.out = c('assault', 'robbery'),
+    match.covar = c(
+      'total_pop',
+      'total_black',
+      'total_hispan',
+      'total_poverty',
+      'total_snap'),
+    result.var = c('assault', 'robbery'),
+    omnibus.var = c('assault', 'robbery'))
+
+```
+
+## Synthetic Controls in Statistics
+
+[Andrew Gelman](https://statmodeling.stat.columbia.edu/2023/10/12/debate-over-effect-of-reduced-prosecutions-on-urban-homicides-also-larger-questions-about-synthetic-control-methods-in-causal-inference/) recently covered a mildly [controversial paper](https://onlinelibrary.wiley.com/doi/abs/10.1111/1745-9133.12597) in criminology that suggested that a policy of "de-prosecution" by the Philadelphia District 
+Attorney's office resulted in an increase in homicides. This has sparked a lot of back-and-forth discussion
+on the appropriateness of the analysis and the kind of synthetic control method used. I'm not here to discuss any of these things, as many other smart people have already debated this to death (plus, given Hogan is reticent to release his data or code we may never really know exactly *what* he did).
+
+However, what I do want to discuss is something else Gelman wrote about on his blog:
+
+> Hogan and the others make comparisons, but the comparisons they make are to that weighted average of Detroit, New Orleans, and New York. The trouble is . . . that’s just 3 cities, and homicide rates can vary a lot from city to city. It just doesn’t make sense to throw away the other 96 cities in your data. The implied counterfactual is that if Philadelphia had continued post-2014 with its earlier sentencing policy, that its homicide rates would look like this weighted average of Detroit, New Orleans, and New York...
+
+What Gelman is talking about here is the commonly-used [**ADH approach**](https://www.nber.org/system/files/working_papers/t0335/t0335.pdf) (short for Abadie, Diamond, and Hainmueller). In this method you typically have one large "treated" area - such as a city or state - that implements some kind of policy. You then use other comparably large or similar areas to construct a synthetic version of your treated unit to estimate the counterfactual. It's an appealing method because it is relatively simple to calculate, fairly transparent about where the weights come from, and has good overlap with more conventional difference-in-differences methods (non-negative weights with a sum-to-one constraint). So in a way, I don't necessarily have the same issues that Gelman does, but he brings up a good point. By using only large aggregate units there is an inherent loss of information. In the ADH method we sort of assume that by matching closely on the outcome variable we can average over a lot of the confounders. Although in the ADH method you can also match on other covariates - but in my experience the vast majority of the synthetic control weights are derived solely from the pre-treatment outcomes.
+
+### Micro-Synthetic Controls
+
+Gelman further writes:
+
+> My understanding of a synthetic controls analysis went like this. You want to compare Philadelphia to other cities, but there are no other cities that are just like Philadelphia, so you break up the city into neighborhoods and find comparable neighborhoods in other cities . . . and when you’re done you’ve created this composite “city,” using pieces of other cities, that functions as a pseudo-Philadelphia. In creating this composite, you use lots of neighborhood characteristics, not just matching on a single outcome variable. And then you do all of this with other cities in your treatment group (cities that followed a de-prosecution strategy).
+
+Which describes another approach that has grown in popularity, especially among criminologists. This so-called "micro-synthetic" approach constructs synthetic controls from many small pieces to comprise a larger treated piece. The classic criminological example might be that you have a neighborhood in your city with 20 census blocks that gets some focused deterrence intervention. You can use the remaining "untreated" census blocks in the city to use as composite pieces as part of the synthetic control. This approach is especially appealing because so much criminological research has a focus on small, disaggregated regions. 
+
+## An Example: Operation Impact (2014)
+
+As a quick demo, here's an example I presented for part of NIJ's [Smart Suite](https://bja.ojp.gov/program/crppe/smart-suite). The research question posed here is whether a surge in police activity New York City's 47th precinct reduced assaults or robberies. There were a number of previous iterations of Operation Impact which an evaluation found a general decrease in crime[@macdonald2016effects]. The example here looks at a much later surge in 2014:
+
+![](impact_79.jpg)
+
+The data I organized for this example contains block-level census data from the American Community Survey, as well as monthly counts of some major crime categories (here: assault, burglary, motor vehicle theft, robbery, and larceny-theft). This is organized in a long-form dataset, which is indexed by precinct * geoid * month.
+
+```{r}
+#| echo: false
+
+head(nyc_impact) %>% 
+  kable()
+```
+
+The precinct we're interested in, the 47th, is comprised of 44 census blocks which are each measured at 12 time points. The remainder of the census blocks in the dataset are part of our "donor" pool, which we can use for our synthetic control.
+
+### Applying the 'Microsynth' approach
+
+The R package [microsynth](https://cran.r-project.org/web/packages/microsynth/vignettes/introduction.html) does almost all of the heavy lifting[@robbins2021microsynth]. Without getting too much into the weeds, the general idea here is that we want to re-weight all of our untreated (non-Operation Impact) census blocks in a way that makes them nearly - or exactly - identical to the census blocks in the 47th precinct. Microsynth accomplishes this much in the same way that surveys are weighted to approximate the population of interest. However, instead here we treat the 47th precinct as our "population" and estimate weights to apprxomiate the pre-treatment outcomes and covariates in the treated precinct. The full code to run the model is below:
+
+```{r}
+#| eval: false
+#| code-fold: false
+fit <-
+  microsynth(
+    nyc_impact,
+    idvar = 'geoid',
+    timevar = 'month',
+    intvar = 'impact',
+    start.pre = 1,
+    end.pre = 9,
+    end.post = 12,
+    match.out = c('assault', 'robbery'),
+    match.covar = c(
+      'total_pop',
+      'total_black',
+      'total_hispan',
+      'total_poverty',
+      'total_snap'),
+    result.var = c('assault', 'robbery'),
+    omnibus.var = c('assault', 'robbery'))
+```
+
+As a start, we can assess whether our synthetic control is appropriately balanced on pre-treatment differences. As we saw above, we matched on both time-varying and non time-varying covariates. Looking at the balance table below we see that we achieved *exact* balance on all our variables - which is quite good! This should give us more confidence that the outcomes we observe in the post period are due to the intervention, and not a result of systematic differences between treated and control units. 
+
+```{r}
+#| echo: false
+fit$w$Summary %>% kable(digits = 2)
+```
+
+We can print out the results as well. Here we see that the observed number of assaults and robberies in the post-period were 77 and 53 for the 47th precinct, and 77.7 and 73.5 for the synthetic control, respectively. In the case of robbery we estimate that Operation Impact resulted in about a 28% decrease in robberies for the 3-month period in 2014.
+
+```{r}
+#| echo: false
+fit$Results %>% kable(digits = 2)
+```
+
+It's also helpful to visualize what this looks like. Looking at the results we see that most of the decrease in robberies occurred immediately after the start of the program. For assaults there's a slight dip early on, but the overall results are more mixed.
+
+```{r}
+plot_microsynth(fit)
+```
+
+## Full Code
+
+```{r}
+#| code-fold: true
+#| eval: false
+
+library(microsynth)
+
+set.seed(1)
+
+# note: a good vignette is provided here:
+# https://cran.r-project.org/web/packages/microsynth/vignettes/introduction.html
+
+
+# data comes from NYC open data and US Census bureau, compiled by me
+# dependent variable is the number of assaults and robberies in Q3 2014
+# when time > 9
+
+# census-level variables from the ACS 2014 5-year estimates
+# and are presented as raw counts, to facilitate weighting
+# b/c microsynth uses survey weighting via survey::calibrate()
+
+# file url
+df <- url('https://www.dropbox.com/s/08owr5710bnvxn0/nyc_impact_long.csv?raw=1')
+
+# read into R
+nyc_impact <- read.csv(df)
+
+# MICROSYNTH
+#-----------------------#
+
+# model 1, without permutation-based inference
+# test statistics are calculated as weighted linear model
+
+# each microsynth needs the following:
+# idvar = variable identifying observations
+# timevar = variable indexing observations by time
+# intvar = variable that takes on 1 for treated units, post treatment
+#   is 0 otherwise
+# start.pre, end.pre, end.post define the start of the study period, the end
+#   of the pre-period, and the end of the post period
+# match.out = the time-varying variables that are to be matched exactly
+# match.cov = the time-invariant variables to be matched exactly
+# result.var = the outcome variable(s) of interest
+# omnibus.var = the outcome variable(s) that should be used in the calculation 
+#   of an omnibus p-value
+
+fit <-
+  microsynth(
+    nyc_impact,
+    idvar = 'geoid',
+    timevar = 'month',
+    intvar = 'impact',
+    start.pre = 1,
+    end.pre = 9,
+    end.post = 12,
+    match.out = c('assault', 'robbery'),
+    match.covar = c(
+      'total_pop',
+      'total_black',
+      'total_hispan',
+      'total_poverty',
+      'total_snap'),
+    result.var = c('assault', 'robbery'),
+    omnibus.var = c('assault', 'robbery'))
+
+# get the model summary
+summary(fit)
+
+# plot treated vs synthetic
+# and gap plot of treated - synthetic
+plot_microsynth(fit)
+
+
+# PLACEBO-BASED INFERENCE
+#-----------------------#
+
+# this model is same as above, except we are calculating permutation p-values
+# here, I set the number of permutations to just 100, but ideally you
+# can set this higher. The more permutations you set, the longer the run time
+
+fit2 <-
+  microsynth(
+    nyc_impact,
+    idvar = 'geoid',
+    timevar = 'month',
+    intvar = 'impact',
+    start.pre = 1,
+    end.pre = 9,
+    end.post = 12,
+    match.out = c('assault', 'robbery'),
+    match.covar = c(
+      'total_pop',
+      'total_black',
+      'total_hispan',
+      'total_poverty',
+      'total_snap'),
+    result.var = c('assault', 'robbery'),
+    omnibus.var = c('assault', 'robbery'),
+    perm = 100)
+
+summary(fit2)
+plot_microsynth(fit2)
+
+
+```

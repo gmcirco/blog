@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/synth-impact/synth_impact.html",
       "/posts/rtm-spatial/rtm.html",
       "/posts/gmm/gmm.html",
       "/posts/hbos-anomaly/hbos_anomaly.html",

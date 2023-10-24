@@ -10,7 +10,573 @@
 <atom:link href="https://gmcirco.github.io/blog//index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-0.9.434</generator>
-<lastBuildDate>Fri, 06 Oct 2023 04:00:00 GMT</lastBuildDate>
+<lastBuildDate>Wed, 25 Oct 2023 04:00:00 GMT</lastBuildDate>
+<item>
+  <title>Synthetic Controls and Small Areas</title>
+  <dc:creator>Gio Circo, Ph.D.</dc:creator>
+  <link>https://gmcirco.github.io/blog//posts/synth-impact/synth_impact.html</link>
+  <description><![CDATA[ 
+
+
+
+
+<div class="cell">
+
+</div>
+<section id="synthetic-controls-in-statistics" class="level2">
+<h2 class="anchored" data-anchor-id="synthetic-controls-in-statistics">Synthetic Controls in Statistics</h2>
+<p><a href="https://statmodeling.stat.columbia.edu/2023/10/12/debate-over-effect-of-reduced-prosecutions-on-urban-homicides-also-larger-questions-about-synthetic-control-methods-in-causal-inference/">Andrew Gelman</a> recently covered a mildly <a href="https://onlinelibrary.wiley.com/doi/abs/10.1111/1745-9133.12597">controversial paper</a> in criminology that suggested that a policy of “de-prosecution” by the Philadelphia District Attorney’s office resulted in an increase in homicides. This has sparked a lot of back-and-forth discussion on the appropriateness of the analysis and the kind of synthetic control method used. I’m not here to discuss any of these things, as many other smart people have already debated this to death (plus, given Hogan is reticent to release his data or code we may never really know exactly <em>what</em> he did).</p>
+<p>However, what I do want to discuss is something else Gelman wrote about on his blog:</p>
+<blockquote class="blockquote">
+<p>Hogan and the others make comparisons, but the comparisons they make are to that weighted average of Detroit, New Orleans, and New York. The trouble is . . . that’s just 3 cities, and homicide rates can vary a lot from city to city. It just doesn’t make sense to throw away the other 96 cities in your data. The implied counterfactual is that if Philadelphia had continued post-2014 with its earlier sentencing policy, that its homicide rates would look like this weighted average of Detroit, New Orleans, and New York…</p>
+</blockquote>
+<p>What Gelman is talking about here is the commonly-used <a href="https://www.nber.org/system/files/working_papers/t0335/t0335.pdf"><strong>ADH approach</strong></a> (short for Abadie, Diamond, and Hainmueller). In this method you typically have one large “treated” area - such as a city or state - that implements some kind of policy. You then use other comparably large or similar areas to construct a synthetic version of your treated unit to estimate the counterfactual. It’s an appealing method because it is relatively simple to calculate, fairly transparent about where the weights come from, and has good overlap with more conventional difference-in-differences methods (non-negative weights with a sum-to-one constraint). So in a way, I don’t necessarily have the same issues that Gelman does, but he brings up a good point. By using only large aggregate units there is an inherent loss of information. In the ADH method we sort of assume that by matching closely on the outcome variable we can average over a lot of the confounders. Although in the ADH method you can also match on other covariates - but in my experience the vast majority of the synthetic control weights are derived solely from the pre-treatment outcomes.</p>
+<section id="micro-synthetic-controls" class="level3">
+<h3 class="anchored" data-anchor-id="micro-synthetic-controls">Micro-Synthetic Controls</h3>
+<p>Gelman further writes:</p>
+<blockquote class="blockquote">
+<p>My understanding of a synthetic controls analysis went like this. You want to compare Philadelphia to other cities, but there are no other cities that are just like Philadelphia, so you break up the city into neighborhoods and find comparable neighborhoods in other cities . . . and when you’re done you’ve created this composite “city,” using pieces of other cities, that functions as a pseudo-Philadelphia. In creating this composite, you use lots of neighborhood characteristics, not just matching on a single outcome variable. And then you do all of this with other cities in your treatment group (cities that followed a de-prosecution strategy).</p>
+</blockquote>
+<p>Which describes another approach that has grown in popularity, especially among criminologists. This so-called “micro-synthetic” approach constructs synthetic controls from many small pieces to comprise a larger treated piece. The classic criminological example might be that you have a neighborhood in your city with 20 census blocks that gets some focused deterrence intervention. You can use the remaining “untreated” census blocks in the city to use as composite pieces as part of the synthetic control. This approach is especially appealing because so much criminological research has a focus on small, disaggregated regions.</p>
+</section>
+</section>
+<section id="an-example-operation-impact-2014" class="level2">
+<h2 class="anchored" data-anchor-id="an-example-operation-impact-2014">An Example: Operation Impact (2014)</h2>
+<p>As a quick demo, here’s an example I presented for part of NIJ’s <a href="https://bja.ojp.gov/program/crppe/smart-suite">Smart Suite</a>. The research question posed here is whether a surge in police activity New York City’s 47th precinct reduced assaults or robberies. There were a number of previous iterations of Operation Impact which an evaluation found a general decrease in crime<span class="citation" data-cites="macdonald2016effects">(MacDonald, Fagan, and Geller 2016)</span>. The example here looks at a much later surge in 2014:</p>
+<p><img src="https://gmcirco.github.io/blog//posts\synth-impact\impact_79.jpg" class="img-fluid"></p>
+<p>The data I organized for this example contains block-level census data from the American Community Survey, as well as monthly counts of some major crime categories (here: assault, burglary, motor vehicle theft, robbery, and larceny-theft). This is organized in a long-form dataset, which is indexed by precinct * geoid * month.</p>
+<div class="cell">
+<div class="cell-output-display">
+
+<table>
+ <thead>
+  <tr>
+   <th style="text-align:right;"> precinct </th>
+   <th style="text-align:right;"> geoid </th>
+   <th style="text-align:right;"> impact </th>
+   <th style="text-align:right;"> total_pop </th>
+   <th style="text-align:right;"> total_hh </th>
+   <th style="text-align:right;"> total_male </th>
+   <th style="text-align:right;"> total_white </th>
+   <th style="text-align:right;"> total_hispan </th>
+   <th style="text-align:right;"> total_black </th>
+   <th style="text-align:right;"> total_poverty </th>
+   <th style="text-align:right;"> total_snap </th>
+   <th style="text-align:right;"> month </th>
+   <th style="text-align:right;"> assault </th>
+   <th style="text-align:right;"> burglary </th>
+   <th style="text-align:right;"> mvt </th>
+   <th style="text-align:right;"> robbery </th>
+   <th style="text-align:right;"> theft </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 3.6061e+10 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 7315 </td>
+   <td style="text-align:right;"> 1090 </td>
+   <td style="text-align:right;"> 3539 </td>
+   <td style="text-align:right;"> 4594 </td>
+   <td style="text-align:right;"> 479 </td>
+   <td style="text-align:right;"> 332 </td>
+   <td style="text-align:right;"> 586 </td>
+   <td style="text-align:right;"> 14 </td>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 5 </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 3.6061e+10 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 7315 </td>
+   <td style="text-align:right;"> 1090 </td>
+   <td style="text-align:right;"> 3539 </td>
+   <td style="text-align:right;"> 4594 </td>
+   <td style="text-align:right;"> 479 </td>
+   <td style="text-align:right;"> 332 </td>
+   <td style="text-align:right;"> 586 </td>
+   <td style="text-align:right;"> 14 </td>
+   <td style="text-align:right;"> 2 </td>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 1 </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 3.6061e+10 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 7315 </td>
+   <td style="text-align:right;"> 1090 </td>
+   <td style="text-align:right;"> 3539 </td>
+   <td style="text-align:right;"> 4594 </td>
+   <td style="text-align:right;"> 479 </td>
+   <td style="text-align:right;"> 332 </td>
+   <td style="text-align:right;"> 586 </td>
+   <td style="text-align:right;"> 14 </td>
+   <td style="text-align:right;"> 3 </td>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 3 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 7 </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 3.6061e+10 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 7315 </td>
+   <td style="text-align:right;"> 1090 </td>
+   <td style="text-align:right;"> 3539 </td>
+   <td style="text-align:right;"> 4594 </td>
+   <td style="text-align:right;"> 479 </td>
+   <td style="text-align:right;"> 332 </td>
+   <td style="text-align:right;"> 586 </td>
+   <td style="text-align:right;"> 14 </td>
+   <td style="text-align:right;"> 4 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 6 </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 3.6061e+10 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 7315 </td>
+   <td style="text-align:right;"> 1090 </td>
+   <td style="text-align:right;"> 3539 </td>
+   <td style="text-align:right;"> 4594 </td>
+   <td style="text-align:right;"> 479 </td>
+   <td style="text-align:right;"> 332 </td>
+   <td style="text-align:right;"> 586 </td>
+   <td style="text-align:right;"> 14 </td>
+   <td style="text-align:right;"> 5 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 5 </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 3.6061e+10 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 7315 </td>
+   <td style="text-align:right;"> 1090 </td>
+   <td style="text-align:right;"> 3539 </td>
+   <td style="text-align:right;"> 4594 </td>
+   <td style="text-align:right;"> 479 </td>
+   <td style="text-align:right;"> 332 </td>
+   <td style="text-align:right;"> 586 </td>
+   <td style="text-align:right;"> 14 </td>
+   <td style="text-align:right;"> 6 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:right;"> 3 </td>
+  </tr>
+</tbody>
+</table>
+
+</div>
+</div>
+<p>The precinct we’re interested in, the 47th, is comprised of 44 census blocks which are each measured at 12 time points. The remainder of the census blocks in the dataset are part of our “donor” pool, which we can use for our synthetic control.</p>
+<section id="applying-the-microsynth-approach" class="level3">
+<h3 class="anchored" data-anchor-id="applying-the-microsynth-approach">Applying the ‘Microsynth’ approach</h3>
+<p>The R package <a href="https://cran.r-project.org/web/packages/microsynth/vignettes/introduction.html">microsynth</a> does almost all of the heavy lifting<span class="citation" data-cites="robbins2021microsynth">(Robbins and Davenport 2021)</span>. Without getting too much into the weeds, the general idea here is that we want to re-weight all of our untreated (non-Operation Impact) census blocks in a way that makes them nearly - or exactly - identical to the census blocks in the 47th precinct. Microsynth accomplishes this much in the same way that surveys are weighted to approximate the population of interest. However, instead here we treat the 47th precinct as our “population” and estimate weights to apprxomiate the pre-treatment outcomes and covariates in the treated precinct. The full code to run the model is below:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1">fit <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb1-2">  <span class="fu" style="color: #4758AB;">microsynth</span>(</span>
+<span id="cb1-3">    nyc_impact,</span>
+<span id="cb1-4">    <span class="at" style="color: #657422;">idvar =</span> <span class="st" style="color: #20794D;">'geoid'</span>,</span>
+<span id="cb1-5">    <span class="at" style="color: #657422;">timevar =</span> <span class="st" style="color: #20794D;">'month'</span>,</span>
+<span id="cb1-6">    <span class="at" style="color: #657422;">intvar =</span> <span class="st" style="color: #20794D;">'impact'</span>,</span>
+<span id="cb1-7">    <span class="at" style="color: #657422;">start.pre =</span> <span class="dv" style="color: #AD0000;">1</span>,</span>
+<span id="cb1-8">    <span class="at" style="color: #657422;">end.pre =</span> <span class="dv" style="color: #AD0000;">9</span>,</span>
+<span id="cb1-9">    <span class="at" style="color: #657422;">end.post =</span> <span class="dv" style="color: #AD0000;">12</span>,</span>
+<span id="cb1-10">    <span class="at" style="color: #657422;">match.out =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'assault'</span>, <span class="st" style="color: #20794D;">'robbery'</span>),</span>
+<span id="cb1-11">    <span class="at" style="color: #657422;">match.covar =</span> <span class="fu" style="color: #4758AB;">c</span>(</span>
+<span id="cb1-12">      <span class="st" style="color: #20794D;">'total_pop'</span>,</span>
+<span id="cb1-13">      <span class="st" style="color: #20794D;">'total_black'</span>,</span>
+<span id="cb1-14">      <span class="st" style="color: #20794D;">'total_hispan'</span>,</span>
+<span id="cb1-15">      <span class="st" style="color: #20794D;">'total_poverty'</span>,</span>
+<span id="cb1-16">      <span class="st" style="color: #20794D;">'total_snap'</span>),</span>
+<span id="cb1-17">    <span class="at" style="color: #657422;">result.var =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'assault'</span>, <span class="st" style="color: #20794D;">'robbery'</span>),</span>
+<span id="cb1-18">    <span class="at" style="color: #657422;">omnibus.var =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'assault'</span>, <span class="st" style="color: #20794D;">'robbery'</span>))</span></code></pre></div>
+</div>
+<p>As a start, we can assess whether our synthetic control is appropriately balanced on pre-treatment differences. As we saw above, we matched on both time-varying and non time-varying covariates. Looking at the balance table below we see that we achieved <em>exact</em> balance on all our variables - which is quite good! This should give us more confidence that the outcomes we observe in the post period are due to the intervention, and not a result of systematic differences between treated and control units.</p>
+<div class="cell">
+<div class="cell-output-display">
+
+<table>
+ <thead>
+  <tr>
+   <th style="text-align:left;">   </th>
+   <th style="text-align:right;"> Targets </th>
+   <th style="text-align:right;"> Weighted.Control </th>
+   <th style="text-align:right;"> All.scaled </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> Intercept </td>
+   <td style="text-align:right;"> 23 </td>
+   <td style="text-align:right;"> 23 </td>
+   <td style="text-align:right;"> 23.00 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> total_pop </td>
+   <td style="text-align:right;"> 77311 </td>
+   <td style="text-align:right;"> 77311 </td>
+   <td style="text-align:right;"> 89810.67 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> total_black </td>
+   <td style="text-align:right;"> 44079 </td>
+   <td style="text-align:right;"> 44079 </td>
+   <td style="text-align:right;"> 23373.48 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> total_hispan </td>
+   <td style="text-align:right;"> 15693 </td>
+   <td style="text-align:right;"> 15693 </td>
+   <td style="text-align:right;"> 26494.13 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> total_poverty </td>
+   <td style="text-align:right;"> 24022 </td>
+   <td style="text-align:right;"> 24022 </td>
+   <td style="text-align:right;"> 18865.98 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> total_snap </td>
+   <td style="text-align:right;"> 6558 </td>
+   <td style="text-align:right;"> 6558 </td>
+   <td style="text-align:right;"> 4875.89 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> assault.9 </td>
+   <td style="text-align:right;"> 27 </td>
+   <td style="text-align:right;"> 27 </td>
+   <td style="text-align:right;"> 18.56 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> assault.8 </td>
+   <td style="text-align:right;"> 35 </td>
+   <td style="text-align:right;"> 35 </td>
+   <td style="text-align:right;"> 20.69 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> assault.7 </td>
+   <td style="text-align:right;"> 28 </td>
+   <td style="text-align:right;"> 28 </td>
+   <td style="text-align:right;"> 21.13 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> assault.6 </td>
+   <td style="text-align:right;"> 26 </td>
+   <td style="text-align:right;"> 26 </td>
+   <td style="text-align:right;"> 21.10 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> assault.5 </td>
+   <td style="text-align:right;"> 35 </td>
+   <td style="text-align:right;"> 35 </td>
+   <td style="text-align:right;"> 20.43 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> assault.4 </td>
+   <td style="text-align:right;"> 30 </td>
+   <td style="text-align:right;"> 30 </td>
+   <td style="text-align:right;"> 17.44 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> assault.3 </td>
+   <td style="text-align:right;"> 25 </td>
+   <td style="text-align:right;"> 25 </td>
+   <td style="text-align:right;"> 17.57 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> assault.2 </td>
+   <td style="text-align:right;"> 15 </td>
+   <td style="text-align:right;"> 15 </td>
+   <td style="text-align:right;"> 15.14 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> assault.1 </td>
+   <td style="text-align:right;"> 16 </td>
+   <td style="text-align:right;"> 16 </td>
+   <td style="text-align:right;"> 16.22 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> robbery.9 </td>
+   <td style="text-align:right;"> 30 </td>
+   <td style="text-align:right;"> 30 </td>
+   <td style="text-align:right;"> 15.89 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> robbery.8 </td>
+   <td style="text-align:right;"> 38 </td>
+   <td style="text-align:right;"> 38 </td>
+   <td style="text-align:right;"> 16.61 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> robbery.7 </td>
+   <td style="text-align:right;"> 31 </td>
+   <td style="text-align:right;"> 31 </td>
+   <td style="text-align:right;"> 16.19 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> robbery.6 </td>
+   <td style="text-align:right;"> 26 </td>
+   <td style="text-align:right;"> 26 </td>
+   <td style="text-align:right;"> 14.36 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> robbery.5 </td>
+   <td style="text-align:right;"> 23 </td>
+   <td style="text-align:right;"> 23 </td>
+   <td style="text-align:right;"> 15.60 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> robbery.4 </td>
+   <td style="text-align:right;"> 21 </td>
+   <td style="text-align:right;"> 21 </td>
+   <td style="text-align:right;"> 12.91 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> robbery.3 </td>
+   <td style="text-align:right;"> 18 </td>
+   <td style="text-align:right;"> 18 </td>
+   <td style="text-align:right;"> 13.50 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> robbery.2 </td>
+   <td style="text-align:right;"> 13 </td>
+   <td style="text-align:right;"> 13 </td>
+   <td style="text-align:right;"> 13.79 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> robbery.1 </td>
+   <td style="text-align:right;"> 31 </td>
+   <td style="text-align:right;"> 31 </td>
+   <td style="text-align:right;"> 16.39 </td>
+  </tr>
+</tbody>
+</table>
+
+</div>
+</div>
+<p>We can print out the results as well. Here we see that the observed number of assaults and robberies in the post-period were 77 and 53 for the 47th precinct, and 77.7 and 73.5 for the synthetic control, respectively. In the case of robbery we estimate that Operation Impact resulted in about a 28% decrease in robberies for the 3-month period in 2014.</p>
+<div class="cell">
+<div class="cell-output-display">
+
+<table class="kable_wrapper">
+<tbody>
+  <tr>
+   <td> 
+
+<table>
+ <thead>
+  <tr>
+   <th style="text-align:left;">   </th>
+   <th style="text-align:right;"> Trt </th>
+   <th style="text-align:right;"> Con </th>
+   <th style="text-align:right;"> Pct.Chng </th>
+   <th style="text-align:right;"> Linear.pVal </th>
+   <th style="text-align:right;"> Linear.Lower </th>
+   <th style="text-align:right;"> Linear.Upper </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> assault </td>
+   <td style="text-align:right;"> 77 </td>
+   <td style="text-align:right;"> 77.70 </td>
+   <td style="text-align:right;"> -0.01 </td>
+   <td style="text-align:right;"> 0.94 </td>
+   <td style="text-align:right;"> -0.19 </td>
+   <td style="text-align:right;"> 0.22 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> robbery </td>
+   <td style="text-align:right;"> 53 </td>
+   <td style="text-align:right;"> 73.54 </td>
+   <td style="text-align:right;"> -0.28 </td>
+   <td style="text-align:right;"> 0.03 </td>
+   <td style="text-align:right;"> -0.45 </td>
+   <td style="text-align:right;"> -0.05 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Omnibus </td>
+   <td style="text-align:right;"> NA </td>
+   <td style="text-align:right;"> NA </td>
+   <td style="text-align:right;"> NA </td>
+   <td style="text-align:right;"> 0.04 </td>
+   <td style="text-align:right;"> NA </td>
+   <td style="text-align:right;"> NA </td>
+  </tr>
+</tbody>
+</table>
+
+ </td>
+  </tr>
+</tbody>
+</table>
+
+</div>
+</div>
+<p>It’s also helpful to visualize what this looks like. Looking at the results we see that most of the decrease in robberies occurred immediately after the start of the program. For assaults there’s a slight dip early on, but the overall results are more mixed.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><span class="fu" style="color: #4758AB;">plot_microsynth</span>(fit)</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="https://gmcirco.github.io/blog//posts\synth-impact\synth_impact_files\figure-html\unnamed-chunk-6-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="https://gmcirco.github.io/blog//posts\synth-impact\synth_impact_files\figure-html\unnamed-chunk-6-2.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="summary" class="level2">
+<h2 class="anchored" data-anchor-id="summary">Summary</h2>
+</section>
+<section id="full-code" class="level2">
+<h2 class="anchored" data-anchor-id="full-code">Full Code</h2>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><span class="fu" style="color: #4758AB;">library</span>(microsynth)</span>
+<span id="cb3-2"></span>
+<span id="cb3-3"><span class="fu" style="color: #4758AB;">set.seed</span>(<span class="dv" style="color: #AD0000;">1</span>)</span>
+<span id="cb3-4"></span>
+<span id="cb3-5"><span class="co" style="color: #5E5E5E;"># note: a good vignette is provided here:</span></span>
+<span id="cb3-6"><span class="co" style="color: #5E5E5E;"># https://cran.r-project.org/web/packages/microsynth/vignettes/introduction.html</span></span>
+<span id="cb3-7"></span>
+<span id="cb3-8"></span>
+<span id="cb3-9"><span class="co" style="color: #5E5E5E;"># data comes from NYC open data and US Census bureau, compiled by me</span></span>
+<span id="cb3-10"><span class="co" style="color: #5E5E5E;"># dependent variable is the number of assaults and robberies in Q3 2014</span></span>
+<span id="cb3-11"><span class="co" style="color: #5E5E5E;"># when time &gt; 9</span></span>
+<span id="cb3-12"></span>
+<span id="cb3-13"><span class="co" style="color: #5E5E5E;"># census-level variables from the ACS 2014 5-year estimates</span></span>
+<span id="cb3-14"><span class="co" style="color: #5E5E5E;"># and are presented as raw counts, to facilitate weighting</span></span>
+<span id="cb3-15"><span class="co" style="color: #5E5E5E;"># b/c microsynth uses survey weighting via survey::calibrate()</span></span>
+<span id="cb3-16"></span>
+<span id="cb3-17"><span class="co" style="color: #5E5E5E;"># file url</span></span>
+<span id="cb3-18">df <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">url</span>(<span class="st" style="color: #20794D;">'https://www.dropbox.com/s/08owr5710bnvxn0/nyc_impact_long.csv?raw=1'</span>)</span>
+<span id="cb3-19"></span>
+<span id="cb3-20"><span class="co" style="color: #5E5E5E;"># read into R</span></span>
+<span id="cb3-21">nyc_impact <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">read.csv</span>(df)</span>
+<span id="cb3-22"></span>
+<span id="cb3-23"><span class="co" style="color: #5E5E5E;"># MICROSYNTH</span></span>
+<span id="cb3-24"><span class="co" style="color: #5E5E5E;">#-----------------------#</span></span>
+<span id="cb3-25"></span>
+<span id="cb3-26"><span class="co" style="color: #5E5E5E;"># model 1, without permutation-based inference</span></span>
+<span id="cb3-27"><span class="co" style="color: #5E5E5E;"># test statistics are calculated as weighted linear model</span></span>
+<span id="cb3-28"></span>
+<span id="cb3-29"><span class="co" style="color: #5E5E5E;"># each microsynth needs the following:</span></span>
+<span id="cb3-30"><span class="co" style="color: #5E5E5E;"># idvar = variable identifying observations</span></span>
+<span id="cb3-31"><span class="co" style="color: #5E5E5E;"># timevar = variable indexing observations by time</span></span>
+<span id="cb3-32"><span class="co" style="color: #5E5E5E;"># intvar = variable that takes on 1 for treated units, post treatment</span></span>
+<span id="cb3-33"><span class="co" style="color: #5E5E5E;">#   is 0 otherwise</span></span>
+<span id="cb3-34"><span class="co" style="color: #5E5E5E;"># start.pre, end.pre, end.post define the start of the study period, the end</span></span>
+<span id="cb3-35"><span class="co" style="color: #5E5E5E;">#   of the pre-period, and the end of the post period</span></span>
+<span id="cb3-36"><span class="co" style="color: #5E5E5E;"># match.out = the time-varying variables that are to be matched exactly</span></span>
+<span id="cb3-37"><span class="co" style="color: #5E5E5E;"># match.cov = the time-invariant variables to be matched exactly</span></span>
+<span id="cb3-38"><span class="co" style="color: #5E5E5E;"># result.var = the outcome variable(s) of interest</span></span>
+<span id="cb3-39"><span class="co" style="color: #5E5E5E;"># omnibus.var = the outcome variable(s) that should be used in the calculation </span></span>
+<span id="cb3-40"><span class="co" style="color: #5E5E5E;">#   of an omnibus p-value</span></span>
+<span id="cb3-41"></span>
+<span id="cb3-42">fit <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb3-43">  <span class="fu" style="color: #4758AB;">microsynth</span>(</span>
+<span id="cb3-44">    nyc_impact,</span>
+<span id="cb3-45">    <span class="at" style="color: #657422;">idvar =</span> <span class="st" style="color: #20794D;">'geoid'</span>,</span>
+<span id="cb3-46">    <span class="at" style="color: #657422;">timevar =</span> <span class="st" style="color: #20794D;">'month'</span>,</span>
+<span id="cb3-47">    <span class="at" style="color: #657422;">intvar =</span> <span class="st" style="color: #20794D;">'impact'</span>,</span>
+<span id="cb3-48">    <span class="at" style="color: #657422;">start.pre =</span> <span class="dv" style="color: #AD0000;">1</span>,</span>
+<span id="cb3-49">    <span class="at" style="color: #657422;">end.pre =</span> <span class="dv" style="color: #AD0000;">9</span>,</span>
+<span id="cb3-50">    <span class="at" style="color: #657422;">end.post =</span> <span class="dv" style="color: #AD0000;">12</span>,</span>
+<span id="cb3-51">    <span class="at" style="color: #657422;">match.out =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'assault'</span>, <span class="st" style="color: #20794D;">'robbery'</span>),</span>
+<span id="cb3-52">    <span class="at" style="color: #657422;">match.covar =</span> <span class="fu" style="color: #4758AB;">c</span>(</span>
+<span id="cb3-53">      <span class="st" style="color: #20794D;">'total_pop'</span>,</span>
+<span id="cb3-54">      <span class="st" style="color: #20794D;">'total_black'</span>,</span>
+<span id="cb3-55">      <span class="st" style="color: #20794D;">'total_hispan'</span>,</span>
+<span id="cb3-56">      <span class="st" style="color: #20794D;">'total_poverty'</span>,</span>
+<span id="cb3-57">      <span class="st" style="color: #20794D;">'total_snap'</span>),</span>
+<span id="cb3-58">    <span class="at" style="color: #657422;">result.var =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'assault'</span>, <span class="st" style="color: #20794D;">'robbery'</span>),</span>
+<span id="cb3-59">    <span class="at" style="color: #657422;">omnibus.var =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'assault'</span>, <span class="st" style="color: #20794D;">'robbery'</span>))</span>
+<span id="cb3-60"></span>
+<span id="cb3-61"><span class="co" style="color: #5E5E5E;"># get the model summary</span></span>
+<span id="cb3-62"><span class="fu" style="color: #4758AB;">summary</span>(fit)</span>
+<span id="cb3-63"></span>
+<span id="cb3-64"><span class="co" style="color: #5E5E5E;"># plot treated vs synthetic</span></span>
+<span id="cb3-65"><span class="co" style="color: #5E5E5E;"># and gap plot of treated - synthetic</span></span>
+<span id="cb3-66"><span class="fu" style="color: #4758AB;">plot_microsynth</span>(fit)</span>
+<span id="cb3-67"></span>
+<span id="cb3-68"></span>
+<span id="cb3-69"><span class="co" style="color: #5E5E5E;"># PLACEBO-BASED INFERENCE</span></span>
+<span id="cb3-70"><span class="co" style="color: #5E5E5E;">#-----------------------#</span></span>
+<span id="cb3-71"></span>
+<span id="cb3-72"><span class="co" style="color: #5E5E5E;"># this model is same as above, except we are calculating permutation p-values</span></span>
+<span id="cb3-73"><span class="co" style="color: #5E5E5E;"># here, I set the number of permutations to just 100, but ideally you</span></span>
+<span id="cb3-74"><span class="co" style="color: #5E5E5E;"># can set this higher. The more permutations you set, the longer the run time</span></span>
+<span id="cb3-75"></span>
+<span id="cb3-76">fit2 <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb3-77">  <span class="fu" style="color: #4758AB;">microsynth</span>(</span>
+<span id="cb3-78">    nyc_impact,</span>
+<span id="cb3-79">    <span class="at" style="color: #657422;">idvar =</span> <span class="st" style="color: #20794D;">'geoid'</span>,</span>
+<span id="cb3-80">    <span class="at" style="color: #657422;">timevar =</span> <span class="st" style="color: #20794D;">'month'</span>,</span>
+<span id="cb3-81">    <span class="at" style="color: #657422;">intvar =</span> <span class="st" style="color: #20794D;">'impact'</span>,</span>
+<span id="cb3-82">    <span class="at" style="color: #657422;">start.pre =</span> <span class="dv" style="color: #AD0000;">1</span>,</span>
+<span id="cb3-83">    <span class="at" style="color: #657422;">end.pre =</span> <span class="dv" style="color: #AD0000;">9</span>,</span>
+<span id="cb3-84">    <span class="at" style="color: #657422;">end.post =</span> <span class="dv" style="color: #AD0000;">12</span>,</span>
+<span id="cb3-85">    <span class="at" style="color: #657422;">match.out =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'assault'</span>, <span class="st" style="color: #20794D;">'robbery'</span>),</span>
+<span id="cb3-86">    <span class="at" style="color: #657422;">match.covar =</span> <span class="fu" style="color: #4758AB;">c</span>(</span>
+<span id="cb3-87">      <span class="st" style="color: #20794D;">'total_pop'</span>,</span>
+<span id="cb3-88">      <span class="st" style="color: #20794D;">'total_black'</span>,</span>
+<span id="cb3-89">      <span class="st" style="color: #20794D;">'total_hispan'</span>,</span>
+<span id="cb3-90">      <span class="st" style="color: #20794D;">'total_poverty'</span>,</span>
+<span id="cb3-91">      <span class="st" style="color: #20794D;">'total_snap'</span>),</span>
+<span id="cb3-92">    <span class="at" style="color: #657422;">result.var =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'assault'</span>, <span class="st" style="color: #20794D;">'robbery'</span>),</span>
+<span id="cb3-93">    <span class="at" style="color: #657422;">omnibus.var =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'assault'</span>, <span class="st" style="color: #20794D;">'robbery'</span>),</span>
+<span id="cb3-94">    <span class="at" style="color: #657422;">perm =</span> <span class="dv" style="color: #AD0000;">100</span>)</span>
+<span id="cb3-95"></span>
+<span id="cb3-96"><span class="fu" style="color: #4758AB;">summary</span>(fit2)</span>
+<span id="cb3-97"><span class="fu" style="color: #4758AB;">plot_microsynth</span>(fit2)</span></code></pre></div>
+</details>
+</div>
+
+
+
+</section>
+
+<div id="quarto-appendix" class="default"><section class="quarto-appendix-contents"><h2 class="anchored quarto-appendix-heading">References</h2><div id="refs" class="references csl-bib-body hanging-indent">
+<div id="ref-macdonald2016effects" class="csl-entry">
+MacDonald, John, Jeffrey Fagan, and Amanda Geller. 2016. <span>“The Effects of Local Police Surges on Crime and Arrests in New York City.”</span> <em>PLoS One</em> 11 (6): e0157223.
+</div>
+<div id="ref-robbins2021microsynth" class="csl-entry">
+Robbins, Michael W, and Steven Davenport. 2021. <span>“Microsynth: Synthetic Control Methods for Disaggregated and Micro-Level Data in r.”</span> <em>Journal of Statistical Software</em> 97: 1–31.
+</div>
+</div></section></div> ]]></description>
+  <category>R</category>
+  <category>Causal Inference</category>
+  <guid>https://gmcirco.github.io/blog//posts/synth-impact/synth_impact.html</guid>
+  <pubDate>Wed, 25 Oct 2023 04:00:00 GMT</pubDate>
+  <media:content url="https://gmcirco.github.io/blog///posts/synth-impact/data.jpg" medium="image" type="image/jpeg"/>
+</item>
 <item>
   <title>Generating Spatial Risk Features using R</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>
