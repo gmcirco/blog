@@ -1,0 +1,592 @@
+---
+title: "The Great American Coffee Taste Test"
+subtitle: "A deeper dive with Bayes"
+author: "Gio Circo, Ph.D."
+date: 2023-12-01
+format: 
+    html:
+        self-contained: false
+        code-fold: true
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+categories:
+  - R
+  - Bayesian Statistics
+theme: flatly
+image: "coffee.jpg"
+---
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(brms)
+library(broom.mixed)
+library(knitr)
+library(kableExtra)
+
+coffee <- read_csv("C:/Users/gioc4/Documents/blog/data/catt.csv")
+
+col_pal <- c( '#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377')
+
+load("brms_fit2.Rdata")
+
+set.seed(123)
+
+## Function to extract random effects from brms model
+pull_ranef <- function(x, idx){
+  return(
+    data.frame(x[,,idx]) %>%
+  mutate(coffee = rownames(.), variable = idx) 
+  )
+}
+
+
+# Setup data
+coffee_data <-
+  coffee %>%
+  select(
+    age = `What is your age?`,
+    gender = `Gender`,
+    expertise = `Lastly, how would you rate your own coffee expertise?`,
+    pref_a = `Coffee A - Personal Preference`,
+    pref_b = `Coffee B - Personal Preference`,
+    pref_c = `Coffee C - Personal Preference`,
+    pref_d = `Coffee D - Personal Preference`
+  ) %>%
+  replace_na(
+    list(
+      age = 'Not Provided',
+      gender = 'Not Provided',
+      race = 'Not Provided',
+      education = 'Not Provided'
+    )
+  )
+
+coffee_ranking <-
+  coffee_data %>%
+  na.omit() %>%
+  select(age, gender, expertise, pref_a:pref_d) %>%
+  pivot_longer(cols = starts_with("pref"),
+               names_to = "coffee",
+               values_to = "ranking") %>%
+  mutate(age = case_when(
+    age %in% c("<18 years old","18-24 years old") ~ "18-24",
+    age == "25-34 years old" ~ "25-34",
+    age == "35-44 years old" ~ "35-44",
+    age == "45-54 years old" ~ "45-54",
+    age %in% c("55-64 years old", ">65 years old") ~ "55+"
+  ))
+
+strata <- coffee_ranking %>%
+  filter(gender %in% c("Male","Female")) %>%
+  distinct(expertise, age, gender, coffee) %>%
+  complete(expertise,age,gender,coffee)
+
+fit1_preds <-
+  predict(fit2, newdata = strata) %>%
+  data.frame()
+
+pred_data <-
+  tibble(strata, fit1_preds) %>%
+  set_names(c(
+    'expertise',
+    'age',
+    'gender',
+    'coffee',
+    'p1',
+    'p2',
+    'p3',
+    'p4',
+    'p5'
+  )) %>%
+  mutate(
+    gender = fct_relevel(gender, "Male"),
+    age = fct_relevel(
+      age,
+      "18-24",
+      "25-34",
+      "35-44",
+      "45-54",
+      '55+'
+    )
+  ) %>%
+  pivot_longer(cols = starts_with("p"),
+               names_to = 'ranking',
+               values_to = 'prob')
+
+# random effects
+fit2_summary <- ranef(fit2)[[1]]
+vals <- c("Intercept","age25M34","age35M44","age45M54","age55P","expertise")
+
+# pull into nice dataframe
+res <-
+  sapply(vals, function(x) {
+    pull_ranef(fit2_summary, x)
+  },
+  simplify = FALSE) %>%
+  do.call(rbind, .)
+
+```
+
+## The Great American Coffee Taste Test
+
+In October I was lucky enough to participate in popular coffee YouTuber James Hoffman's [Great American Coffee Taste Test](https://cometeer.com/pages/the-great-american-coffee-taste-test). In short, participants got 4 samples of coffee and were able to brew, taste, and rate them live. One the interesting parts of this was that the data was freely shared after the tasting was completed. As both a data and coffee nerd, I couldn't resit a dive into this dataset.
+
+The one we're going to focus on is the unusual [**Coffee 'D'**](https://youtu.be/bMOOQfeloH0?si=E9xaNcI-JBsR8-Yw&t=422). In contrast to the other coffees in the taste test, Coffee 'D' was a natural process. The difference between a washed coffee and natural coffee is:
+
+>Washed coffee and natural process coffee differ primarily in their processing methods. Washed coffee involves removing the outer fruit from the coffee bean before drying, using water to ferment and wash away the pulp, resulting in a clean, bright flavor profile with pronounced acidity. In contrast, natural process coffee involves drying the whole coffee cherry intact, allowing the bean to ferment inside the fruit, imparting a fruitier, sometimes wine-like, sweetness with a heavier body due to prolonged contact with the fruit, often exhibiting complex, earthy, or fermented flavor notes. These distinct processes significantly influence the taste and characteristics of the final brew, offering a spectrum of flavors to coffee enthusiasts.
+
+The tl;dr is that natural process coffees tend to have more fermented, fruity flavors that are prized by some consumers, but often disliked by others. This is the one we're going to focus our attention on here. 
+
+### The survey
+
+While there were numerous questions on the [survey](https://tally.so/r/wzy48M), my focus was primarily on the following:
+
+- Age
+- Gender
+- Self-rated coffee expertise
+
+I categorized ages into groups (`18-24`, `25-34`, `35-44`, `45-54`, and `55+`), and gender into `(Male`, `Female`). The self-rated coffee expertise was on a scale from 1 to 10, with 1 representing *"I'm a novice"* and 10 representing *"I'm a coffee expert."*
+
+Initially, we need to convert the survey data from a wide format to a long one. In the current data view, each person's response is repeated four times (once for each coffee type), while their age, gender, and self-reported coffee expertise remain constant. This approach allows us to model responses more efficiently and retain information across different coffee types.
+
+```{r}
+#| echo: false
+head(coffee_ranking, 10) %>%
+  kable()
+```
+
+## Fitting A Bayesian Model
+
+We're employing an ordinal regression model with a cumulative link function, which is a typical method for analyzing Likert-style data. Gender remains constant across all coffee categories, while we permit the effects of age and expertise to differ for each type of coffee. Essentially, this suggests that we assume broader gender differences for all coffees, while acknowledging that the effects of age and expertise may differ across various coffee types.
+
+```{r}
+#| eval: false
+#| code-fold: false
+
+# set reasonable priors
+prior <- c(prior(normal(0,2), class = Intercept),
+           prior(normal(0,2), class = b),
+           prior(normal(0,2), class = sd))
+
+# hlm with varying slopes for expertise
+# and varying intercepts for age
+fit2 <-
+  brm(
+    ranking ~ 1 + 
+      gender +
+      (age + expertise | coffee),
+    data = coffee_ranking,
+    prior = prior,
+    family = cumulative("probit"),
+    chains = 4,
+    cores = 4,
+    iter = 2000,
+    control = list(adapt_delta = 0.9)
+  )
+```
+
+There are a few divergent transitions after fitting, but that can be fixed by upping the `adapt_delta` parameter. In general I'm satisfied with the fit, as all of our `Rhat` values are equal to 1.00, and the `Bulk_ESS` and `Tail_ESS` look fine too.
+
+After fitting the model, we can get some initial insights by plotting out some of the model coefficients. Specifically, we probably want to focus our attention on the varying effects for age and expertise on coffee preferences. We can do this by extracting the random effects from the model and plotting them. Here, we can see the estimated effect of age on preferences for each coffee (relative to the 18-24 group).
+
+```{r}
+#| echo: false
+#| fig-cap: Effect of age on coffee preferences. Older individuals tend to rate coffee D lower.
+
+filter(res, variable %in% vals[2:5]) %>%
+  ggplot() +
+  geom_pointrange(aes(x = Estimate, xmin = `Q2.5`, xmax = `Q97.5`, y = coffee, color = variable)) +
+  facet_wrap(~variable) +
+  theme_minimal() +
+  scale_color_manual(values = col_pal) +
+  labs(X = "Estimate", y = "Coffee") +
+  theme(legend.position = 'none',
+        strip.text = element_text(face = "bold", hjust = 0, size = 10))
+```
+
+...and the effect of self-reported expertise:
+
+```{r}
+#| echo: false
+#| fig-cap: Effect of expertise on coffee preferences. Individuals with higher expertise tend to rate coffee 'A' and 'D' higher.
+
+filter(res, variable %in% vals[6]) %>%
+  ggplot() +
+  geom_pointrange(aes(x = Estimate, xmin = `Q2.5`, xmax = `Q97.5`, y = coffee, color = variable), size = .5) +
+  facet_wrap(~variable) +
+  theme_minimal() +
+  scale_color_manual(values = col_pal) +
+  theme(legend.position = 'none',
+        strip.text = element_text(face = "bold", hjust = 0, size = 12))
+
+```
+
+From this we see results that largely fit with what was reported in the video. Older people tend to dislike Coffee 'A' and 'D' more, and people with higher expertise tend to like them more. 
+
+### Digging a little deeper: Males vs. Females
+
+Let's start by looking at *all* the predicted rankings for coffee 'D'. In this case we have 500 different predictions, corresponding to all possible age x gender x expertise x ranking combinations. Each individual line represents the estimated ranking for a particular consumer. 
+
+```{r}
+#| echo: false
+#| fig-cap: Predictions for all consumer groups. Each line represents a single age, gender, and expertise combination.
+plot_coffee_d <-
+  pred_data %>%
+  filter(coffee == 'pref_d') %>%
+  ggplot(aes(
+    x = ranking,
+    y = prob,
+    group = paste0(age, gender, expertise)
+  )) +
+  geom_line(alpha = .03, linewidth = .8) +
+  theme_minimal() +
+  labs(
+    title = "Predicted Coffee Ranking - Coffee 'D'",
+    x = "Ranking",
+    y = "Probability"
+  )
+plot_coffee_d
+
+
+# median expertise
+m_exp <- median(coffee_data$expertise, na.rm = T)
+```
+
+Using this data we can do some simple comparisons. For example: what is the estimated difference between males and females ranking coffee 'D'? In his summary, James Hoffman highlighted that [females were much more likely](https://youtu.be/bMOOQfeloH0?si=Nljr4mcZoLswoW0p&t=479) to strongly dislike coffee 'D' relative to males. However, if you look at the data, females in the survey also generally reported much less expertise in coffee.
+
+So what if we control for expertise, and see what the estimated difference in gender is assuming they are otherwise comparable coffee consumers. Below, we set the expertise for predictions to the median, which is 6.
+
+::: {#fig-elephants layout-ncol=2}
+
+```{r}
+#| echo: false
+
+# males
+plot_coffee_d +
+  geom_line(data = filter(pred_data,coffee == 'pref_d', gender == 'Male', expertise == m_exp), color = col_pal[1], linewidth = .8) +
+  annotate(geom = "text", x = c(4.5), y = c(.34), label = c("Male"), color = c(col_pal[1]), fontface = "bold")
+```
+
+```{r}
+#| echo: false
+
+# females
+plot_coffee_d +
+  geom_line(data = filter(pred_data,coffee == 'pref_d', gender == 'Female', expertise == m_exp), color = col_pal[2], linewidth = .8) +
+  annotate(geom = "text", x = c(4.5), y = c(.31), label = c("Female"), color = c(col_pal[2]), fontface = "bold")
+```
+
+Coffee rankings for males and females, across all age groups
+:::
+
+And here are the estimates for males and females, holding age constant at 25-34 and self-reported expertise to the median (6). As we can see both males and females with similar expertise within the same age groups largely rate coffee D similarly, with the largest difference being for ranking it a 5.
+
+```{r}
+#| echo: false
+#| fig-cap: Effect of gender on preferences for coffee 'D' holding age constant to 25-34.
+
+# males and females, holding age constant (25-34)
+plot_coffee_d +
+  geom_line(data = filter(pred_data,coffee == 'pref_d', age == "25-34", expertise == m_exp), aes(color = gender), linewidth = .8) +
+  annotate(geom = "text", x = c(4.5,4.5), y = c(.24,.33), label = c("Female","Male"), color = c(col_pal[2],col_pal[1]), fontface = "bold")+
+  scale_color_manual(values = col_pal) +
+  theme(legend.position = "none")
+```
+
+So really, there aren't very large difference in regards to gender after we control for expertise. The large gender difference that James sees in the survey is likely mostly an artifact of differences in experience with coffee between males and females^[Given the viewership demographics for James' channel, I actually assume that many of the female ratings are the partners of the male viewers, and are probably not as experienced as their partners]. 
+
+```{r}
+#| echo: false
+#| fig-cap: Female respondents were less likely to report high expertise with coffee, relative to males.
+coffee_data %>%
+  filter(gender %in% c("Male", "Female")) %>%
+  count(gender, expertise) %>%
+  group_by(gender) %>%
+  mutate(prop = n / sum(n)) %>%
+  ggplot() +
+  geom_col(aes(
+    x = as_factor(expertise),
+    y = prop,
+    fill = fct_relevel(gender, "Male")
+  ), position = "dodge") +
+  scale_fill_manual(values = col_pal) +
+  theme_minimal() +
+  theme(legend.title = element_blank()) +
+  labs(x = "Expertise", y = "Proportion")
+```
+
+In fact, if we look at the differences in self-reported expertise we have estimated rankings for a male, aged 25-34 for self-reported expertise at 1, 5, and 10. As is fairly clear, the distribution of estimated rankings is *substantially* different across levels of expertise. For example, we estimate about an 80% probability that a person with a self-assessed expertise of 10 to rate coffee 'D' a 4 or 5. In contrast that drops to about 45% for a person with an expertise of 5, and 20% for a person with an expertise of 1.
+
+```{r}
+#| echo: false
+#| fig-cap: Effect of expertise on preferences for coffee 'D' holding age and gender constant to 25-34 and male. Persons with higher coffee expertise are more likely to rate coffee 'D' higher.
+
+plot_coffee_d +
+  geom_line(data = filter(pred_data,coffee == 'pref_d', age == "25-34", gender == "Male", expertise %in% c(1,5,10)), aes(color = factor(expertise)), linewidth = .8) +
+    annotate(geom = "text", x = c(5,5, 5), y = c(.10, .26,.59), label = c("1","5","10"), color = c(col_pal[1], col_pal[2],col_pal[3]), fontface = "bold") +
+  scale_color_manual(values = col_pal) +
+  theme(legend.position = 'none')
+```
+
+If it's not already clear, the biggest differences in rating the unusual natural-process coffee is not really related to gender, but rather it is mostly based on an individuals expertise or 'expertise' with coffee. 
+
+## Comparing two hypothetical consumers
+
+So now that we have our model, we can use it to pose any number of comparisons by relying on posterior draws. 
+
+Let's first look at the most common age-gender-expertise combinations. Below we see that males largely make up the most common individuals who completed the survey. From a hypothetical perspective, let's compare how the most common male respondent (between 25-34 years old with an expertise of 7) would rate a given coffee compared to the most common female respondent (25-34 with an expertise of 5).
+
+```{r}
+coffee_data %>%
+  count(age,gender,expertise) %>%
+  arrange(desc(n)) %>%
+  slice(1:10) %>%
+  kable()
+```
+
+First we need to compute 4000 posterior draws for each hypothetical user. These will be probabilities for our hypothetical person scoring a given coffee a 1 though a 5. We can get this by calling the `posterior_epred` function.
+
+```{r}
+#| code-fold: false
+# get 4000 posterior draws for two hypothetical individuals
+# for scoring a given coffee
+
+# helper function for generating predictions
+make_comparisons <-
+  function(fit,
+           pred_coffee,
+           pred_exp,
+           pred_age,
+           pred_gender) {
+    newdata <-
+      data.frame(
+        expertise = pred_exp,
+        age = pred_age,
+        gender = pred_gender,
+        coffee = pred_coffee
+      )
+    
+    return(posterior_epred(fit2, newdata = newdata))
+  }
+
+# get posterior draws
+Z <-
+  make_comparisons(
+    fit2,
+    pred_coffee = c("pref_d"),
+    pred_exp = c(7, 5),
+    pred_age = "25-34",
+    pred_gender = c("Male", "Female")
+  )
+
+# matrix of estimated differences
+# p1 - p2
+p_diff <- Z[, 1, 1:5] - Z[, 2, 1:5]
+```
+
+Then we can put them into a dataframe and plot their distributions. As we can see, they are quite far apart. A 25-34 year old male with an expertise of 7 has a probability of about 35% of scoring coffee 'D' a 5, compared to 19% for female with an expertise of 5.
+
+```{r}
+#| echo: false
+data.frame(male =Z[,1, 5],
+           female = Z[,2, 5]) %>%
+  pivot_longer(
+    cols = c(male, female),
+    names_to = "gender",
+    values_to = "prob"
+  ) %>%
+  mutate(gender = fct_relevel(gender, "male")) %>%
+  ggplot() +
+  geom_density(aes(x = prob, fill = gender, group = gender), color = NA, linewidth = 1, alpha = .5) +
+  scale_fill_manual(values = col_pal) +
+  scale_color_manual(values = col_pal) +
+  labs(x = "Probability", y = "Density") +
+  theme_minimal() +
+  theme(legend.position = c(.8,.9),
+        legend.text = element_text(face = "bold"),
+        legend.direction = "horizontal",
+        legend.title = element_blank())
+  
+
+```
+
+One nice thing about a Bayesian approach is that we have access to the full posterior, so we can compute any kind of comparisons. For example, what is the predicted median difference between these two individuals rating coffee 'D' a 5, with an 89% credible interval?
+
+```{r}
+#| code-fold: false
+quantile(p_diff[,5], probs = c(.06, .5, .94))
+```
+
+Or we can plot the estimated difference of males and females for each of the response categories:
+
+```{r}
+#| echo: false
+data.frame(p_diff) %>%
+  set_names(., c("P(1)","P(2)","P(3)","P(4)","P(5)")) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot() +
+  geom_density(aes(x = value, fill = name, color = name)) +
+  geom_hline(yintercept = 0, color = "white") +
+  facet_grid(name~.) +
+  scale_color_manual(values = col_pal) +
+  scale_fill_manual(values = col_pal) +
+  labs(x = "Probability (Male - Female)", y = "Density") +
+  theme_minimal() +
+  theme(legend.position = 'none',
+        strip.text = element_text(face = "bold"),
+        panel.grid.minor = element_blank())
+```
+
+Or what if we had two consumers with similarly rated expertise, but one was much older?
+
+```{r}
+#| code-fold: false
+Z2 <-
+  make_comparisons(
+    fit2,
+    pred_coffee = "pref_d",
+    pred_exp = 6,
+    pred_age = c("25-34", "55+"),
+    pred_gender = "Male"
+  )
+
+p_diff_2 <- Z2[, 1, 1:5] - Z2[, 2, 1:5]
+
+quantile(p_diff_2[,5], probs = c(.06, .5, .94))
+
+```
+
+Which suggests that the probability of a 25-34 year old rating coffee 'D' a 5 is about *21 percentage points* higher than a 55+ year old individual. That's a huge age difference!
+
+## Full Data
+
+```{r}
+#| eval: false
+#| code-fold: true
+
+library(tidyverse)
+library(brms)
+library(broom.mixed)
+
+# load survey data here
+coffee <- read_csv("/gatt.csv")
+
+col_pal <- c( '#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377')
+
+set.seed(123)
+
+## Function to extract random effects from brms model
+pull_ranef <- function(x, idx){
+  return(
+    data.frame(x[,,idx]) %>%
+  mutate(coffee = rownames(.), variable = idx) 
+  )
+}
+
+
+# Setup data
+coffee_data <-
+  coffee %>%
+  select(
+    age = `What is your age?`,
+    gender = `Gender`,
+    expertise = `Lastly, how would you rate your own coffee expertise?`,
+    pref_a = `Coffee A - Personal Preference`,
+    pref_b = `Coffee B - Personal Preference`,
+    pref_c = `Coffee C - Personal Preference`,
+    pref_d = `Coffee D - Personal Preference`
+  ) %>%
+  replace_na(
+    list(
+      age = 'Not Provided',
+      gender = 'Not Provided',
+      race = 'Not Provided',
+      education = 'Not Provided'
+    )
+  )
+
+coffee_ranking <-
+  coffee_data %>%
+  na.omit() %>%
+  select(age, gender, expertise, pref_a:pref_d) %>%
+  pivot_longer(cols = starts_with("pref"),
+               names_to = "coffee",
+               values_to = "ranking") %>%
+  mutate(age = case_when(
+    age %in% c("<18 years old","18-24 years old") ~ "18-24",
+    age == "25-34 years old" ~ "25-34",
+    age == "35-44 years old" ~ "35-44",
+    age == "45-54 years old" ~ "45-54",
+    age %in% c("55-64 years old", ">65 years old") ~ "55+"
+  ))
+
+# fit model
+fit2 <-
+  brm(
+    ranking ~ 1 + 
+      gender +
+      (age + expertise | coffee),
+    data = coffee_ranking,
+    prior = prior,
+    family = cumulative("probit"),
+    chains = 4,
+    cores = 4,
+    iter = 2000,
+    control = list(adapt_delta = 0.99)
+  )
+
+strata <- coffee_ranking %>%
+  filter(gender %in% c("Male","Female")) %>%
+  distinct(expertise, age, gender, coffee) %>%
+  complete(expertise,age,gender,coffee)
+
+fit1_preds <-
+  predict(fit2, newdata = strata) %>%
+  data.frame()
+
+pred_data <-
+  tibble(strata, fit1_preds) %>%
+  set_names(c(
+    'expertise',
+    'age',
+    'gender',
+    'coffee',
+    'p1',
+    'p2',
+    'p3',
+    'p4',
+    'p5'
+  )) %>%
+  mutate(
+    gender = fct_relevel(gender, "Male"),
+    age = fct_relevel(
+      age,
+      "18-24",
+      "25-34",
+      "35-44",
+      "45-54",
+      '55+'
+    )
+  ) %>%
+  pivot_longer(cols = starts_with("p"),
+               names_to = 'ranking',
+               values_to = 'prob')
+
+# random effects
+fit2_summary <- ranef(fit2)[[1]]
+vals <- c("Intercept","age25M34","age35M44","age45M54","age55P","expertise")
+
+# pull into nice dataframe
+res <-
+  sapply(vals, function(x) {
+    pull_ranef(fit2_summary, x)
+  },
+  simplify = FALSE) %>%
+  do.call(rbind, .)
+```
