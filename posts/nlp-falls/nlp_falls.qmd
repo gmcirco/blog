@@ -1,0 +1,261 @@
+---
+title: "Using NLP To Classify Medical Falls"
+subtitle: "Or: An Old Dog Learning New Tricks"
+author: Gio Circo, Ph.D.
+date: 2024-1-8
+categories:
+  - Natural Language Processing
+  - Python
+format: 
+    html:
+        self-contained: true
+        code-fold: false
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+theme: flatly
+image: words.jpg
+---
+
+## Natural Language Processing and Deep Learning
+
+There's no question that natural language processing (NLP) facilitated by deep learning has exploded in popularity (much of which is popularized by the ChatGPT family of models). This is an exciting time to be involved in AI and machine learning. However, for the kinds of tasks I typically work on in my day job, a lot of the deep learning models don't provide much benefit. In fact, for most tabular data problems, random forests + boosting tend to work incredibly well. Areas where deep learning excels, like unstructured text or image input, are not things I find myself working on. That being said, I am always sharpening my skills and dipping my toes into areas where I am least familiar. 
+
+A huge advantage today, compared to even ten years ago, is the ecosystem of open data and pre-trained models. [HuggingFace](https://huggingface.co/) in particular has a lot of easily obtainable pre-trained models. Stuff like the [Transformers](https://huggingface.co/docs/transformers/index) library make it easy for a neophyte like me to hop in and start doing work without too much overhead. 
+
+## Predicting Elderly Falls from Medical Narratives
+
+For this example I am going to rely on some data from [DrivenData](https://www.drivendata.org/competitions/217/cdc-fall-narratives/page/763/) - an organization that hosts data competitions. The data here are verified fall events for adults aged 65+. This sample comes more broadly from the [National Electronic Injury Survellience System](https://www.cpsc.gov/Research--Statistics/NEISS-Injury-Data)(NEISS). This is useful because the sample of cases here are human-verified falls cases, in which case we have a source of truth. While you could probably get pretty far just doing some regex like `str.match("FALL|FELL|SLIPPED")` but it would likely miss more subtle cases. This is where having something like a BERT model is useful. 
+
+Let's say we have a set of verified falls narratives (which we do) and we have a large set of miscellanous narratives that contain falls cases, as well as other injuries that are not falls. Our goal is to find narratives that are likely to be related to elderly fall cases. To do this, we will use the verified falls cases narratives from DataDriven as our "training data" so to speak, and we will use an NLP model to find cases that are semantically similar to these verified falls cases.
+
+### Data Setup
+
+```{python}
+#| warning: false
+#| message: false
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import re
+from sentence_transformers import SentenceTransformer, util
+
+np.random.seed(1)
+
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# load raw data
+falls = pd.read_csv("../../../data/falls/falls.csv")
+neis = pd.read_csv("../../../data/falls/neis.csv")
+
+# process datetime
+falls['treatment_date'] = pd.to_datetime(falls['treatment_date'])
+```
+
+To get set up we read in the verified falls narratives, as well as the full sample of NEIS cases from 2022. After reading in our data we can perform some minor data cleaning to the narratives. Specifically, because we want to isolate narrative characterics associated with falls we should exclude the leading information about the patient's age and sex, as well as some other medical terminology. We can also remap some abbreviations to English and properly extract the actual age of the patient from the narrative. 
+
+```{python}
+# define remappings of abbreviations
+# and strings to remove from narratives
+
+remap = {
+    "FX": "FRACTURE",
+    "INJ": "INJURY",
+    "LAC": "LACERATION",
+    "CONT": "CONTUSION",
+    "CHI" : "CLOSED HEAD INJURY",
+    "ETOH": "ALCOHOL",
+    "SDH": "SUBDURAL HEMATOMA",
+    "NH": "NURSING HOME",
+    "PT": "PATIENT",
+    "LT": "LEFT",
+    "RT": "RIGHT",
+    "&" : " AND "
+}
+str_remove = "YOM|YOF|MOM|MOF|C/O|S/P|H/O|DX"
+
+
+def process_text(txt):
+    words = txt.split()
+    new_words = [remap.get(word, word) for word in words]
+    txt = " ".join(new_words)
+
+    txt = re.sub("[^a-zA-Z ]", "", txt)
+    txt = re.sub(str_remove, "", txt)
+
+    return re.sub(r"^\s+", "", txt)
+
+def narrative_age(string):
+    age = re.match("^\d+",string)
+
+    if not age:
+        age = 0
+    else:
+        age = age[0]
+        
+    return age
+```
+
+We then apply these to our verified falls data and our raw NEIS data from 2022:
+
+```{python}
+# process narrative text and extract patient age from narrative
+falls['processed_narrative'] = falls['narrative'].apply(process_text)
+neis['processed_narrative'] = neis['Narrative_1'].apply(process_text)
+
+falls['narrative_age'] = falls['narrative'].apply(narrative_age).astype(int)
+neis['narrative_age'] = neis['Narrative_1'].apply(narrative_age).astype(int)
+
+# neis cases are from 2022, remove from verified falls
+falls = falls[falls['treatment_date'] < "2022-01-01"]
+
+# filter narrative ages to 65+
+falls = falls[falls['narrative_age'] >= 65]
+neis = neis[neis['narrative_age'] >= 65]
+
+```
+
+We can see that our coding changes the narratives subtly. For example this string:
+
+```{python}
+falls['narrative'][15]
+```
+
+Is changed to this:
+
+```{python}
+falls['processed_narrative'][15]
+```
+
+This minimal amount of pre-processing should help the model identify similar cases without being affected by too much extranenous information. In addition, because the typical model has about 30,000 words encoded we need to make sure we avoid abbreviations which will be absent from the model dictionary.
+
+### Implementing the Transformer model
+
+We can grab all of our verified fall narratives as well as a random sample of narratives from the 2022 NEIS data. Below we'll take a sample of 250 cases and run them through our model.
+
+```{python}
+N = 250
+idx = np.random.choice(neis.shape[0], N, replace=False)
+
+fall_narrative = np.array(falls['processed_narrative'])
+neis_narrative = np.array(neis['processed_narrative'])[idx]
+```
+
+We take the processed narratives and convert them to tokens using the pre-trained sentence transformer:
+
+```{python}
+embed_train = model.encode(fall_narrative)
+embed_test = model.encode(neis_narrative)
+```
+
+We then compute the [cosine similarity](https://en.wikipedia.org/wiki/Cosine_similarity) between the two tensors. What we will end up with is the distance from our NEIS narratives and the verified fall cases. Cases with larger distances should be less likely to contain information about elderly fall cases.
+
+```{python}
+cos_sim = util.cos_sim(embed_test, embed_train)
+```
+
+For simplicity we scale the distances between 0 and 1, so that 1 is most similar and 0 is least similar. We can then just compare the rank-ordered narratives.
+
+```{python}
+dists = cos_sim.mean(1)
+d_min, d_max = dists.min(), dists.max()
+
+dists = (dists - d_min)/(d_max - d_min)
+dists = np.array(dists)
+
+out = dict(zip(neis_narrative, dists)) 
+```
+
+Plotting a histogram of the minmax scaled cosine similarity scores shows a lot of narratives that are very similar and a long tail of those that are not so similar. Of course, there isn't a single cut point of what we would consider acceptable for classification purposes, but we could certainly use these scores in a regression to determine a suitible cut point if we were so interested.
+
+```{python}
+#| code-fold: true
+#| message: false
+
+cparams = {
+    "axes.spines.left": False,
+    "axes.spines.right": False,
+    "axes.spines.top": False,
+    "axes.spines.bottom": False,
+    "grid.linestyle": "--"
+}
+
+sns.set_theme(style="ticks", rc = cparams)
+
+(
+    sns.histplot(dists, color="#004488"),
+    plt.xlabel("Cosine Similarity (minmax scaled)")
+)
+plt.show()
+```
+
+### Results
+
+Time to actually see the results. Our results are stored in a dictionary which allows us to just pull narratives by similarity score. Let's test it out by looking at the top 10 most similar NEIS narratives:
+
+```{python}
+sorted(out, key=out.get, reverse=True)[:10]
+```
+
+And the 10 *least* similar narratives:
+
+```{python}
+sorted(out, key=out.get, reverse=False)[:10]
+```
+
+So in general, it did a pretty good job. The most similar cases are all clearly related to falls, while the least similar ones are all a mix of other injuries. While I don't have any tests here (coming soon!) I suspect this does better than very simple regex queries. If only because it has the ability to find similarities without needing to match on specific strings. 
+
+## Singular Queries
+
+We can extend this model a bit and create a small class object that will take a single query in, and return the $K$ most similar narratives. Below, we bundle our functions into a `NarrativeQuery` class object. After encoding the narrative we can provide query strings to find sementically similar narratives.
+
+```{python}
+class NarrativeQuery:
+    def __init__(self, narrative):
+        self.narrative = narrative
+        self.narrative_embedding = None
+        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+
+    def encode(self):
+        self.narrative_embedding = self.model.encode(self.narrative)
+
+    def search_narrative(self, query, K = 5):
+        embed_query = self.model.encode(query)
+
+        query_out = self.cos_sim(self.narrative_embedding, embed_query)
+
+        return sorted(query_out, key=query_out.get, reverse=True)[:K]
+
+    def cos_sim(self, embed, embed_query):
+        cs = util.cos_sim(embed, embed_query)
+
+        dists = cs.mean(1)
+        d_min, d_max = dists.min(), dists.max()
+
+        dists = (dists - d_min)/(d_max - d_min)
+        dists = np.array(dists)
+
+        return dict(zip(self.narrative, dists))
+```
+
+This sets it up:
+
+```{python}
+FallsQuery = NarrativeQuery(neis_narrative)
+FallsQuery.encode()
+```
+
+...and this performs the search. Here we're just looking for narratives where a person slipped in a bathtub.
+
+```{python}
+FallsQuery.search_narrative(query="SLIPPED IN BATHTUB", K = 10)
+```
+
+Now *this* is cool. Using the sentence transformer we are able to get passages that are similar in style to what we searched, without sharing the exact same language. For example, the search query is `"SLIPPED IN BATHTUB"` but we get results like `"FELL IN THE SHOWER"` and `"SLIP AND FALL IN THE TUB"`. If we were looking specifically for passages related to falls in the bathtub these obviously make sense (many bathtubs are also just showers as well). 
+
+## Finally
+
+Now, this isn't probably news to most people that actually regularly work with language models. However, it is quite impressive that with a pre-trained model and very minimal pre-processing, you can obtain reasonable results off-the-shelf. I'll definitely be keeping my eyes on these models in the future and looking for ways where they can improve my workflow.
