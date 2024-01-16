@@ -2,54 +2,58 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://gmcirco.github.io/blog/about.html</loc>
-    <lastmod>2023-10-24T14:15:37.714Z</lastmod>
+    <lastmod>2024-01-16T22:03:06.885Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/index.html</loc>
-    <lastmod>2024-01-07T16:44:51.166Z</lastmod>
+    <lastmod>2024-01-16T22:03:09.498Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</loc>
-    <lastmod>2023-10-24T14:15:41.848Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/gmm/gmm.html</loc>
-    <lastmod>2023-10-24T14:15:42.420Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
-    <lastmod>2023-10-24T14:15:43.025Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
-    <lastmod>2023-10-24T14:15:44.684Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
-    <lastmod>2023-10-24T14:15:47.535Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
-    <lastmod>2023-10-24T14:15:48.076Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
-    <lastmod>2023-10-24T14:15:48.534Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/rtm-spatial/rtm.html</loc>
-    <lastmod>2023-10-24T14:15:49.165Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/synth-impact/synth_impact.html</loc>
-    <lastmod>2023-10-24T14:15:49.808Z</lastmod>
+    <lastmod>2024-01-16T22:03:12.453Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/coffee/coffee.html</loc>
-    <lastmod>2023-12-03T16:39:57.274Z</lastmod>
+    <lastmod>2024-01-16T22:03:13.284Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/distance-plotting/distance-plotting.html</loc>
+    <lastmod>2024-01-16T22:03:13.913Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/gmm/gmm.html</loc>
+    <lastmod>2024-01-16T22:03:14.498Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
+    <lastmod>2024-01-16T22:03:15.122Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
+    <lastmod>2024-01-16T22:03:17.093Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/nlp-falls/nlp_falls.html</loc>
-    <lastmod>2024-01-07T16:44:50.007Z</lastmod>
+    <lastmod>2024-01-16T22:03:20.084Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
+    <lastmod>2024-01-16T22:03:22.507Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
+    <lastmod>2024-01-16T22:03:23.063Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
+    <lastmod>2024-01-16T22:03:23.610Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/rtm-spatial/rtm.html</loc>
+    <lastmod>2024-01-16T22:03:24.261Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/synth-impact/synth_impact.html</loc>
+    <lastmod>2024-01-16T22:03:24.886Z</lastmod>
   </url>
 </urlset>

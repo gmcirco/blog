@@ -10,7 +10,305 @@
 <atom:link href="https://gmcirco.github.io/blog//index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-0.9.434</generator>
-<lastBuildDate>Mon, 08 Jan 2024 05:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 16 Jan 2024 05:00:00 GMT</lastBuildDate>
+<item>
+  <title>How to Draw Lines Between Pairs of Points in R</title>
+  <dc:creator>Gio Circo, Ph.D.</dc:creator>
+  <link>https://gmcirco.github.io/blog//posts/distance-plotting/distance-plotting.html</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="drawing-sequences-of-lines" class="level2">
+<h2 class="anchored" data-anchor-id="drawing-sequences-of-lines">Drawing Sequences of Lines</h2>
+<div class="cell">
+
+</div>
+<p>Here’s a quick one. I was recently asked how you might plot the travel of individuals over time on a map. For example, if you had longitudinal data recording the residences of respondents over a course of many years, it might be interesting to see to where and how far they traveled. Doing this in R isn’t too difficult, but it isn’t quite straightforward either. Below I’ll show off my approach using the <code>sf</code> package.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="fu" style="color: #4758AB;">library</span>(tidyverse)</span>
+<span id="cb1-2"><span class="fu" style="color: #4758AB;">library</span>(sf)</span>
+<span id="cb1-3"></span>
+<span id="cb1-4"><span class="fu" style="color: #4758AB;">set.seed</span>(<span class="dv" style="color: #AD0000;">111424</span>)</span>
+<span id="cb1-5"></span>
+<span id="cb1-6"><span class="co" style="color: #5E5E5E;"># load data</span></span>
+<span id="cb1-7"><span class="co" style="color: #5E5E5E;"># cities data: https://simplemaps.com/data/us-cities</span></span>
+<span id="cb1-8"><span class="co" style="color: #5E5E5E;"># usa states: https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_state_500k.zip</span></span>
+<span id="cb1-9"></span>
+<span id="cb1-10">cities <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">read_csv</span>(<span class="st" style="color: #20794D;">"./data/uscities.csv"</span>)</span>
+<span id="cb1-11">usa <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_read</span>(<span class="st" style="color: #20794D;">"./data/usa_states/cb_2018_us_state_500k.shp"</span>)</span>
+<span id="cb1-12"></span>
+<span id="cb1-13"><span class="co" style="color: #5E5E5E;"># create a base layer map</span></span>
+<span id="cb1-14">usa_map <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb1-15">  usa <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-16">  <span class="fu" style="color: #4758AB;">filter</span>(NAME <span class="sc" style="color: #5E5E5E;">%in%</span> state.name,<span class="sc" style="color: #5E5E5E;">!</span>NAME <span class="sc" style="color: #5E5E5E;">%in%</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">"Alaska"</span>, <span class="st" style="color: #20794D;">"Hawaii"</span>)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-17">  <span class="fu" style="color: #4758AB;">st_transform</span>(<span class="at" style="color: #657422;">crs =</span> <span class="dv" style="color: #AD0000;">4326</span>)</span>
+<span id="cb1-18"></span>
+<span id="cb1-19"><span class="co" style="color: #5E5E5E;"># subset 50 largest us cities</span></span>
+<span id="cb1-20">cities_sub <span class="ot" style="color: #003B4F;">&lt;-</span> cities <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-21">  <span class="fu" style="color: #4758AB;">filter</span>(state_name <span class="sc" style="color: #5E5E5E;">%in%</span> state.name,<span class="sc" style="color: #5E5E5E;">!</span>state_name <span class="sc" style="color: #5E5E5E;">%in%</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">"Alaska"</span>, <span class="st" style="color: #20794D;">"Hawaii"</span>)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-22">  <span class="fu" style="color: #4758AB;">slice</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="dv" style="color: #AD0000;">50</span>)</span></code></pre></div>
+</details>
+</div>
+<p>Let’s say we have some data which lists the name of a person, the cities they’ve been to, and the dates they moved. We want to create a plot that draws a line (in order) of their travel between cities. A sample dataset might look something like this below. We have a person identifier and a sequence of dates that display the dates they lived in a location, along with the associated latitude and longitude.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1">N <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">sample</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="fu" style="color: #4758AB;">length</span>(cities_sub), <span class="dv" style="color: #AD0000;">3</span>)</span>
+<span id="cb2-2"></span>
+<span id="cb2-3"><span class="co" style="color: #5E5E5E;"># sample of data</span></span>
+<span id="cb2-4">sample_d <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb2-5">  cities_sub <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb2-6">  <span class="fu" style="color: #4758AB;">slice</span>(N) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb2-7">  <span class="fu" style="color: #4758AB;">mutate</span>(<span class="at" style="color: #657422;">person_id =</span> <span class="st" style="color: #20794D;">'a12345'</span>,</span>
+<span id="cb2-8">         <span class="at" style="color: #657422;">from_date =</span> <span class="fu" style="color: #4758AB;">as.Date</span>(<span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'2016-12-31'</span>,</span>
+<span id="cb2-9">                               <span class="st" style="color: #20794D;">'2018-04-07'</span>,</span>
+<span id="cb2-10">                               <span class="st" style="color: #20794D;">'2024-03-03'</span>))) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb2-11">  <span class="fu" style="color: #4758AB;">select</span>(person_id, city, from_date, lat, lng)</span>
+<span id="cb2-12"></span>
+<span id="cb2-13"><span class="fu" style="color: #4758AB;">kable</span>(sample_d)</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+
+<table>
+ <thead>
+  <tr>
+   <th style="text-align:left;"> person_id </th>
+   <th style="text-align:left;"> city </th>
+   <th style="text-align:left;"> from_date </th>
+   <th style="text-align:right;"> lat </th>
+   <th style="text-align:right;"> lng </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> a12345 </td>
+   <td style="text-align:left;"> Seattle </td>
+   <td style="text-align:left;"> 2016-12-31 </td>
+   <td style="text-align:right;"> 47.6211 </td>
+   <td style="text-align:right;"> -122.3244 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> a12345 </td>
+   <td style="text-align:left;"> Houston </td>
+   <td style="text-align:left;"> 2018-04-07 </td>
+   <td style="text-align:right;"> 29.7860 </td>
+   <td style="text-align:right;"> -95.3885 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> a12345 </td>
+   <td style="text-align:left;"> Phoenix </td>
+   <td style="text-align:left;"> 2024-03-03 </td>
+   <td style="text-align:right;"> 33.5722 </td>
+   <td style="text-align:right;"> -112.0892 </td>
+  </tr>
+</tbody>
+</table>
+
+</div>
+</div>
+<p>Now what we want to do is find a way to plot these as a linestring on a map. To do this we can create a simple function that will take this dataframe as input, and assume that for each sequence of points they are ordered from oldest to newest. The function will then extract the points and create an <code>st_linestring</code> object that links them together. Because <code>sf</code> objects interface well with <code>ggplot</code> you can easily make a direct call to plot ontop of a base map.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><span class="co" style="color: #5E5E5E;"># function to iterate through n number of points</span></span>
+<span id="cb3-2"></span>
+<span id="cb3-3"><span class="co" style="color: #5E5E5E;"># given some input distance data 'dd'</span></span>
+<span id="cb3-4"><span class="co" style="color: #5E5E5E;"># function expects to see a lng, lat</span></span>
+<span id="cb3-5"><span class="co" style="color: #5E5E5E;"># and rows sorted by sequence</span></span>
+<span id="cb3-6"></span>
+<span id="cb3-7">distance_linestring <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="cf" style="color: #003B4F;">function</span>(dd){</span>
+<span id="cb3-8">  points_list <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">list</span>()</span>
+<span id="cb3-9">  idx <span class="ot" style="color: #003B4F;">=</span> <span class="dv" style="color: #AD0000;">1</span></span>
+<span id="cb3-10">  <span class="cf" style="color: #003B4F;">for</span>(i <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="fu" style="color: #4758AB;">nrow</span>(dd)){</span>
+<span id="cb3-11">    points_list[[idx]] <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_point</span>(<span class="fu" style="color: #4758AB;">c</span>(dd<span class="sc" style="color: #5E5E5E;">$</span>lng[idx],dd<span class="sc" style="color: #5E5E5E;">$</span>lat[idx]))</span>
+<span id="cb3-12">    idx <span class="ot" style="color: #003B4F;">=</span> idx<span class="sc" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">1</span></span>
+<span id="cb3-13">  }</span>
+<span id="cb3-14">  ls <span class="ot" style="color: #003B4F;">=</span> <span class="fu" style="color: #4758AB;">st_linestring</span>(<span class="fu" style="color: #4758AB;">do.call</span>(rbind, points_list)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span> <span class="fu" style="color: #4758AB;">st_sfc</span>(<span class="at" style="color: #657422;">crs =</span> <span class="dv" style="color: #AD0000;">4326</span>)</span>
+<span id="cb3-15">  </span>
+<span id="cb3-16">  <span class="fu" style="color: #4758AB;">return</span>(ls)</span>
+<span id="cb3-17">}</span>
+<span id="cb3-18"></span>
+<span id="cb3-19"><span class="co" style="color: #5E5E5E;"># let's draw a line between three random cities</span></span>
+<span id="cb3-20">d1 <span class="ot" style="color: #003B4F;">=</span> <span class="fu" style="color: #4758AB;">distance_linestring</span>(sample_d)</span></code></pre></div>
+</details>
+</div>
+<p>After calling our <code>distance_linestring</code> function we take the output <code>d1</code> and plot it on our basemap.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><span class="co" style="color: #5E5E5E;"># set up base map</span></span>
+<span id="cb4-2">base_map <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">ggplot</span>() <span class="sc" style="color: #5E5E5E;">+</span> </span>
+<span id="cb4-3">  <span class="fu" style="color: #4758AB;">geom_sf</span>(<span class="at" style="color: #657422;">data =</span> usa_map, <span class="at" style="color: #657422;">fill =</span> <span class="st" style="color: #20794D;">'#FFFFFF'</span>, <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#BBBBBB'</span>)</span>
+<span id="cb4-4"></span>
+<span id="cb4-5">base_map <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb4-6">  <span class="fu" style="color: #4758AB;">geom_sf</span>(<span class="at" style="color: #657422;">data =</span> d1, <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#BB5566'</span>, <span class="at" style="color: #657422;">linewidth =</span> <span class="dv" style="color: #AD0000;">1</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb4-7">  <span class="fu" style="color: #4758AB;">theme_void</span>()</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="https://gmcirco.github.io/blog//posts\distance-plotting\distance-plotting_files\figure-html\unnamed-chunk-5-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>And there we go! A single journey.</p>
+<section id="drawing-a-lot-of-lines" class="level3">
+<h3 class="anchored" data-anchor-id="drawing-a-lot-of-lines">Drawing a <em>lot</em> of lines</h3>
+<p>A more common example might ask us to visualize patterns that many people take - for instance, all participants of a longitudinal survey. We can easily extend the function defined above and wrap it in a for-loop. To illustrate what this looks like I simulate some data for 100 theoretical trips between 2 and 5 cities:</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><span class="co" style="color: #5E5E5E;"># OK, let's simulate 100 people travelling up to 5 cities</span></span>
+<span id="cb5-2"><span class="co" style="color: #5E5E5E;"># then we store the results in a list and plot them on a base map</span></span>
+<span id="cb5-3">linestring_list <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">list</span>()</span>
+<span id="cb5-4">iter <span class="ot" style="color: #003B4F;">=</span> <span class="dv" style="color: #AD0000;">100</span></span>
+<span id="cb5-5">max_N <span class="ot" style="color: #003B4F;">=</span> <span class="dv" style="color: #AD0000;">5</span></span>
+<span id="cb5-6"></span>
+<span id="cb5-7"><span class="cf" style="color: #003B4F;">for</span>(i <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span>iter){</span>
+<span id="cb5-8"> k <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">sample</span>(<span class="dv" style="color: #AD0000;">2</span><span class="sc" style="color: #5E5E5E;">:</span>max_N,<span class="dv" style="color: #AD0000;">1</span>)</span>
+<span id="cb5-9"> N <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">sample</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="fu" style="color: #4758AB;">length</span>(cities_sub),k)</span>
+<span id="cb5-10"> </span>
+<span id="cb5-11"> linestring_list[[i]] <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">distance_linestring</span>(cities_sub[N,])</span>
+<span id="cb5-12">}</span>
+<span id="cb5-13"></span>
+<span id="cb5-14"></span>
+<span id="cb5-15"><span class="co" style="color: #5E5E5E;"># reset basemap</span></span>
+<span id="cb5-16">base_map <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">ggplot</span>() <span class="sc" style="color: #5E5E5E;">+</span> </span>
+<span id="cb5-17">  <span class="fu" style="color: #4758AB;">geom_sf</span>(<span class="at" style="color: #657422;">data =</span> usa_map, <span class="at" style="color: #657422;">fill =</span> <span class="st" style="color: #20794D;">'#FFFFFF'</span>, <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#BBBBBB'</span>)</span>
+<span id="cb5-18"></span>
+<span id="cb5-19"><span class="co" style="color: #5E5E5E;"># iterate through the list of locations and add each to the plot</span></span>
+<span id="cb5-20"><span class="cf" style="color: #003B4F;">for</span>(p <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="fu" style="color: #4758AB;">length</span>(linestring_list)){</span>
+<span id="cb5-21">  base_map <span class="ot" style="color: #003B4F;">=</span> base_map <span class="sc" style="color: #5E5E5E;">+</span> <span class="fu" style="color: #4758AB;">geom_sf</span>(<span class="at" style="color: #657422;">data =</span> linestring_list[[p]], <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#BB5566'</span>, <span class="at" style="color: #657422;">linewidth =</span> <span class="dv" style="color: #AD0000;">1</span>, <span class="at" style="color: #657422;">alpha =</span> .<span class="dv" style="color: #AD0000;">2</span>)</span>
+<span id="cb5-22">}</span></code></pre></div>
+</details>
+</div>
+<p>So we just simulate a lot of journeys that go between 2 and 5 states, store them in a list, then run our <code>linestring_list</code> function over it. The for-loop to add lines is a bit hack-y, but it works. We can then just plot them out:</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1">base_map <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb6-2">  <span class="fu" style="color: #4758AB;">theme_void</span>()</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="https://gmcirco.github.io/blog//posts\distance-plotting\distance-plotting_files\figure-html\unnamed-chunk-7-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>And if we want to know how far, on average, each person traveled, we can just compute the sum of distances across our list. Simple!</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><span class="co" style="color: #5E5E5E;"># distance in meters</span></span>
+<span id="cb7-2">dists_m <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">sapply</span>(linestring_list, st_length)</span>
+<span id="cb7-3"></span>
+<span id="cb7-4"><span class="fu" style="color: #4758AB;">hist</span>(dists_m<span class="sc" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">1609</span>, <span class="at" style="color: #657422;">xlab =</span> <span class="st" style="color: #20794D;">"Distance in Miles"</span>, <span class="at" style="color: #657422;">main =</span> <span class="st" style="color: #20794D;">"Miles Travelled"</span>)</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="https://gmcirco.github.io/blog//posts\distance-plotting\distance-plotting_files\figure-html\unnamed-chunk-8-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="full-data" class="level2">
+<h2 class="anchored" data-anchor-id="full-data">Full Data</h2>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><span class="fu" style="color: #4758AB;">library</span>(tidyverse)</span>
+<span id="cb8-2"><span class="fu" style="color: #4758AB;">library</span>(sf)</span>
+<span id="cb8-3"></span>
+<span id="cb8-4"><span class="fu" style="color: #4758AB;">set.seed</span>(<span class="dv" style="color: #AD0000;">111424</span>)</span>
+<span id="cb8-5"></span>
+<span id="cb8-6"><span class="co" style="color: #5E5E5E;"># load data</span></span>
+<span id="cb8-7"><span class="co" style="color: #5E5E5E;"># cities data: https://simplemaps.com/data/us-cities</span></span>
+<span id="cb8-8"><span class="co" style="color: #5E5E5E;"># usa states: https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_state_500k.zip</span></span>
+<span id="cb8-9"></span>
+<span id="cb8-10">cities <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">read_csv</span>(<span class="st" style="color: #20794D;">"./data/uscities.csv"</span>)</span>
+<span id="cb8-11">usa <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_read</span>(<span class="st" style="color: #20794D;">"./data/usa_states/cb_2018_us_state_500k.shp"</span>)</span>
+<span id="cb8-12"></span>
+<span id="cb8-13"><span class="co" style="color: #5E5E5E;"># create a base layer map</span></span>
+<span id="cb8-14">usa_map <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb8-15">  usa <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb8-16">  <span class="fu" style="color: #4758AB;">filter</span>(NAME <span class="sc" style="color: #5E5E5E;">%in%</span> state.name,<span class="sc" style="color: #5E5E5E;">!</span>NAME <span class="sc" style="color: #5E5E5E;">%in%</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">"Alaska"</span>, <span class="st" style="color: #20794D;">"Hawaii"</span>)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb8-17">  <span class="fu" style="color: #4758AB;">st_transform</span>(<span class="at" style="color: #657422;">crs =</span> <span class="dv" style="color: #AD0000;">4326</span>)</span>
+<span id="cb8-18"></span>
+<span id="cb8-19"><span class="co" style="color: #5E5E5E;"># subset 50 largest us cities</span></span>
+<span id="cb8-20">cities_sub <span class="ot" style="color: #003B4F;">&lt;-</span> cities <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb8-21">  <span class="fu" style="color: #4758AB;">filter</span>(state_name <span class="sc" style="color: #5E5E5E;">%in%</span> state.name,<span class="sc" style="color: #5E5E5E;">!</span>state_name <span class="sc" style="color: #5E5E5E;">%in%</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">"Alaska"</span>, <span class="st" style="color: #20794D;">"Hawaii"</span>)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb8-22">  <span class="fu" style="color: #4758AB;">slice</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="dv" style="color: #AD0000;">50</span>)</span>
+<span id="cb8-23"></span>
+<span id="cb8-24"><span class="co" style="color: #5E5E5E;"># function to iterate through n number of points</span></span>
+<span id="cb8-25"></span>
+<span id="cb8-26"><span class="co" style="color: #5E5E5E;"># given some input distance data 'dd'</span></span>
+<span id="cb8-27"><span class="co" style="color: #5E5E5E;"># function expects to see a lng, lat</span></span>
+<span id="cb8-28"><span class="co" style="color: #5E5E5E;"># and rows sorted by sequence</span></span>
+<span id="cb8-29"></span>
+<span id="cb8-30">distance_linestring <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="cf" style="color: #003B4F;">function</span>(dd){</span>
+<span id="cb8-31">  points_list <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">list</span>()</span>
+<span id="cb8-32">  idx <span class="ot" style="color: #003B4F;">=</span> <span class="dv" style="color: #AD0000;">1</span></span>
+<span id="cb8-33">  <span class="cf" style="color: #003B4F;">for</span>(i <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="fu" style="color: #4758AB;">nrow</span>(dd)){</span>
+<span id="cb8-34">    points_list[[idx]] <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">st_point</span>(<span class="fu" style="color: #4758AB;">c</span>(dd<span class="sc" style="color: #5E5E5E;">$</span>lng[idx],dd<span class="sc" style="color: #5E5E5E;">$</span>lat[idx]))</span>
+<span id="cb8-35">    idx <span class="ot" style="color: #003B4F;">=</span> idx<span class="sc" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">1</span></span>
+<span id="cb8-36">  }</span>
+<span id="cb8-37">  ls <span class="ot" style="color: #003B4F;">=</span> <span class="fu" style="color: #4758AB;">st_linestring</span>(<span class="fu" style="color: #4758AB;">do.call</span>(rbind, points_list)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span> <span class="fu" style="color: #4758AB;">st_sfc</span>(<span class="at" style="color: #657422;">crs =</span> <span class="dv" style="color: #AD0000;">4326</span>)</span>
+<span id="cb8-38">  </span>
+<span id="cb8-39">  <span class="fu" style="color: #4758AB;">return</span>(ls)</span>
+<span id="cb8-40">}</span>
+<span id="cb8-41"></span>
+<span id="cb8-42"><span class="co" style="color: #5E5E5E;"># let's draw a line between three random cities</span></span>
+<span id="cb8-43">d1 <span class="ot" style="color: #003B4F;">=</span> <span class="fu" style="color: #4758AB;">distance_linestring</span>(sample_d)</span>
+<span id="cb8-44"></span>
+<span id="cb8-45"><span class="co" style="color: #5E5E5E;"># set up base map</span></span>
+<span id="cb8-46">base_map <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">ggplot</span>() <span class="sc" style="color: #5E5E5E;">+</span> </span>
+<span id="cb8-47">  <span class="fu" style="color: #4758AB;">geom_sf</span>(<span class="at" style="color: #657422;">data =</span> usa_map, <span class="at" style="color: #657422;">fill =</span> <span class="st" style="color: #20794D;">'#FFFFFF'</span>, <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#BBBBBB'</span>)</span>
+<span id="cb8-48"></span>
+<span id="cb8-49">base_map <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb8-50">  <span class="fu" style="color: #4758AB;">geom_sf</span>(<span class="at" style="color: #657422;">data =</span> d1, <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#BB5566'</span>, <span class="at" style="color: #657422;">linewidth =</span> <span class="dv" style="color: #AD0000;">1</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb8-51">  <span class="fu" style="color: #4758AB;">theme_void</span>()</span>
+<span id="cb8-52"></span>
+<span id="cb8-53"><span class="co" style="color: #5E5E5E;"># OK, let's simulate 100 people travelling up to 5 cities</span></span>
+<span id="cb8-54"><span class="co" style="color: #5E5E5E;"># then we store the results in a list and plot them on a base map</span></span>
+<span id="cb8-55">linestring_list <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">list</span>()</span>
+<span id="cb8-56">iter <span class="ot" style="color: #003B4F;">=</span> <span class="dv" style="color: #AD0000;">100</span></span>
+<span id="cb8-57">max_N <span class="ot" style="color: #003B4F;">=</span> <span class="dv" style="color: #AD0000;">5</span></span>
+<span id="cb8-58"></span>
+<span id="cb8-59"><span class="cf" style="color: #003B4F;">for</span>(i <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span>iter){</span>
+<span id="cb8-60"> k <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">sample</span>(<span class="dv" style="color: #AD0000;">2</span><span class="sc" style="color: #5E5E5E;">:</span>max_N,<span class="dv" style="color: #AD0000;">1</span>)</span>
+<span id="cb8-61"> N <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">sample</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="fu" style="color: #4758AB;">length</span>(cities_sub),k)</span>
+<span id="cb8-62"> </span>
+<span id="cb8-63"> linestring_list[[i]] <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">distance_linestring</span>(cities_sub[N,])</span>
+<span id="cb8-64">}</span>
+<span id="cb8-65"></span>
+<span id="cb8-66"></span>
+<span id="cb8-67"><span class="co" style="color: #5E5E5E;"># reset basemap</span></span>
+<span id="cb8-68">base_map <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">ggplot</span>() <span class="sc" style="color: #5E5E5E;">+</span> </span>
+<span id="cb8-69">  <span class="fu" style="color: #4758AB;">geom_sf</span>(<span class="at" style="color: #657422;">data =</span> usa_map, <span class="at" style="color: #657422;">fill =</span> <span class="st" style="color: #20794D;">'#FFFFFF'</span>, <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#BBBBBB'</span>)</span>
+<span id="cb8-70"></span>
+<span id="cb8-71"><span class="co" style="color: #5E5E5E;"># iterate through the list of locations and add each to the plot</span></span>
+<span id="cb8-72"><span class="cf" style="color: #003B4F;">for</span>(p <span class="cf" style="color: #003B4F;">in</span> <span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="fu" style="color: #4758AB;">length</span>(linestring_list)){</span>
+<span id="cb8-73">  base_map <span class="ot" style="color: #003B4F;">=</span> base_map <span class="sc" style="color: #5E5E5E;">+</span> <span class="fu" style="color: #4758AB;">geom_sf</span>(<span class="at" style="color: #657422;">data =</span> linestring_list[[p]], <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'#BB5566'</span>, <span class="at" style="color: #657422;">linewidth =</span> <span class="dv" style="color: #AD0000;">1</span>, <span class="at" style="color: #657422;">alpha =</span> .<span class="dv" style="color: #AD0000;">2</span>)</span>
+<span id="cb8-74">}</span>
+<span id="cb8-75"></span>
+<span id="cb8-76">base_map <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb8-77">  <span class="fu" style="color: #4758AB;">theme_void</span>()</span>
+<span id="cb8-78"></span>
+<span id="cb8-79"><span class="co" style="color: #5E5E5E;"># distance in meters</span></span>
+<span id="cb8-80">dists_m <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">sapply</span>(linestring_list, st_length)</span>
+<span id="cb8-81"></span>
+<span id="cb8-82"><span class="fu" style="color: #4758AB;">hist</span>(dists_m<span class="sc" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">1609</span>, <span class="at" style="color: #657422;">xlab =</span> <span class="st" style="color: #20794D;">"Distance in Miles"</span>, <span class="at" style="color: #657422;">main =</span> <span class="st" style="color: #20794D;">"Miles Travelled"</span>)</span></code></pre></div>
+</details>
+</div>
+
+
+</section>
+
+ ]]></description>
+  <category>R</category>
+  <category>Spatial Statistics</category>
+  <guid>https://gmcirco.github.io/blog//posts/distance-plotting/distance-plotting.html</guid>
+  <pubDate>Tue, 16 Jan 2024 05:00:00 GMT</pubDate>
+  <media:content url="https://gmcirco.github.io/blog///posts/distance-plotting/map.jpg" medium="image" type="image/jpeg"/>
+</item>
 <item>
   <title>Using NLP To Classify Medical Falls</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>
@@ -292,6 +590,9 @@
 
 
 
+<div class="cell">
+
+</div>
 <section id="the-great-american-coffee-taste-test" class="level2">
 <h2 class="anchored" data-anchor-id="the-great-american-coffee-taste-test">The Great American Coffee Taste Test</h2>
 <p>In October I was lucky enough to participate in popular coffee YouTuber James Hoffman’s <a href="https://cometeer.com/pages/the-great-american-coffee-taste-test">Great American Coffee Taste Test</a>. In short, participants got 4 samples of coffee and were able to brew, taste, and rate them live. One the interesting parts of this was that the data was freely shared after the tasting was completed. As both a data and coffee nerd, I couldn’t resit a dive into this dataset.</p>
@@ -312,90 +613,90 @@
 <p>Initially, we need to convert the survey data from a wide format to a long one. In the current data view, each person’s response is repeated four times (once for each coffee type), while their age, gender, and self-reported coffee expertise remain constant. This approach allows us to model responses more efficiently and retain information across different coffee types.</p>
 <div class="cell">
 <div class="cell-output-display">
-<table data-quarto-postprocess="true" class="table table-sm table-striped small">
-<thead>
-<tr class="header">
-<th style="text-align: left;" data-quarto-table-cell-role="th">age</th>
-<th style="text-align: left;" data-quarto-table-cell-role="th">gender</th>
-<th style="text-align: right;" data-quarto-table-cell-role="th">expertise</th>
-<th style="text-align: left;" data-quarto-table-cell-role="th">coffee</th>
-<th style="text-align: right;" data-quarto-table-cell-role="th">ranking</th>
-</tr>
-</thead>
+
+<table>
+ <thead>
+  <tr>
+   <th style="text-align:left;"> age </th>
+   <th style="text-align:left;"> gender </th>
+   <th style="text-align:right;"> expertise </th>
+   <th style="text-align:left;"> coffee </th>
+   <th style="text-align:right;"> ranking </th>
+  </tr>
+ </thead>
 <tbody>
-<tr class="odd">
-<td style="text-align: left;">18-24</td>
-<td style="text-align: left;">Other (please specify)</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: left;">pref_a</td>
-<td style="text-align: right;">1</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">18-24</td>
-<td style="text-align: left;">Other (please specify)</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: left;">pref_b</td>
-<td style="text-align: right;">1</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">18-24</td>
-<td style="text-align: left;">Other (please specify)</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: left;">pref_c</td>
-<td style="text-align: right;">1</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">18-24</td>
-<td style="text-align: left;">Other (please specify)</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: left;">pref_d</td>
-<td style="text-align: right;">1</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">55+</td>
-<td style="text-align: left;">Not Provided</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: left;">pref_a</td>
-<td style="text-align: right;">3</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">55+</td>
-<td style="text-align: left;">Not Provided</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: left;">pref_b</td>
-<td style="text-align: right;">3</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">55+</td>
-<td style="text-align: left;">Not Provided</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: left;">pref_c</td>
-<td style="text-align: right;">3</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">55+</td>
-<td style="text-align: left;">Not Provided</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: left;">pref_d</td>
-<td style="text-align: right;">3</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">25-34</td>
-<td style="text-align: left;">Female</td>
-<td style="text-align: right;">6</td>
-<td style="text-align: left;">pref_a</td>
-<td style="text-align: right;">3</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">25-34</td>
-<td style="text-align: left;">Female</td>
-<td style="text-align: right;">6</td>
-<td style="text-align: left;">pref_b</td>
-<td style="text-align: right;">3</td>
-</tr>
+  <tr>
+   <td style="text-align:left;"> 18-24 </td>
+   <td style="text-align:left;"> Other (please specify) </td>
+   <td style="text-align:right;"> 10 </td>
+   <td style="text-align:left;"> pref_a </td>
+   <td style="text-align:right;"> 1 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 18-24 </td>
+   <td style="text-align:left;"> Other (please specify) </td>
+   <td style="text-align:right;"> 10 </td>
+   <td style="text-align:left;"> pref_b </td>
+   <td style="text-align:right;"> 1 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 18-24 </td>
+   <td style="text-align:left;"> Other (please specify) </td>
+   <td style="text-align:right;"> 10 </td>
+   <td style="text-align:left;"> pref_c </td>
+   <td style="text-align:right;"> 1 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 18-24 </td>
+   <td style="text-align:left;"> Other (please specify) </td>
+   <td style="text-align:right;"> 10 </td>
+   <td style="text-align:left;"> pref_d </td>
+   <td style="text-align:right;"> 1 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 55+ </td>
+   <td style="text-align:left;"> Not Provided </td>
+   <td style="text-align:right;"> 7 </td>
+   <td style="text-align:left;"> pref_a </td>
+   <td style="text-align:right;"> 3 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 55+ </td>
+   <td style="text-align:left;"> Not Provided </td>
+   <td style="text-align:right;"> 7 </td>
+   <td style="text-align:left;"> pref_b </td>
+   <td style="text-align:right;"> 3 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 55+ </td>
+   <td style="text-align:left;"> Not Provided </td>
+   <td style="text-align:right;"> 7 </td>
+   <td style="text-align:left;"> pref_c </td>
+   <td style="text-align:right;"> 3 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 55+ </td>
+   <td style="text-align:left;"> Not Provided </td>
+   <td style="text-align:right;"> 7 </td>
+   <td style="text-align:left;"> pref_d </td>
+   <td style="text-align:right;"> 3 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 25-34 </td>
+   <td style="text-align:left;"> Female </td>
+   <td style="text-align:right;"> 6 </td>
+   <td style="text-align:left;"> pref_a </td>
+   <td style="text-align:right;"> 3 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 25-34 </td>
+   <td style="text-align:left;"> Female </td>
+   <td style="text-align:right;"> 6 </td>
+   <td style="text-align:left;"> pref_b </td>
+   <td style="text-align:right;"> 3 </td>
+  </tr>
 </tbody>
 </table>
-
 
 </div>
 </div>
@@ -433,7 +734,7 @@
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="https://gmcirco.github.io/blog//posts\coffee\coffee_files\figure-html\unnamed-chunk-4-1.png" class="img-fluid figure-img" width="672"></p>
-<figcaption class="figure-caption">Effect of age on coffee preferences. Older individuals tend to rate coffee D lower.</figcaption>
+<p></p><p></p>
 </figure>
 </div>
 </div>
@@ -444,7 +745,7 @@
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="https://gmcirco.github.io/blog//posts\coffee\coffee_files\figure-html\unnamed-chunk-5-1.png" class="img-fluid figure-img" width="672"></p>
-<figcaption class="figure-caption">Effect of expertise on coffee preferences. Individuals with higher expertise tend to rate coffee ‘A’ and ‘D’ higher.</figcaption>
+<p></p><p></p>
 </figure>
 </div>
 </div>
@@ -458,14 +759,14 @@
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="https://gmcirco.github.io/blog//posts\coffee\coffee_files\figure-html\unnamed-chunk-6-1.png" class="img-fluid figure-img" width="672"></p>
-<figcaption class="figure-caption">Predictions for all consumer groups. Each line represents a single age, gender, and expertise combination.</figcaption>
+<p></p><p></p>
 </figure>
 </div>
 </div>
 </div>
 <p>Using this data we can do some simple comparisons. For example: what is the estimated difference between males and females ranking coffee ‘D’? In his summary, James Hoffman highlighted that <a href="https://youtu.be/bMOOQfeloH0?si=Nljr4mcZoLswoW0p&amp;t=479">females were much more likely</a> to strongly dislike coffee ‘D’ relative to males. However, if you look at the data, females in the survey also generally reported much less expertise in coffee.</p>
 <p>So what if we control for expertise, and see what the estimated difference in gender is assuming they are otherwise comparable coffee consumers. Below, we set the expertise for predictions to the median, which is 6.</p>
-<div id="fig-elephants" class="quarto-layout-panel">
+<div class="quarto-layout-panel">
 <figure class="figure">
 <div class="quarto-layout-row quarto-layout-valign-top">
 <div class="cell quarto-layout-cell" style="flex-basis: 50.0%;justify-content: center;">
@@ -479,7 +780,7 @@
 </div>
 </div>
 </div>
-<p></p><figcaption class="figure-caption">Figure&nbsp;1: Coffee rankings for males and females, across all age groups</figcaption><p></p>
+<p></p><p></p>
 </figure>
 </div>
 <p>And here are the estimates for males and females, holding age constant at 25-34 and self-reported expertise to the median (6). As we can see both males and females with similar expertise within the same age groups largely rate coffee D similarly, with the largest difference being for ranking it a 5.</p>
@@ -488,7 +789,7 @@
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="https://gmcirco.github.io/blog//posts\coffee\coffee_files\figure-html\unnamed-chunk-9-1.png" class="img-fluid figure-img" width="672"></p>
-<figcaption class="figure-caption">Effect of gender on preferences for coffee ‘D’ holding age constant to 25-34.</figcaption>
+<p></p><p></p>
 </figure>
 </div>
 </div>
@@ -499,7 +800,7 @@
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="https://gmcirco.github.io/blog//posts\coffee\coffee_files\figure-html\unnamed-chunk-10-1.png" class="img-fluid figure-img" width="672"></p>
-<figcaption class="figure-caption">Female respondents were less likely to report high expertise with coffee, relative to males.</figcaption>
+<p></p><p></p>
 </figure>
 </div>
 </div>
@@ -510,7 +811,7 @@
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="https://gmcirco.github.io/blog//posts\coffee\coffee_files\figure-html\unnamed-chunk-11-1.png" class="img-fluid figure-img" width="672"></p>
-<figcaption class="figure-caption">Effect of expertise on preferences for coffee ‘D’ holding age and gender constant to 25-34 and male. Persons with higher coffee expertise are more likely to rate coffee ‘D’ higher.</figcaption>
+<p></p><p></p>
 </figure>
 </div>
 </div>
@@ -532,79 +833,79 @@
 <span id="cb2-5">  <span class="fu" style="color: #4758AB;">kable</span>()</span></code></pre></div>
 </details>
 <div class="cell-output-display">
-<table data-quarto-postprocess="true" class="table table-sm table-striped small">
-<thead>
-<tr class="header">
-<th style="text-align: left;" data-quarto-table-cell-role="th">age</th>
-<th style="text-align: left;" data-quarto-table-cell-role="th">gender</th>
-<th style="text-align: right;" data-quarto-table-cell-role="th">expertise</th>
-<th style="text-align: right;" data-quarto-table-cell-role="th">n</th>
-</tr>
-</thead>
+
+<table>
+ <thead>
+  <tr>
+   <th style="text-align:left;"> age </th>
+   <th style="text-align:left;"> gender </th>
+   <th style="text-align:right;"> expertise </th>
+   <th style="text-align:right;"> n </th>
+  </tr>
+ </thead>
 <tbody>
-<tr class="odd">
-<td style="text-align: left;">25-34 years old</td>
-<td style="text-align: left;">Male</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: right;">383</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">25-34 years old</td>
-<td style="text-align: left;">Male</td>
-<td style="text-align: right;">6</td>
-<td style="text-align: right;">305</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">25-34 years old</td>
-<td style="text-align: left;">Male</td>
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">199</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">35-44 years old</td>
-<td style="text-align: left;">Male</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: right;">168</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">25-34 years old</td>
-<td style="text-align: left;">Male</td>
-<td style="text-align: right;">5</td>
-<td style="text-align: right;">159</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">35-44 years old</td>
-<td style="text-align: left;">Male</td>
-<td style="text-align: right;">6</td>
-<td style="text-align: right;">159</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">35-44 years old</td>
-<td style="text-align: left;">Male</td>
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">114</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">25-34 years old</td>
-<td style="text-align: left;">Female</td>
-<td style="text-align: right;">5</td>
-<td style="text-align: right;">84</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">25-34 years old</td>
-<td style="text-align: left;">Male</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">81</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">25-34 years old</td>
-<td style="text-align: left;">Female</td>
-<td style="text-align: right;">6</td>
-<td style="text-align: right;">80</td>
-</tr>
+  <tr>
+   <td style="text-align:left;"> 25-34 years old </td>
+   <td style="text-align:left;"> Male </td>
+   <td style="text-align:right;"> 7 </td>
+   <td style="text-align:right;"> 383 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 25-34 years old </td>
+   <td style="text-align:left;"> Male </td>
+   <td style="text-align:right;"> 6 </td>
+   <td style="text-align:right;"> 305 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 25-34 years old </td>
+   <td style="text-align:left;"> Male </td>
+   <td style="text-align:right;"> 8 </td>
+   <td style="text-align:right;"> 199 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 35-44 years old </td>
+   <td style="text-align:left;"> Male </td>
+   <td style="text-align:right;"> 7 </td>
+   <td style="text-align:right;"> 168 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 25-34 years old </td>
+   <td style="text-align:left;"> Male </td>
+   <td style="text-align:right;"> 5 </td>
+   <td style="text-align:right;"> 159 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 35-44 years old </td>
+   <td style="text-align:left;"> Male </td>
+   <td style="text-align:right;"> 6 </td>
+   <td style="text-align:right;"> 159 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 35-44 years old </td>
+   <td style="text-align:left;"> Male </td>
+   <td style="text-align:right;"> 8 </td>
+   <td style="text-align:right;"> 114 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 25-34 years old </td>
+   <td style="text-align:left;"> Female </td>
+   <td style="text-align:right;"> 5 </td>
+   <td style="text-align:right;"> 84 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 25-34 years old </td>
+   <td style="text-align:left;"> Male </td>
+   <td style="text-align:right;"> 4 </td>
+   <td style="text-align:right;"> 81 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 25-34 years old </td>
+   <td style="text-align:left;"> Female </td>
+   <td style="text-align:right;"> 6 </td>
+   <td style="text-align:right;"> 80 </td>
+  </tr>
 </tbody>
 </table>
-
 
 </div>
 </div>
@@ -818,7 +1119,7 @@ font-style: italic;">## Function to extract random effects from brms model</span
 </section>
 
 
-<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+<div id="quarto-appendix" class="default"><section class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
 
 <ol>
 <li id="fn1"><p>Given the viewership demographics for James’ channel, I actually assume that many of the female ratings are the partners of the male viewers, and are probably not as experienced as their partners↩︎</p></li>
