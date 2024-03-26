@@ -1,0 +1,474 @@
+---
+title: "An Outsider's Perspective On Media Mix Modelling"
+subtitle: "A Bayesian Approach to MMM"
+author: Gio Circo, Ph.D.
+date: 2024-3-18
+categories:
+  - Bayesian
+  - R
+format: 
+    html:
+        self-contained: true
+        code-fold: false
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+theme: flatly
+---
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(lubridate)
+library(brms)
+
+# load data
+mmm_raw <-
+  read_csv("C:/Users/gioc4/Documents/blog/data/MMM_data.csv")
+
+DelayedSimpleAdstock <- function(advertising, lambda, theta, L){
+  N <- length(advertising)
+  weights <- matrix(0, N, N)
+  for (i in 1:N){
+    for (j in 1:N){
+      k = i - j
+      if (k < L && k >= 0){
+        weights[i, j] = lambda ** ((k - theta) ** 2)
+      }
+    }
+  }
+  
+  adstock <- as.numeric(weights %*% matrix(advertising))
+  
+  return(adstock)  
+}
+```
+
+## Media Mix Modelling
+
+I'm trying something a bit new this time. Typically how I learn is that I see 
+something interesting (either in a blog post, an academic article, or through 
+something a co-worker is working on). I'll then try and work through the problem
+via code on my own to see how I can make it work. It's not always perfect, but
+it gets me started. Today I'm going to go out of my comfort zone and try 
+my hand at **Media Mix Modelling** (MMM). 
+
+In general, the stated goal of MMM is to determine the optimal distribution of 
+advertising money, given $n$ different venues. For instance, this could 
+determine how much to spend on internet, TV, or radio advertising given the 
+costs of running ads and the expected return for each venue. Typically this is 
+done using a regression to try and parse out the effect of each type of 
+advertising net of many other factors (e.g. seasonal and trend effects, costs 
+of the product, demand, etc...). 
+
+### Getting some data
+
+Getting reliable open-source data for MMM is actually a bit more difficult than
+you think. There are a number of very trivial simulated datasets scattered about
+on places like Kaggle, but these aren't terribly useful. I was able to find a 
+strange mostly undocumented set of data from a git repo [here](https://github.com/jamesrawlins1000/Market-mix-modelling-data). Per the 
+author, the data purports:
+
+> "...data contain information on demand, sales, supply, POS data, advertisiment expenditure and different impressions recorded across multiple channels for calculating the advertising campaign effectiveness such as Mobile SMS, Newspaper Ads, Radio, TV, Poster, Internet etc.in the form of GRP (Gross Rating Point) in Shenzhen city"
+
+Good enough for me.
+
+## The Adstock Function
+
+The paper [Bayesian Methods for Media Mix Modeling with Carryover and
+Shape Effects](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/46001.pdf) is a pretty clear and concise introduction to media mix modelling. This paper is a pretty good introduction into many of the issues related to MMM. One of the biggest issues is the need to transform the ad spend variables to better represent how they behave in real life. For example, we don't necessarily expect an ad campaign to have an *instantaneous* lift, nor do we expect its effect to end immediately either. Hence, the need to model appropriate [carryover effects](). 
+
+To do this I'll borrow a function [Kylie Fu](https://medium.com/@kyliefu/implementation-of-the-advertising-adstock-theory-in-r-62c2cc4b82fd) to calculate the weights for the delayed adstock function. The goal here is to define a function that can
+transform the ad spend variables to reflect our belief that they have delays of decay, delays of peak effect, and an upper maximum carryover effect. Below the function takes a vector of ad spend data and creates the transformation given the parameters `lambda`, `theta`, and `L`.
+
+```{r}
+#| code-fold: false
+#| eval: false
+DelayedSimpleAdstock <- function(advertising, lambda, theta, L){
+  N <- length(advertising)
+  weights <- matrix(0, N, N)
+  for (i in 1:N){
+    for (j in 1:N){
+      k = i - j
+      if (k < L && k >= 0){
+        weights[i, j] = lambda ** ((k - theta) ** 2)
+      }
+    }
+  }
+  
+  adstock <- as.numeric(weights %*% matrix(advertising))
+  
+  return(adstock)  
+}
+
+```
+
+### Setting up an adstock transformation
+
+Now we can choose the parameters for the adstock transformation. Ideally, we want a transformation that 
+captures the decay of the advertising program (`lambda`), its delayed peak onset (`theta`), and its maximum effect duration (`L`). With a bit of simulation we can see what each parameter does across a value of different lags. The goal here is to have a function that matches what we believe the actual effect of ad spending looks like for different media regions (e.g. TV, radio, internet). Below, we can see that increasing `lambda` increases the decay of the effect up, while varying `theta` sets the peak onset of the ad campaign to later lags. The value of `L` simply sets the maximum effect to a specific lag. 
+
+```{r}
+#| code-fold: false
+#| echo: true
+
+# set up grid of params to iterate over
+
+x <- c(1, rep(0, 15))
+lambda = seq(0,1, by = .1)
+theta = seq(0,10, by = 1)
+L = seq(1,12, by = 1)
+
+```
+::: {.panel-tabset}
+
+## Lambda
+```{r}
+#| echo: false
+
+x <- c(1, rep(0, 15))
+lambda = seq(0,1, by = .1)
+theta = seq(0,10, by = 1)
+L = seq(1,12, by = 1)
+
+## A
+par(mfrow = c(3, 4), mai = c(.5, 0.3, 0.2, 0.2))
+for (i in lambda) {
+  plot(
+    DelayedSimpleAdstock(
+      x,
+      lambda = i,
+      theta = 1,
+      L = 13
+    ),
+    lwd = 2,
+    col = "#004488",
+    type = 'l',
+    xlab = "",
+    main = paste0("Lambda:", i)
+  )
+  title(xlab="Weeks", line=1.8, cex.lab=1)
+}
+```
+
+
+## Theta
+
+```{r}
+#| echo: false
+par(mfrow = c(3, 4), mai = c(.5, 0.3, 0.2, 0.2))
+for (j in theta) {
+  plot(
+    DelayedSimpleAdstock(
+      x,
+      lambda = .8,
+      theta = j,
+      L = 13
+    ),
+    lwd = 2,
+    col = "#BB5566",
+    type = 'l',
+    xlab = "",
+    main = paste0("Theta:", j)
+  )
+  title(xlab="Weeks", line=1.8, cex.lab=1)
+}
+```
+
+
+## L
+```{r}
+#| echo: false
+par(mfrow = c(3, 4), mai = c(.5, 0.3, 0.2, 0.2))
+for (k in L) {
+  plot(
+    DelayedSimpleAdstock(
+      x,
+      lambda = .8,
+      theta = 2,
+      L = k
+    ),
+    lwd = 2,
+    col = "#DDAA33",
+    type = 'l',
+    xlab = "",
+    main = paste0("L:", k)
+  )
+  title(xlab="Weeks", line=1.8, cex.lab=1)
+}
+```
+:::
+
+Based on a visual assesment I just chose an adstock function with a lambda of .8 (suggesting moderate decay of the initial ad effect), a theta of 2 (implying a peak onset of 2 weeks), and an L of 13 which is a rule-of-thumb that makes the maximum effect quite large. 
+
+```{r}
+#| echo: false
+#| fig-cap: Adstock function (Lambda = .8, theta = 2, L = 13)
+
+par(mfrow = c(1,1))
+plot(
+  DelayedSimpleAdstock(
+    x,
+    lambda = .8,
+    theta = 2,
+    L = 13
+  ),
+  lwd = 2,
+  col = "#DDAA33",
+  type = 'l',
+  xlab = "Weeks",
+  ylab = "Adstock",
+  main = "Adstock Function\n",
+)
+```
+
+The code below applies our adstock function to each of the spend variables. For
+simplicity here I am making the assumption that all of the modes have similar
+adstock functions, but this can (and should) vary per modality based on expert 
+prior information. We convert the daily data (which is quite noisy) to a more 
+commonly utilized weekly format. We then limit the focus of our analysis to a 
+4-year time span.
+
+```{r}
+#| code-fold: true
+
+# setup weekly data
+# setup weekly data
+mmm_weekly_data <-
+  mmm_raw %>%
+  mutate(date = as.Date(DATE, "%m/%d/%Y"),
+         year = year(date),
+         month = month(date),
+         week = week(date)) %>%
+  select(
+    date,
+    year,
+    month,
+    week,
+    sales = `SALES ($)`,
+    spend_sms = `Advertising Expenses (SMS)`,
+    spend_news = `Advertising Expenses(Newspaper ads)`,
+    spend_radio = `Advertising Expenses(Radio)`,
+    spend_tv = `Advertising Expenses(TV)`,
+    spend_net = `Advertising Expenses(Internet)`,
+    demand = DEMAND,
+    supply = `POS/ Supply Data`,
+    price = `Unit Price ($)`
+  ) %>%
+  filter(year %in% 2014:2017)
+
+
+weekly_spend <-
+  mmm_weekly_data %>%
+  group_by(year, month, week) %>%
+  summarise(across(sales:spend_net, sum), across(demand:price, mean), .groups = 'drop') %>%
+  mutate(index = 1:nrow(.))
+
+
+# Apply transformation to advertising variables, scale dollar values to per $1,000
+X <-
+  weekly_spend %>%
+  mutate(across(spend_sms:spend_net,~ DelayedSimpleAdstock(.,lambda = .8,theta = 2,L = 13)),
+         across(spend_sms:price, function(x) x/1e3),
+         trend = 1:nrow(.)/nrow(.))
+```
+
+### Setting up the model
+
+Before we fit the model we can plot out the primary variables of interest, along with our dependent variable `sales`. Looking below we can see a few potential issues. One which should jump out immediately is that there is a *very* high correlation between several of our ad spend categories. For example, the correlation between TV spending and news spending is almost 1. In the case of MMM this is a common problem, which makes unique identification of the effect of ad spends much more difficult. More troubling, by just eyeballing these plots there doesn't seem to be a terribly strong relationship between *any* of the advertising venues and sales.
+
+```{r}
+#| fig-cap: Pairwise relationships between sales ~ ad venues
+plot(X[, c('sales',
+           'spend_sms',
+           'spend_news',
+           'spend_radio',
+           'spend_tv',
+           'spend_net')], col = '#004488')
+```
+
+Nor do the pairwise correlations seem to be very high either (in fact, they are very nearly zero). Regardless, we'll continue by fitting a simple set of models.
+
+```{r}
+#| code-fold: true
+round(cor(X[, c('sales',
+           'spend_sms',
+           'spend_news',
+           'spend_radio',
+           'spend_tv',
+           'spend_net')]),2)
+```
+
+## Fitting A Model
+
+One of the biggest challenges with MMM is that many of the model coefficients
+including the advertising venues, are likely to be *very* highly correlated. 
+For example, the advertising spend on TV ads is almost perfectly correlated
+with the spend on news ads. We can set some moderately strong priors on the 
+ad spend coefficients to ensure that the estimates don't explode due to 
+multicollinearity. Here I'm just placing a `normal(0, .5)` prior which is still
+pretty wide for a coefficient on the logrithmic scale. 
+
+```{r}
+#| code-fold: true
+
+# set up priors
+bprior <- c(prior(normal(0,.5), class = "b", coef = "spend_sms"),
+            prior(normal(0,.5), class = "b", coef = "spend_news"),
+            prior(normal(0,.5), class = "b", coef = "spend_radio"),
+            prior(normal(0,.5), class = "b", coef = "spend_tv"),
+            prior(normal(0,.5), class = "b", coef = "spend_net"))
+
+# just intercept
+brm_fit_0 <- brm(log(sales) ~ 1, data = X,
+                 chains = 4,
+                 cores = 4,
+                 family = gaussian(),
+                 file = "C:/Users/gioc4/Documents/blog/data/brms_models/mmm_fit0.Rdata")
+
+# no random effects, linear trend effect
+brm_fit_1 <- brm(log(sales) ~                 
+                   demand +
+                   supply +
+                   price +
+                   as.factor(month) +
+                   as.factor(week) +
+                   trend +
+                   spend_sms +
+                   spend_news +
+                   spend_radio +
+                   spend_tv +
+                   spend_net,
+                 data = X,
+                 chains = 4,
+                 cores = 4,
+                 prior = bprior,
+                 family = gaussian(),
+                 file = "C:/Users/gioc4/Documents/blog/data/brms_models/mmm_fit1.Rdata")
+
+# random effects for month+week
+# smoothing spline for trend
+brm_fit_2 <- brm(log(sales) ~                 
+                   demand +
+                   supply +
+                   price +
+                   s(trend) +
+                   spend_sms +
+                   spend_news +
+                   spend_radio +
+                   spend_tv +
+                   spend_net +
+                   (1|month) +
+                   (1|week),
+                 data = X,
+                 chains = 4,
+                 cores = 4,
+                 prior = bprior,
+                 family = gaussian(),
+                 control = list(adapt_delta = .9),
+                 file = "C:/Users/gioc4/Documents/blog/data/brms_models/mmm_fit2.Rdata")
+
+```
+
+
+### Model Evaluation
+
+Now we can evaluate the models. Here, I evaluate a model with random effects for
+month and week, and a smoothing spline for the trend component against a fixed 
+effects model with a linear trend, and a "null" model with just an intercept. 
+The model with a smooth trend spline appears to beat out the linear trend, which
+makes sense given the non-linear bump in sales observed in the raw data. 
+
+```{r}
+#| code-fold: true
+
+# evaluate models using leave-out-out criterion
+# looks like smoothing spline is slightly better
+loo_eval <- loo(brm_fit_0, brm_fit_1, brm_fit_2)
+loo_eval$diffs
+```
+
+We can (and should) also check out the predictions from the model using a 
+posterior predictive check. In Bayesian terms what this means is we take a sample
+of draws from our fitted model and compare them against the observed data. If 
+our model is capturing the process well, the predicted values should generally
+follow the observed process. Below we see that our model does a fairly decent
+job.
+
+```{r}
+#| code-fold: true
+#| fig-cap: "Posterior predictive check, smoothing spline model"
+pp_check(brm_fit_2)
+```
+
+Finally, we can look at some of the model coefficients
+
+```{r}
+summary(brm_fit_2)
+```
+
+### Model Predictions
+
+And here's the estimated lift for Radio by week. While there is definitely some
+lift, it is pretty tiny here
+
+::: {.column-page}
+
+```{r}
+#| code-fold: true
+#| layout-ncol: 2
+
+
+# get predictions 
+X_no_radio <- X %>% mutate(spend_radio= 0)
+
+pred1 <- predict(brm_fit_2)
+pred1_no_radio <- predict(brm_fit_2, newdata = X_no_radio)
+
+pred_dataframe <-
+  cbind.data.frame(week = 1:197,
+                   obs = pred1[, 1],
+                   pred = pred1_no_radio[, 1]) %>%
+  pivot_longer(-week) %>%
+  group_by(week) %>%
+  mutate(diff = value - lead(value, 1))
+
+# predicted (all) vs predicted (no radio)
+ggplot(pred_dataframe) +
+  geom_line(aes(x = week, y = value, color = name)) +
+  theme_bw() +
+  scale_color_manual(values = c("#0077BB", "#EE7733")) +
+  labs(y = "(log) Sales", x = "Week") +
+  theme(legend.position = 'none')
+
+# predicted lift from radio
+pred_dataframe %>%
+  na.omit() %>%
+  ggplot() +
+  geom_line(aes(x = week, y = diff)) +
+  theme_bw() +
+  labs(y = "(log) Sales", x = "Week")
+  
+```
+:::
+
+If we average the estimated mean lift across the entire time frame we get an
+additional value of about 2%.
+
+```{r}
+mean((pred1[,1] - pred1_no_radio[,1])/pred1[,1])
+```
+
+At this point there is a *lot* of additional work that can be done. Most applied
+uses of MMM apply some optimization algorithms to determine the best ad spend 
+mix given a fixed budget. The data I have here isn't really good enough to 
+delve any deeper into - but its important to note that fitting the model is 
+really only the beginning. 
+
+## In Closing: My Take
+
+My biggest problem with Mixed Media Modelling is that it seems like it is easy to implement badly, but much harder to do well. Not only do you have to appropriately model an adstock function for your advertising venues, you also have very high correlation between your variables. This, in turn, makes the choice of model specification even more important because the coefficients with be *highly* sensitive. Personally, a true experiment or even quasi-experiment would be preferable to this - although I'm all too aware that this is often impossible. Like everything there is no magic bullet, and choosing one approach over another will always introduce trade offs. 
