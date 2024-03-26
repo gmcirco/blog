@@ -1,6 +1,6 @@
 ---
 title: "Don't Evaluate Your Model On a SMOTE Dataset"
-subtitle: "Or: try this one weird trick to increase your AUC"
+subtitle: "or: try this one weird trick to increase your AUC"
 author: "Gio Circo, Ph.D."
 date: 2024-03-26
 format: 
@@ -13,28 +13,28 @@ format:
         title-block-banner: true
 categories:
   - R
-  - Spatial Statistics
+  - Prediction
 theme: flatly
 ---
 
 ## The Paper
 
-I recently found a paper published called "[Advancing Recidivism Prediction for Male Juvenile Offenders: A Machine Learning Approach Applied to Prisoners in Hunan Province](https://books.google.com/books?id=HWD8EAAAQBAJ&newbks=0&printsec=frontcover&pg=PA184&hl=en&source=newbks_fb)". In it, the authors make use of a very small recidivism data set focusing on youth in Hunan province, which originally appears in a 2017 PLOS ONE article here: "[Predicting Reoffending Using the Structured Assessment of Violence Risk in Youth (SAVRY): A 5-Year Follow-Up Study of Male Juvenile Offenders in Hunan Province, China](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0169251)". 
+I recently found a paper published called "[**Advancing Recidivism Prediction for Male Juvenile Offenders: A Machine Learning Approach Applied to Prisoners in Hunan Province**](https://books.google.com/books?id=HWD8EAAAQBAJ&newbks=0&printsec=frontcover&pg=PA184&hl=en&source=newbks_fb)". In it, the authors make use of a very small recidivism data set focusing on youth in Hunan province, which originally appears in a 2017 PLOS ONE article here: "[**Predicting Reoffending Using the Structured Assessment of Violence Risk in Youth (SAVRY): A 5-Year Follow-Up Study of Male Juvenile Offenders in Hunan Province, China**](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0169251)". 
 
-The authors of the new study explain how they can use machine learning to improve the prediction of recidivism (which, in of itself is a highly contentious topic). In general, it is a pretty harmless paper of virtually zero significance. They're using an absurdly tiny data set to test out machine learning models that only really work well when you are flush with data. However, a single line stuck out to me when I was scanning their paper:
+The authors of the new study explain how they can use machine learning to improve the prediction of recidivism (which, in of itself is a highly contentious topic). In general, it is a pretty harmless paper of virtually zero significance. They're using a tiny data set to test out machine learning models that only really work well when you are flush with data. However, a single line stuck out to me when I was scanning their paper:
 
 > "The proposed ML models perform best on the oversampled dataset, as illustrated in Fig. 2."
 
 Uh oh.
 
-Looking at the associated figure and table they show off some impressive metrics. Their random forest model has a precision and recall of 97%! On a recidivism prediction task this alone is highly suspicious. For example, in the competition I participated (and won in several categories), our model only averaged about .78 to .8. Why is theirs so good here? Well, it's all about that line above. Let's run through the data and explain:
+What's the problem? Well, looking at the associated figure and table they show off some interesting metrics. Their random forest model has a precision and recall of 97%! On a recidivism prediction task this alone is highly suspicious. For example, in the competition I participated (and won in several categories), our model only averaged about .78 to .8. Why is theirs so good here? Well, it's all about that line above. Let's run through the data and explain:
 
 ![](table_4.png)
 
 
 ### The Data
 
-Below, I pull  the original data set from the PLOS One paper (thanks to the authors for making it publically available!). There is a single missing value for education, which I impute to the median value. 
+Below, I pull the original data set from the PLOS One paper (thanks to the authors for making it publicly available!). There is a single missing value for education, which I impute to the median value. 
 
 ```{r}
 #| message: false
@@ -65,10 +65,11 @@ N = nrow(df)
 ## Doing it the Normal Way
 
 The normal workflow in this case is to set up a test-train split, fit a model on
-the training data set, then  evaluate the out-of-sample performance on the test
+the training data set, then evaluate the out-of-sample performance on the test
 set. Despite the very small sample size here I'll just follow the bog standard
 approach to illustrate. A 20% test set gives us: $246 - (246*.2) = 196.8$. So 
-just under 200 cases to train on, which is really *quite* small.
+just under 200 cases to train on, which is really *quite* small for a task like
+recidivism prediction.
 
 ```{r}
 #| message: false
@@ -92,7 +93,7 @@ X_train = X[train_idx,]
 ```
 
 Despite the authors of the previous paper using some boosting methods, this data
-is far, far too small to make use of those approaches usefully. Here, I'm just
+is really just too small to make use of those approaches usefully. Here, I'm
 fitting a logistic regression with no regularization and a random forest with 
 500 trees.
 
@@ -128,8 +129,8 @@ great, not terrible.
 So the argument with SMOTE is that training models on data sets with very large
 imbalances in positive vs. negative cases is that the models only learn from
 the negative cases and not the positive ones. A good example might be a fraud
-data set where you have 100,000 legitimate credit card transactions and only 500
-cases of fraud (so something like .5%). SMOTE is intended to help with training
+data set where you have 100,000 legitimate credit card transactions and only 100
+cases of fraud (so something like .1%). SMOTE is intended to help with training
 a model by synthesizing a balanced data set where the ratio of positive to 
 negative cases are much closer to 50/50. Without going too much into it, this
 actually rarely solves and problems and often induces some.
@@ -224,9 +225,9 @@ Oh.
 
 In summary, if you wrongfully evaluate your model that was trained on a SMOTE 
 data set against a hold-out sample from that same SMOTE data your out-of-sample
-metrics will be falsely confident. It is much easier to perform classification 
-on data that are artificially balanced. However, actually using these models in
-real life entails data that almost never follow this.
+metrics will be falsely confident. This is because is much easier to perform 
+classification on data that are artificially balanced. However, actually using
+these models in real life entails data that almost never follow this. 
 
 Finally, I don't mean to focus on these authors specifically. The analysis they 
 are doing is with some good intentions, but is mostly misguided. The data here
