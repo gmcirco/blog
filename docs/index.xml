@@ -10,7 +10,277 @@
 <atom:link href="https://gmcirco.github.io/blog//index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-0.9.434</generator>
-<lastBuildDate>Tue, 26 Mar 2024 04:00:00 GMT</lastBuildDate>
+<lastBuildDate>Wed, 03 Apr 2024 04:00:00 GMT</lastBuildDate>
+<item>
+  <title>If You Order Chipotle Online, You Are Probably Getting Less Food</title>
+  <dc:creator>Gio Circo, Ph.D.</dc:creator>
+  <link>https://gmcirco.github.io/blog//posts/chipotle-weight/youtube-food.html</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="how-inconsistent-are-chipotle-orders" class="level2">
+<h2 class="anchored" data-anchor-id="how-inconsistent-are-chipotle-orders">How Inconsistent are Chipotle Orders?</h2>
+<p>Here’s a quick one. The question posed here is “do you get less food if you order your Chipotle order online versus in person?” There are <a href="https://www.reddit.com/r/Chipotle/comments/cgw24i/less_food_in_bowl_when_you_order_online/">plenty</a> <a href="https://www.dailydot.com/irl/chipotle-order-online-less-food-theory/">of</a> <a href="https://medium.com/@seangransee/heres-how-much-sweetgreen-shorts-you-when-you-order-online-with-data-c93fb5bc6e26">posts</a> going back years claiming that their orders are smaller if they order online.</p>
+<p>I happened to be watching a video from YouTuber <a href="https://www.youtube.com/@ZackarySmigel">Zackary Smigel</a> who decided to <a href="https://youtu.be/kZe5k95U-UY?si=Z5VjqGn6hZx9ZIHf">eat nothing but Chipotle for 30 days</a>. One of the interesting things in his video is that he provided his data for 30 consecutive Chipotle visits <a href="https://docs.google.com/spreadsheets/d/1PluJeBD1aJ36xAKbZ74OHED00ntwhjH81q2wINg5UDw/edit#gid=0">here</a>. what Zackary might not have known is that he unintentionally created a very nice blocked experiment design. What this means is we can easily identify sources of variation in order weight by controlling for other variables present.</p>
+<p>I downloaded the data from the Google Sheet, saved a few of the columns locally as a .csv and did some minimal processing.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="fu" style="color: #4758AB;">library</span>(tidyverse)</span>
+<span id="cb1-2"><span class="fu" style="color: #4758AB;">library</span>(knitr)</span>
+<span id="cb1-3"><span class="fu" style="color: #4758AB;">library</span>(kableExtra)</span>
+<span id="cb1-4"></span>
+<span id="cb1-5"><span class="co" style="color: #5E5E5E;"># load the data locally</span></span>
+<span id="cb1-6">df <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">read_csv</span>(<span class="st" style="color: #20794D;">"../../../data/chipotle.csv"</span>) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-7">  <span class="fu" style="color: #4758AB;">select</span>(<span class="sc" style="color: #5E5E5E;">-</span>Chips)</span>
+<span id="cb1-8"></span>
+<span id="cb1-9"><span class="co" style="color: #5E5E5E;"># function to convert formatted lbs, oz to grams</span></span>
+<span id="cb1-10">lbs_oz_to_grams <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="cf" style="color: #003B4F;">function</span>(lbs_oz) {</span>
+<span id="cb1-11">  parts <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">unlist</span>(<span class="fu" style="color: #4758AB;">strsplit</span>(lbs_oz, <span class="st" style="color: #20794D;">"</span><span class="sc" style="color: #5E5E5E;">\\</span><span class="st" style="color: #20794D;">."</span>))</span>
+<span id="cb1-12">  pounds_in_grams <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">as.numeric</span>(parts[<span class="dv" style="color: #AD0000;">1</span>]) <span class="sc" style="color: #5E5E5E;">*</span> <span class="fl" style="color: #AD0000;">453.592</span></span>
+<span id="cb1-13">  ounces_in_grams <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">as.numeric</span>(parts[<span class="dv" style="color: #AD0000;">2</span>]) <span class="sc" style="color: #5E5E5E;">*</span> <span class="fl" style="color: #AD0000;">28.3495</span></span>
+<span id="cb1-14">  total_grams <span class="ot" style="color: #003B4F;">&lt;-</span> pounds_in_grams <span class="sc" style="color: #5E5E5E;">+</span> ounces_in_grams</span>
+<span id="cb1-15">  <span class="fu" style="color: #4758AB;">return</span>(total_grams)</span>
+<span id="cb1-16">}</span>
+<span id="cb1-17"></span>
+<span id="cb1-18">food_weight_data <span class="ot" style="color: #003B4F;">&lt;-</span></span>
+<span id="cb1-19">  df <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-20">  <span class="fu" style="color: #4758AB;">pivot_longer</span>(</span>
+<span id="cb1-21">    <span class="at" style="color: #657422;">cols =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">"Burrito"</span>, <span class="st" style="color: #20794D;">"Bowl"</span>),</span>
+<span id="cb1-22">    <span class="at" style="color: #657422;">names_to =</span> <span class="st" style="color: #20794D;">"food"</span>,</span>
+<span id="cb1-23">    <span class="at" style="color: #657422;">values_to =</span> <span class="st" style="color: #20794D;">"weight"</span></span>
+<span id="cb1-24">  ) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb1-25">  <span class="fu" style="color: #4758AB;">na.omit</span>()</span>
+<span id="cb1-26"></span>
+<span id="cb1-27"><span class="co" style="color: #5E5E5E;"># convert weight to grams</span></span>
+<span id="cb1-28">food_weight_data<span class="sc" style="color: #5E5E5E;">$</span>weight <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">sapply</span>(food_weight_data<span class="sc" style="color: #5E5E5E;">$</span>weight, lbs_oz_to_grams)</span>
+<span id="cb1-29"></span>
+<span id="cb1-30"><span class="fu" style="color: #4758AB;">head</span>(food_weight_data[,<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="dv" style="color: #AD0000;">5</span>]) <span class="sc" style="color: #5E5E5E;">%&gt;%</span> <span class="fu" style="color: #4758AB;">kable</span>(<span class="at" style="color: #657422;">digits =</span> <span class="dv" style="color: #AD0000;">2</span>, <span class="at" style="color: #657422;">caption =</span> <span class="st" style="color: #20794D;">"Chipotle Food Order Data"</span>)</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<table class="table table-sm table-striped">
+<caption>Chipotle Food Order Data</caption>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Order</th>
+<th style="text-align: left;">Meat</th>
+<th style="text-align: left;">Store</th>
+<th style="text-align: left;">food</th>
+<th style="text-align: right;">weight</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Person</td>
+<td style="text-align: left;">Chicken</td>
+<td style="text-align: left;">Store 1</td>
+<td style="text-align: left;">Burrito</td>
+<td style="text-align: right;">992.23</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Person</td>
+<td style="text-align: left;">Chicken</td>
+<td style="text-align: left;">Store 1</td>
+<td style="text-align: left;">Burrito</td>
+<td style="text-align: right;">907.18</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Online</td>
+<td style="text-align: left;">Chicken</td>
+<td style="text-align: left;">Store 1</td>
+<td style="text-align: left;">Bowl</td>
+<td style="text-align: right;">907.18</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Online</td>
+<td style="text-align: left;">Carnitas</td>
+<td style="text-align: left;">Store 1</td>
+<td style="text-align: left;">Burrito</td>
+<td style="text-align: right;">850.48</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Person</td>
+<td style="text-align: left;">Carnitas</td>
+<td style="text-align: left;">Store 1</td>
+<td style="text-align: left;">Bowl</td>
+<td style="text-align: right;">1048.93</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Person</td>
+<td style="text-align: left;">Chicken</td>
+<td style="text-align: left;">Store 1</td>
+<td style="text-align: left;">Burrito</td>
+<td style="text-align: right;">850.48</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>So for every order he made, we can control for whether it was in-person or online, the type of meat used in the order, the store it originated from, and the type of food (either a burrito or a bowl).</p>
+</section>
+<section id="do-you-get-less-food-online" class="level2">
+<h2 class="anchored" data-anchor-id="do-you-get-less-food-online">Do you get less food online?</h2>
+<p>Let’s answer this question. To start, we can look at the general distribution of weights. Below we see that the median weight of an order is just under 800 grams, or about 1.7 pounds. The largest order he got was a whopping 2.3 pounds, and the smallest was 1.1 pounds.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><span class="fu" style="color: #4758AB;">quantile</span>(food_weight_data<span class="sc" style="color: #5E5E5E;">$</span>weight)</span></code></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>       0%       25%       50%       75%      100% 
+ 510.2910  715.8249  793.7860  907.1840 1048.9315 </code></pre>
+</div>
+</div>
+<p>If we plot out a little histogram we can see the distribution of weights is (approximately) normal, with bowls tending to weigh a bit more than burritos.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><span class="fu" style="color: #4758AB;">ggplot</span>(food_weight_data) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb4-2">  <span class="fu" style="color: #4758AB;">geom_histogram</span>(<span class="fu" style="color: #4758AB;">aes</span>(<span class="at" style="color: #657422;">x =</span> weight, <span class="at" style="color: #657422;">fill =</span> food), <span class="at" style="color: #657422;">color =</span> <span class="st" style="color: #20794D;">'white'</span>, <span class="at" style="color: #657422;">linewidth =</span> <span class="dv" style="color: #AD0000;">1</span>, <span class="at" style="color: #657422;">bins =</span> <span class="dv" style="color: #AD0000;">10</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb4-3">  <span class="fu" style="color: #4758AB;">labs</span>(<span class="at" style="color: #657422;">x =</span> <span class="st" style="color: #20794D;">"Weight (grams)"</span>, <span class="at" style="color: #657422;">y =</span> <span class="st" style="color: #20794D;">"Count"</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb4-4">  <span class="fu" style="color: #4758AB;">scale_fill_manual</span>(<span class="at" style="color: #657422;">values =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'#4477AA'</span>, <span class="st" style="color: #20794D;">'#EE6677'</span>)) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb4-5">  <span class="fu" style="color: #4758AB;">theme_bw</span>() <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb4-6">  <span class="fu" style="color: #4758AB;">theme</span>(<span class="at" style="color: #657422;">legend.position =</span> <span class="fu" style="color: #4758AB;">c</span>(.<span class="dv" style="color: #AD0000;">1</span>,.<span class="dv" style="color: #AD0000;">9</span>),</span>
+<span id="cb4-7">        <span class="at" style="color: #657422;">legend.title =</span> <span class="fu" style="color: #4758AB;">element_blank</span>(),</span>
+<span id="cb4-8">        <span class="at" style="color: #657422;">legend.text =</span> <span class="fu" style="color: #4758AB;">element_text</span>(<span class="at" style="color: #657422;">face =</span> <span class="st" style="color: #20794D;">"bold"</span>))</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="https://gmcirco.github.io/blog//posts\chipotle-weight\data:image\png;base64,iVBORw0KGgoAAAANSUhEUgAABUAAAAPACAMAAADDuCPrAAABTVBMVEUAAAAAADoAAGYAOjoAOmYAOpAAZmYAZpAAZrYzMzM6AAA6OgA6Ojo6OmY6OpA6ZmY6ZpA6ZrY6kLY6kNtEd6pNTU1NTW5NTY5Nbm5Nbo5NbqtNjshmAABmOgBmOjpmZjpmZmZmZpBmkJBmkLZmkNtmtttmtv9uTU1ubk1ubo5ujqtujshuq+SOTU2Obk2Obm6Oq6uOyOSOyP+QOgCQZjqQZmaQkDqQkGaQkLaQtraQttuQ27aQ2\+rbk2rjm6ryOSr5P+2ZgC2Zjq2Zma2kDq2kGa2tpC2tra2ttu229u22\+2\7a2\Ijk3Ijm7Iq27I5P\I\bkDrbkGbbtmbbtpDbtrbb27bb29vb2\b\9vb\kq27kyI7kyKvk5Mjk\r6+vuZnf\tmb\yI7\25D\27b\29v\5Kv\5Mj\7b\8j\9v\+T\8S1amxAAAACXBIWXMAAB2HAAAdhwGP5fFlAAAgAElEQVR4nO2d7WNdV52dr\PSGicMhFRh8lZSKPEME890CLRTShicQunQmAluKENtpgm2g5PY+v8\9r7rStraujp3n3XW8n6eD8Qv0lln\7R+D1e6V\LsGAAABjGb+gYAAFJBoAAAA0GgAAADQaAAAANBoAAAA0GgAAADQaAAAANBoAAAA0GgAAADQaAAAANBoAAAA0GgAAADQaAAAANpKtCvAQA804wp0D3f7rOWoWo+i757hj8l4XcffvtNroJADyW8Rgx\QsLvPvz2m1wFgR5KeI0Y\oSE33347Te5CgI9lPAaMfwJCb\78NtvchUEeijhNWL4ExJ+9+G33+QqCPRQwmvE8Cck\O7Db7\JVRDooYTXiOFPSPjdh99+k6sg0EMJrxHDn5Dwuw+\SZXQaCHEl4jhj8h4XcffvtNroJADyW8Rgx\QsLvPvz2m1wFgR5KeI0Y\oSE33347Te5CgI9lPAaMfwJCb\78NtvchUEeijhNWL4ExJ+9+G33+QqCPRQwmvE8Cck\O7Db7\JVRDooYTXiOFPSPjdh99+k6sg0EMJrxHDn5Dwuw+\SZXQaCHEl4jhj8h4XcffvtNroJADyW8Rgx\QsLvPvz2m1wFgR5KeI0Y\oSE33347Te5CgI9lPAaMfwJCb\78NtvchUEeijhNWL4ExJ+9+G33+QqCPRQwmvE8Cck\O7Db7\JVRDooYTXiOFPSPjdh99+k6sg0EMJrxHDn5Dwuw+\SZXsRBoNOE1yl7i8OGH33347Te5CgI9lPAaZS9x+PDD7z789ptcBYEeSniNspc4fPjhdx9++02ugkAPJbxG2UscPvzwuw+\SZXQaCHEl6j7CUOH3743YfffpOrINBDCa9R9hKHDz\87sNvv8lVEOihhNcoe4nDhx9+9+G33+QqTQT69Dc3j47+8u\PX3zQLYURXqPsJQ4ffvjdh99+k6u0EOgXt46W\M25iw+8qSjCa5S9xOHDD7\78NtvcpUGAn36wdHrHx8\eej135+9uKDbyuI8BplL3H48MPvPvz2m1ylgUAfHn37t4v\3j968+zFB95UFOE1yl7i8OGH33347Te5yuECnT8A\eFFF7\6\eQRXqPsJQ4ffvjdh99+k6scLtCvbq0egJYufvX7ySO8RuFLnE327MOb7yLQxzff+PSPf3V09Po\7lx0zWf7ceghZOx5HljBxwiedZoI9GerZ+Hf2\wRAoXJPqpTHxu64nCBPly8gOnT46e\4Vn4SMJvP5rs2Yc33+VT+Iebh553eBY+kfDbjyZ79uHNdxHo45vrR56LL4aeufjQu0oivEYjL\G\UzLqScYguzrhzfcR6PpZ+O0vTi4+9K6SCK8RAp2Q7OqEN99FoE8\WD8CfXjEI9BAEOh0ZFcnvPkuAt1+7fPOydPwm4sPu6cswmuEQCckuzrhzbcR6OObRz\4mGfhU0Gg05FdnfDm2wj0+OHN5ctAXzv3HZ2HCTRkX8JrhEAnJLs64c33EejxFz+bK\SvPz5\8UG3tCFkX8JrhEAnJLs64c03EuiFFz\ovUP2JbxGCHRCsqsT3nwE2uguDyS8Rgh0QrKrE958BNroLg8kvEYIdEKyqxPefATa6C4PJLxGCHRCsqsT3nwE2uguDyS8Rgh0QrKrE958BNroLg8kvEYIdEKyqxPefATa6C4PJLxGCHRCsqsT3nwEWn63Rzdma57\5q\3Cvryrdm1nw6+zfAaIdAJya5OePMRaPndTgQ629OLCHQ8BNq8rBDGZFcnvPkItPxuuwKdvXhvjyAEOh4CbV5WCGOyqxPefARafre5QJ\7aPGLJ7\Y8yEoAh0PgTYvK4Qx2dUJbz4CLb\bVqALMc7e3SMIgY6HQJuXFcKY7OqENx+Blt\tlEBXYnzyy5dms+e\t\h0\u5s9urqr2bXV288exeBjodAm5cVwpjs6oQ3H4GW3+3kU\gP118D3XxVdGHJ+a8Xf\Zg\fXR+X+f+wiBjodAm5cVwpjs6oQ3H4GW3+3cs\CLR5vfurf4iuhcrE\eX\7h7fVf3l48EEWg4yHQ5mWFMCa7OuHNR6Dld9sV6Cvrz9oXn60vZPnq+nP4hVPX\52rE4GOh0CblxXCmOzqhDcfgZbf7dTLmFaPOVdPJT1Yftb+YKHT+f88f2P13\kfIdDxEGjzskIYk12d8OYj0PK7nXwN9Hc3Tn2CvvqL+W+f+2j+MPRb78\u3pQikDHQ6DNywphTHZ1wpuPQMvvdvIs\OoB5hmBLj6T\7iC6F3Z9f+2+qvEOh4CLR5WSGMya5OePMRaPndTgv0uY\OfAq\vT9xXvzt3t59ScIdDwE2rysEMZkVye8+Qi0\G4nAv387aUgTz+JtH4C6frya6PbP0GgIyHQ5mWFMCa7OuHNR6Dldzv1JNLiseeplzEdr17CtPjzzUuZEOiICLR5WSGMya5OePMRaPndTgn0ld0\WVvywerZ+e2L6RHoiAi0eVkhjMmuTnjzEWj53U4Eeu3rP1n90c63ch6ffBvn4r+vrv8AgY6EQJuXFcKY7OqENx+BNrrLAwmvEQKdkOzqhDcfgTa6ywMJrxECnZDs6oQ3H4E2ussDCa8RAp2Q7OqENx+BNrrLAwmvEQKdkOzqhDcfgTa6ywMJrxECnZDs6oQ3H4E2ussDCa8RAp2Q7OqENx+BNrrLAwmvEQKdkOzqhDf\mRdoCOE1QqATkl2d8OYjUA\Ca4RAJyS7OuHNR6AehNcIgU5IdnXCm49APQivEQKdkOzqhDcfgXoQXiMEOiHZ1QlvPgL1ILxGCHRCsqsT3nwE6kF4jRDohGRXJ7z5CNSD8Boh0AnJrk548xGoB+E1QqATkl2d8OYjUA\Ca4RAJyS7OuHNR6AehNcIgU5IdnXCm49APQivEQKdkOzqhDcfgXoQXiMEOiHZ1Qlv\jMv0D9dRqO7PJDwGiHQCcmuTnjzEWijuzyQ8Boh0AnJrk548xFoo7s8kPAaIdAJya5OePMRaKO7PJDwGiHQCcmuTnjzEWijuzyQ8Boh0AnJrk548xFoo7s8kPAaIdAJya5OePMRaKO7PJDwGiHQCcmuTnjzEWijuzyQ8Boh0AnJrk548xFoo7s8kPAaIdAJya5OePMRaPndHt2YrXn+m7\eK+jLt2bXfjr4NsNrhEAnJLs64c1HoOV3OxHobE8vbgX65JcDPBpeIwQ6IdnVCW8+Ai2\265AZy\e2yNoI9DfvT3kgWh4jRDohGRXJ7z5CLT8bnOBPvfR4hdPfrHvQ9AVAz+TD68RAp2Q7OqENx+Blt9tK9CFEWfv7p+HQEcAgdbIrk548xFo+d1OCXRhxM0frH97dzZ79cPZ7IVfb3+x+ovbq0\6Xz1efC30pdns+e\t8+l\fI0Q6IRkVye8+Qi0\G4nn8J\uPoa6HmBLvjWyS\OCnTzVdT9Ho+G1wiBTkh2dcKbj0DL73buWfiCQK8vHlxuf7H+i82n8IvP\L91b\EV1PUj2TrhNUKgE5JdnfDmI9Dyu+0K9JV7xyWBrsS4\cUZgc7\Prij2+vPp+\jPAaIdAJya5OePMRaPndTr2MaWHI8wJdvbhp+4vTAn3y\vqppwf7vQoqvEYIdEKyqxPefARafreTr4H+7sbyseQVBbp9Mv7k2agq4TVCoBOSXZ3w5iPQ8rvteG\1GPK8QJefoZ\8AoGOBwKtkV2d8OYj0PK7nRbo\JebP5j\dx+B8il8SxBojezqhDcfgZbf7USgn7+9eQS6fEj5YLaXQHkSqSUItEZ2dcKbj0DL73bqSaTFY8nFy5Ku3ztefEW0KtDVQ897vIypJQi0RnZ1wpuPQMvvdkqgryz+ZP2K+Wsv1QW6ein9dV5I3xIEWiO7OuHNR6DldzsR6LWv\2T1R58svzPz\75\iUCf\GitXL6VsxkItEZ2dcKbj0Ab3eWBhNcIgU5IdnXCm49AG93lgYTXCIFOSHZ1wpuPQBvd5YGE1wiBTkh2dcKbj0Ab3eWBhNcIgU5IdnXCm49AG93lgYTXCIFOSHZ1wpuPQBvd5YGE1wiBTkh2dcKbj0Ab3eWBhNcIgU5IdnXCm\MCzSE8Boh0AnJrk548xGoB+E1QqATkl2d8OYjUA\Ca4RAJyS7OuHNR6AehNcIgU5IdnXCm49APQivEQKdkOzqhDcfgXoQXiMEOiHZ1QlvPgL1ILxGCHRCsqsT3nwE6kF4jRDohGRXJ7z5CNSD8Boh0AnJrk548xGoB+E1QqATkl2d8OYjUA\Ca4RAJyS7OuHNR6AehNcIgU5IdnXCm49APQivEQKdkOzqhDcfgXoQXiMEOiHZ1QlvPgL1ILxGCHRCsqsT3nwE6kF4jRDohGRXJ7z5CNSD8Boh0AnJrk548xGoB+E1QqATkl2d8OYjUA\Ca4RAJyS7OuHNR6AehNcIgU5IdnXCm49APQivEQKdkOzqhDf\GRJo9AcivEYIdEKyqxPefATqQXiNEOiEZFcnvPkI1IPwGiHQCcmuTnjzEagH4TVCoBOSXZ3w5iNQD8JrhEAnJLs64c1HoB6E1wiBTkh2dcKbj0A9CK8RAp2Q7OqENx+BehBeIwQ6IdnVCW8+AvUgvEYIdEKyqxPefATqQXiNEOiEZFcnvPkI1IPwGiHQCcmuTnjzEagH4TVCoBOSXZ3w5iNQD8JrhEAnJLs64c1HoB6E1wiBTkh2dcKbj0A9CK8RAp2Q7OqENx+BehBeIwQ6IdnVCW8+AvUgvEYIdEKyqxPefATqQXiNEOiEZFcnvPkI1IPwGiHQCcmuTnjzEagH4TVCoBOSXZ3w5iNQD8JrNDII9NklvPkI1IPwGo0MAn12CW9+gkA\AxdaflyvgF6gPUxVekaowSPQQwn\+GR0QsUVIQ3P+ER6J5vF\2BCK\RyCDQZ5fw5iNQD5JqpNeZPrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCCNSDpBrpV12f2MNUPUhqfgEE6kFSjfSrrk\sYaoeJDW\AAL1IKlG+lXXJ\YwVQ+Sml8AgXqQVCP9qusTe5iqB0nNL4BAPUiqkX7V9Yk9TNWDpOYXQKAeJNVIv+r6xB6m6kFS8wsgUA+SaqRfdX1iD1P1IKn5BRCoB0k10q+6PrGHqXqQ1PwCZgJ9fPONT89dfM\3jf5AJNVIv+r6xB6m6kFS8wt4CfTpB0cI1B79qusTe5iqB0nNL+Al0PtHCNQf\arrE3uYqgdJzS9gJdDHNxFoAPpV1yf2MFUPkppfwEmg80\g\xNfA\VHv+r6xB6m6kFS8ws4CfTO0Zs8iRRAr6s+Lr1ONan5BYwE+nD+6fuuQL+24TNwYfmB6WHVmWr8VJNoIdCvbr3282ME6s3yA8OqM9WAqSbRQqB3jt7jdaAR9LDqenqdalLzC9h8Cn9\+fw7Ag2g11Ufl16nmtT8Ai4CfXxz\gk8Ao1Av+p\UtLNVPWJJZKaX8BFoPePtnz7t2cuvucloj8QSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AReBruFT+AD0i4dAx5iqPrFEUvMLIFAPkmqkXzwEOsZU9YklkppfAIF6kFQj\eIh0DGmqk8skdT8AgjUg6Qa6RcPgY4xVX1iiaTmFzATaPHie75d9AciqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AQTqQVKN9IuHQMeYqj6xRFLzCyBQD5JqpF88BDrGVPWJJZKaXwCBepBUI\3iIdAxpqpPLJHU\AII1IOkGukXD4GOMVV9Yomk5hdAoB4k1Ui\eAh0jKnqE0skNb8AAvUgqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AQTqQVKN9IuHQMeYqj6xRFLzCyBQD5JqpF88BDrGVPWJJZKaXwCBepBUI\3iIdAxpqpPLJHU\AII1IOkGukXD4GOMVV9Yomk5hdAoB4k1Ui\eAh0jKnqE0skNb8AAvUgqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AQTqQVKN9IuHQMeYqj6xRFLzCyBQD5JqpF88BDrGVPWJJZKaXwCBepBUI\3iIdAxpqpPLJHU\AII1IOkGukXD4GOMVV9Yomk5hdAoB4k1Ui\eAh0jKnqE0skNb8AAvUgqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AQTqQVKN9IuHQMeYqj6xRFLzCyBQD5JqpF88BDrGVPWJJZKaXwCBepBUI\3iIdAxpqpPLJHU\AII1IOkGukXD4GOMVV9Yomk5hdAoB4k1Ui\eAh0jKnqE0skNb8AAvUgqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AQTqQVKN9IuHQMeYqj6xRFLzCyBQD5JqpF88BDrGVPWJJZKaXwCBepBUI\3iIdAxpqpPLJHU\AII1IOkGukXD4GOMVV9Yomk5hdAoB4k1Ui\eAh0jKnqE0skNb8AAvUgqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AQTqQVKN9IuHQMeYqj6xRFLzCyBQD5JqpF88BDrGVPWJJZKaXwCBepBUI\3iIdAxpqpPLJHU\AII1IOkGukXD4GOMVV9Yomk5hdAoB4k1Ui\eAh0jKnqE0skNb8AAvUgqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AQTqQVKN9IuHQMeYqj6xRFLzCyBQD5JqpF88BDrGVPWJJZKaXwCBepBUI\3iIdAxpqpPLJHU\AII1IOkGukXD4GOMVV9Yomk5hdAoB4k1Ui\eAh0jKnqE0skNb8AAvUgqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AQTqQVKN9IuHQMeYqj6xRFLzCyBQD5JqpF88BDrGVPWJJZKaXwCBepBUI\3iIdAxpqpPLJHU\AII1IOkGukXD4GOMVV9Yomk5hdAoB4k1Ui\eAh0jKnqE0skNb8AAvUgqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AQTqQVKN9IuHQMeYqj6xRFLzCyBQD5JqpF88BDrGVPWJJZKaXwCBepBUI\3iIdAxpqpPLJHU\AII1IOkGukXD4GOMVV9Yomk5hdAoB4k1Ui\eAh0jKnqE0skNb8AAvUgqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0vgEA9SKqRfvEQ6BhT1SeWSGp+AQTqQVKN9IuHQMeYqj6xRFLzCyBQD5JqpF88BDrGVPWJJZKaXwCBepBUI\3iIdAxpqpPLJHU\AII1IOkGukXD4GOMVV9Yomk5hdAoB4k1Ui\eAh0jKnqE0skNb8AAvUgqUb6xUOgY0xVn1giqfkFEKgHSTXSLx4CHWOq+sQSSc0voBTokx\h3vb3zz6zl\cK77V+YvveRPRH4ikGukXD4GOMVV9Yomk5hdQCvTLt577qPyb+sX3vInoD0RSjfSLh0DHmKo+sURS8wtMJtBHNxDoDkk10i8eAh1jqvrEEknNLyAS6Jdvzc7xIp\Cn5BUI\3iIdAxpqpPLJHU\AKqR6APzgv03X0vvufbRX8gkmqkXzwEOsZU9YklkppfQCXQJ\9nXe+c+PaN97Z8N1\2vvie75d9AciqUb6xUOgY0xVn1giqfkFJvsa6BUuvufbRX8gkmqkXzwEOsZU9YklkppfYLKXMV3h4nu+XfQHIqlG+sVDoGNMVZ9YIqn5BXghvQdJNdIvHgIdY6r6xBJJzS+gF+i\bPjDvhff8+2iPxBJNdIvHgIdY6r6xBJJzS+gFejnP9p5Fp7Xge6QVCP94iHQMaaqTyyR1PwCUoGefjUoAt0hqUb6xUOgY0xVn1giqfkFpAK9O5u98N1fbfifvJD+hKQa6RcPgY4xVX1iiaTmF5A+C\+7PqQi+\5dtEfiKQa6RcPgY4xVX1iiaTmF9C+DvTaT4dcfM+3i\5AJNVIv3gIdIyp6hNLJDW\AC+k9yCpRvrFQ6BjTFWfWCKp+QW0n8LzCPQikmqkXzwEOsZU9YklkppfQPwk0qtDLr7n20V\IJJqpF88BDrGVPWJJZKaX0Aq0PlD0O8PuPiebxf9gUiqkX7xEOgYU9UnlkhqfgHt98J\ZzY7+YFM+35jPAI1Q794CHSMqeoTSyQ1v4D2SaQZL6S\gKQa6RcPgY4xVX1iiaTmFyAzrMgAACAASURBVECgHiTVSL94CHSMqeoTSyQ1vwA\jcmDpBrpFw+BjjFVfWKJpOYXQKAeJNVIv3gIdIyp6hNLJDW\AAL1IKlG+sVDoGNMVZ9YIqn5BaQC\fO\7MLPA90hqUb6xUOgY0xVn1giqfkFeBLJg6Qa6RcPgY4xVX1iiaTmF0CgHiTVSL94CHSMqeoTSyQ1v4D0hfT\Z\OjQP\L27Nr\5WfB7pDUo30i4dAx5iqPrFEUvMLTPUk0qMbL+77L3QiUDP0i4dAx5iqPrFEUvMLTPYs\P4\WASBmqFfPAQ6xlT1iSWSml9gMoHu\xAUgZqhXzwEOsZU9YklkppfYDKB7v\TlRGoGfrFQ6BjTFWfWCKp+QUmfASKQHdIqpF+8RDoGFPVJ5ZIan6BqQT65PaMT+F3SKqRfvEQ6BhT1SeWSGp+Ae3PA938KNB3vnNjxpNIuyTVSL94CHSMqeoTSyQ1v8B0L6TnZUy7JNVIv3gIdIyp6hNLJDW\wFQCff57+\oTgbqhXzwEOsZU9YklkppfIOGnMX0GZVpO+QroFw+BjjFVfeLUC2MLP87uUJL+f1i\eAh0jKnqE0skNb9AwiPQPd8u+gORVCP94iHQMaaqTyyR1PwCaoH++Zcvz2bXXv7evj8M9BiBXoJeLvrF6+GMPSS2bb4FYoHe3T6LtO+LmBDoJfQglx7O2ENi2+ZboBXowp\Pf+Od77x0FYMi0Co9yKWHM\aQ2Lb5FkgF+ujG7MVfL3\1+fuzaz\d9+J7vl30BwKB1havhzP2kNi2+RZIBbrz7ZtP3p9d3\fie75d9AcCgdYWr4cz9pDYtvkWSL+V8\2dR538OLtTINDa4vVwxh4S2zbfAu13Iu38ACZ+nN0pEGht8Xo4Yw+JbZtvAQL1AIHWFq+HM\aQ2Lb5Fmg\hZ+9u\3NA36c3S4ItLZ4PZyxh8S2zbeAJ5E8QKC1xevhjD0ktm2+BeqXMb3wT8tf\f5tXsZ0CgRaW7wezthDYtvmW6B\If3s5ZdfvtK3IiHQKj3IpYcz9pDYtvkWiL+V85Mb6+\kvPb9\S++59tFfyAQaG3xejhjD4ltm2+B+oeJPPndd+aPQL\xk71\nDICvYQe5NLDGXtIbNt8C\hxdh4g0Nri9XDGHhLbNt8CBOoBAq0tXg9n7CGxbfMtUAr0z+sfAvro61f5DB6B1ulBLj2csYfEts23QCfQz9\ePPF+90rPISHQOj3IpYcz9pDYtvkWyAS6eP59\dL5X\ADlc+BQGuL18MZe0hs23wLVAJ9MHfm+kX0x8dPPpz\7t1zb3PRxfd8u+gPBAKtLV4PZ+whsW3zLRAJdPFPwu8+5px\Fr\vzxJBoHV6kEsPZ+whsW3zLRAJdC7MUz875Mn7+38Sj0Cr9CCXHs7YQ2Lb5lugEejCl6c\ZX8w46cx7YJAa4vXwxl7SGzbfAs0Ap1\Bn\mZ4c8urH35\AItEoPcunhjD0ktm2+BTKBntHl+T+5+OJ73kT0BwKB1havhzP2kNi2+RYgUA8QaG3xejhjD4ltm2+B7Gug5z+F52ugOyDQ2uL1cMYeEts23wLRs\C3zz7pfnfGT6TfBYHWFq+HM\aQ2Lb5FogEevZJd17GdAYEWlu8Hs7YQ2Lb5lsw0Qvpb\NC+tMg0Nri9XDGHhLbNt8C5bdyvrJ5DPr5j\gnPc6AQGuL18MZe0hs23wLZD9MZPnPIb3wD7\61a9++fbil\t+BRSBXkIPcunhjD0ktm2+BbofZ\e\N\8c0vKfRPqPV7j4nm8X\YFAoLXF6+GMPSS2bb4Fwh+ovPzEfaXPV\5wlYvv+XbRHwgEWlu8Hs7YQ2Lb5lug\Sc9fv8\fvzOd391FXseI9BL6EEuPZyxh8S2zbeAfxPJAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW4BAPUCgtcXr4Yw9JLZtvgUI1AMEWlu8Hs7YQ2Lb5luAQD1AoLXF6+GMPSS2bb4FCNQDBFpbvB7O2ENi2+ZbgEA9QKC1xevhjD0ktm2+BQjUAwRaW7wezthDYtvmW2Ak0H\9u6Oj137w8fmL7\n+0R8IBFpbvB7O2ENi2+Zb4CPQ3xwtee3n5y6+5wWiPxAItLZ4PZyxh8S2zbfARqAPj177++PjLz44+vZvz158zytEfyAQaG3xejhjD4ltm2+Bi0CffnD0w8V\v7q1+u\uxfe8RPQHAoHWFq+HM\aQ2Lb5FrgI9Ktb60eed47eO3vxPS8R\YFAoLXF6+GMPSS2bb4FLgLdgkCvSA9y0Z9Rj36q+sQSCPS4pUC\urV9FulrGz6DMssx6eWiXzz9GfXop6pPnHphbGkn0PtHb25+iUAvYzkmvVz0i6c\ox79VPWJUy+MLc0E+pCXMV0VvVz0i6c\ox79VPWJJfgU\rjdp\APb7529jl4BHoJernoF09\Rj36qeoTSyDQ42YCvV94\IlAL0EvF\3i6c+oT9RPVZ\YtvkWOAn0N0V\ItA6Pay6\oz6RP1U9Yltm2+Bj0Cf3jl6\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\eDj8xff8\0RKIkkkngqsSOBfnXraMG3f3vu4nteAIGSSCKJpxI7Euidozc+Pv7ig6M3Pj178T0vgEBJJJHEU4n9CPTxzeVjz69uvfbzsxff8woIlEQSSTyV2I9A7x+9uf7ve2cvvucVECiJJJJ4KrEfgd45+uHyvw\XIt25+J5XKAkUAMCdwwX69IP1p+6Pb26+CPq1DZ8N4tAzAQBclUGyQqAAAA4CPftCJj6FB4BnmVEegW4vvuclECgAJIJADyX9Sw7Rtx8+\PC7D7\9JlfhWfhDCa8Rw5+Q8LsPv\0mV2nyOtD3Tv135+J7XiH6AxFeI4Y\IeF3H377Ta5i+51IMYTXiOFPSPjdh99+k6s0EOjTD45eb\+98DGE14jhT0j43YfffpOrtPhhIl+M8dOYYgivEcOfkPC7D7\9Jldp8vNAv\jZ3J8\OPv4E4FGEH374cMPv\vw229yFdufSB9DeI0Y\oSE33347Te5CgI9lPAaMfwJCb\78NtvchUEeijhNWL4ExJ+9+G33+QqCPRQwmvE8Cck\O7Db7\JVRDooYTXiOFPSPjdh99+k6sg0EMJrxHDn5Dwuw+\SZXQaCHEl4jhj8h4XcffvtNroJADyW8Rgx\QsLvPvz2m1wFgR5KeI0Y\oSE33347Te5CgI9lPAaMfwJCb\78NtvchUEeijhNWL4ExJ+9+G33+QqCPRQwmvE8Cck\O7Db7\JVRDooYTXiOFPSPjdh99+k6sg0EMJrxHDn5Dwuw+\SZXQaCHEl4jhj8h4XcffvtNroJADyW8Rgx\QsLvPvz2m1wFgR5KeI0Y\oSE33347Te5CgI9lPAaMfwJCb\78NtvchUEeijhNWL4ExJ+9+G33+QqCPRQwmvE8Cck\O7Db7\JVRDooYTXiOFPSPjdh99+k6sg0EMJrxHDn5Dwuw+\SZXQaCHEl4jhj8h4XcffvtNroJADyW8Rgx\QsLvPvz2m1wFgR5KeI0Y\oSE33347Te5CgI9lPAaMfwJCb\78NtvchUEeijhNWL4ExJ+9+G33+QqCPRQwmvE8Cck\O7Db7\JVcYVKADAMw0CBQAYyIgC7YKzEwQhDH9CGH4BBHpVqNGEMPwJYfgFEOhVoUYTwvAnhOEXQKBXhRpNCMOfEIZfAIFeFWo0IQx\Qhh+AQR6VajRhDD8CWH4BRDoVaFGE8LwJ4ThF0CgAAADQaAAAANBoAAAA0GgAAADQaAAAANBoAAAA0GgAAADQaAAAANBoJfx9Dc3j47+8u\Xv\nZ\Dc\+LjwGxiDL\7u6IJ5M\xx+erWm+tfXTx2PgYI9FK+uHW05G8Wv\lq9Ztv\bcb2AMHt9cjvi1ny9+w\CV3DlaC\TisfMxOEagl\H0g6PXPz5++s+rJb5z9MbHx198cPTGp2d\AyMwH\5F82b4o\L0ztFGoBePnY\BMQK9jIfr\4O9v+jT45vL33x1a2HTU7+BMbh43gx\VP71b482AuVjUAeBVpk\Bvrhye\ur0t1\+i9M7+BMXi4GvHqg8DwZdw\OvqbP24nfNHY+RgsQKBVvrq1+xWeO2ubLhf71G9gDE49xmH4Mu6\o\byV48dj4GCxBolcc33\j0j391dDRv1OKR0PqTlcWfnvrNhHf4LLP9GuibDF\N9tH\RWPnY7AEgVaZl+Nnq2fh32OH9Tz9zeoVEJ8yfDUIdD8QaJWHq\WdL\K8LTuV+fZvT\1mylt8lnn8t0uBvv7xMcMXc16gZ8bOx2AJAq3y8Gj9FfLFy+L4P2Axj28W\9+L4QvgEeh+INAqj2\Sn+m4w\97TQYC3Q8EWmX76cnyFzwJKeX0ijJ8KTwLvx8ItMp2hx8uvt9i84q39cvgdn4DI3BaoAxfysMzr\I8P3Y+BgsQaJ072\8jfo9vxFCz+yk8w9eyESjfiVQHgdZ5fHPx42ZWz2OsvzF+\d2\p34DY\Bw5yUQDF\LRqAXj52PwQIEegkP1z8QaPn1ni92f\7MF\wwmrG5f7R9ES7D17L9yubFY+djcIxAL+eLxQ89\OuPN79Z\HzKTwu\gTH4f4ufB8rwJ+DkqaGLx87HAIECAAwGgQIAa9XrWQAABhxJREFUDASBAgAMBIECAAwEgQIADASBAgAMBIECAAwEgQIADASBAgAMBIECAAwEgQIADASBAgAMBIECAAwEgcIoPLoxu779zd3ZbPbqzt+8ev7tb89evHf+T798q\S256KuX\o2A3jy\nMfjXFdeJZAoDAKT96fbf0z\XsRKdzm757\u33Fegnf3H2zb58ayTRPbpRuiWAHRAojMPd2bWfrn85f8w52+p016w77CnQwpvd3uNB6jDGuzI8KyBQGIcHJw805485v3tj87u5E\f\jHsPgY74OPHRDT6JhzoIFMbhRJSLx5z\a2vCB8XP4C++yCUCnV98\8tdldtXcD10CQKFcZibbe265fNJW\PdLn4GfwGXC\TBVS53VR7d2H4ZAqAEAoWR2H4RdPms0YP17068+vmPbsxm177569Vbb834u38\9NX7t1dinEh0Ce\fGk2e\5791ZXmu0+oX986kHiqfdcPDL93dvzd1yk\n4RNXt5eY3F31w\XvzV\G1X7zTb3MTylmZf\8nmivM35augUAOBwkg8Wn\Zc\Ws0eZ32xcxrWU4m72y\O1aoMsn7BdPOf1oI9BvvrX6k8Vfnxfoo+3XVs+85\y378xWz109+XAT9cJHqzf8t7fXb\vR+q9Wcv\k1NutbpIn4qEGAoWR2HwRdPWK0OXjvuOTx6V3V4\7\vzh2qBrgc7NNn9cuFTeWqCza\MHjp+\v9bm2U\hTz6DP\OeC5\Okz7\yTJq8Vjz87dXr6Vamnb9ps\PvvmH4ye\WOl5fqMvzm9p8dvr28vzOTzUQKAwFmvZrV\3uf3MevmHJ6+zXxv19sZh28enG4FuHsauBXtaoLd3vtB66j0Xmlw9Nt0+mzX\xeKNn2xkvLj49fVVFu9ydyPjky\T7vVCfugYBApj8WBjsqWOVg\mNka6u\u60IXFbq8\R1\8fzt1gI9\dzTGYFuHteef8+Tl5tuH0Wu\+jkb26ffJV28Yu75x9unlwfoAQChbFYfX1y81hzpc71i5h2xbRy4vJ\d\749kagpwV5RqDbR4jn3vPkyaoTzv7N7dOOfbB4TuufTr1H6SoAJyBQGIvVc9h3Tz4Jv7511pdvzXZY\NHSjDufMZ88C7\7+wsFeu49zzx2\PPvf\Xjl2Zn\uaMQI9Xzyg9\70\nLxf+RukANYgUBiNhX1OPmFeiG3ziFIr0E9e2k26WKCr1zQtnoXfvpAJgUIVBAqjsfgi6MmzRYtXpW9edXT++zk3At388dUFevo9TzS5en3Ty+\8wx9uXybQOb\8dK2m+9uQqBQBYHCaHz51rWfnvzspYXsNk\1nP\a4oVfA91PoKWvgW6\erp8FVPhb0oCPT7evqypeJ8AuyBQGI3FF0F3fvbS7dn12yfu2ihr7agLn4WvCrT6LPz13esX\uaMQM85+Jhn4eEyECiMx93Zv9n5XP3B7Pntz1JevGj93vpPlw9RL3wdaFWg1deBnhXo2b85+wj07s7rnU6cy+tAoQIChfF4sPvlxOWPBd1+qnx39VTN9tPlk1fdn\lOpNMCXUjuyR92EzZXvHvuO5FOfwr\+7fX37J5oUDnYde+v\iWpe1r8PlOJLgEBArjsXiy\eSHJS2ezTl5\Lj9XvjVH22+F379Xeov\OeyQJdKvn4qYfO98Kff80STX769DvrmL5ZivPhroMsf\Hzqu+35Xniog0BhRG6fst3tUz8H5PMfvbTzo48u\mlMq7\ffI3zk7nkrt\bveaFP41p8xfLH+e0eIn86qn6ypNIT3758uKFoK9sHuLy05jgEhAoWLLv64fO\zzQhq884kfSwyUgUDDi6k9\bx4kjvLEOf8oElwCAgUjtq8aLf\bxyXWjxIHvOe+lwa4EAQKRsztd+3780eRn9zY\1\qWD1MHPKe+10Z4GIQKDjxYPNE+Au\3vdd1v8u\ID3vAT+XXi4FAQKVvz5w9Vz81dQ16Mb1we+Z5Un7\MJPFwGAgUAGAgCBQAYCAIFABgIAgUAGAgCBQAYCAIFABgIAgUAGAgCBQAYCAIFABgIAgUAGAgCBQAYCAIFABgIAgUAGAgCBQAYyP8H48wwjpphuWsAAAAASUVORK5CYII=" class="img-fluid figure-img" width="672"></p>
+<p></p><p></p>
+</figure>
+</div>
+</div>
+</div>
+<section id="results" class="level3">
+<h3 class="anchored" data-anchor-id="results">Results</h3>
+<p>To determine whether online orders weigh less than in-person orders, we can just apply some simple statistics. Here, I fit a linear regression with each blocking factor. In this way we “control” for variables we know affect order weight (e.g.&nbsp;bowls weigh more than burritos, or store 3 gives you more food than store 1). In the end all we care about is the coefficient for the effect of ordering online relative to ordering in-person.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><span class="co" style="color: #5E5E5E;"># in-person ordering yields about 160g more food, or about more 20% on average</span></span>
+<span id="cb5-2">fit1 <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">lm</span>(weight <span class="sc" style="color: #5E5E5E;">~</span> Order <span class="sc" style="color: #5E5E5E;">+</span> Meat <span class="sc" style="color: #5E5E5E;">+</span> Store <span class="sc" style="color: #5E5E5E;">+</span> food, <span class="at" style="color: #657422;">data =</span> food_weight_data)</span>
+<span id="cb5-3"></span>
+<span id="cb5-4">broom<span class="sc" style="color: #5E5E5E;">::</span><span class="fu" style="color: #4758AB;">tidy</span>(fit1) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-5">  <span class="fu" style="color: #4758AB;">kable</span>(<span class="at" style="color: #657422;">digits =</span> <span class="dv" style="color: #AD0000;">2</span>, <span class="at" style="color: #657422;">caption =</span> <span class="st" style="color: #20794D;">"Linear regression on order weight"</span>) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-6">  <span class="fu" style="color: #4758AB;">kable_styling</span>(<span class="st" style="color: #20794D;">"striped"</span>) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb5-7">  <span class="fu" style="color: #4758AB;">row_spec</span>(<span class="dv" style="color: #AD0000;">2</span>, <span class="at" style="color: #657422;">bold =</span> T, <span class="at" style="color: #657422;">hline_after =</span> T)</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+
+<table class="table table-striped" style="margin-left: auto; margin-right: auto;">
+<caption>Linear regression on order weight</caption>
+ <thead>
+  <tr>
+   <th style="text-align:left;"> term </th>
+   <th style="text-align:right;"> estimate </th>
+   <th style="text-align:right;"> std.error </th>
+   <th style="text-align:right;"> statistic </th>
+   <th style="text-align:right;"> p.value </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> (Intercept) </td>
+   <td style="text-align:right;"> 843.22 </td>
+   <td style="text-align:right;"> 36.42 </td>
+   <td style="text-align:right;"> 23.15 </td>
+   <td style="text-align:right;"> 0.00 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;font-weight: bold;"> OrderPerson </td>
+   <td style="text-align:right;font-weight: bold;"> 160.62 </td>
+   <td style="text-align:right;font-weight: bold;"> 30.22 </td>
+   <td style="text-align:right;font-weight: bold;"> 5.31 </td>
+   <td style="text-align:right;font-weight: bold;"> 0.00 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> MeatChicken </td>
+   <td style="text-align:right;"> -29.47 </td>
+   <td style="text-align:right;"> 32.48 </td>
+   <td style="text-align:right;"> -0.91 </td>
+   <td style="text-align:right;"> 0.37 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> StoreStore 2 </td>
+   <td style="text-align:right;"> -62.26 </td>
+   <td style="text-align:right;"> 36.74 </td>
+   <td style="text-align:right;"> -1.69 </td>
+   <td style="text-align:right;"> 0.10 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> StoreStore 3 </td>
+   <td style="text-align:right;"> -93.44 </td>
+   <td style="text-align:right;"> 36.74 </td>
+   <td style="text-align:right;"> -2.54 </td>
+   <td style="text-align:right;"> 0.02 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> foodBurrito </td>
+   <td style="text-align:right;"> -82.38 </td>
+   <td style="text-align:right;"> 30.22 </td>
+   <td style="text-align:right;"> -2.73 </td>
+   <td style="text-align:right;"> 0.01 </td>
+  </tr>
+</tbody>
+</table>
+
+</div>
+</div>
+<p>So what does this mean? Well, after controlling for the other variables we see that the effect of ordering in-person relative to online is <strong>160 grams more food</strong> (or about 5.6 ounces). Based on the orders he submitted that roughly equates to 20% more food from ordering in-person rather than online!</p>
+<p>So, yes, in this case it does appear that ordering online resulted in smaller orders relative to in-person.</p>
+</section>
+<section id="caveats" class="level3">
+<h3 class="anchored" data-anchor-id="caveats">Caveats</h3>
+<p>All of this analysis assumes that the online orders were roughly equivalent to the in-person one (e.g.&nbsp;ordering the same ingredients online as in-person). This would <em>not</em> be valid if he tended to order more additional items when in the store rather then online. However, from watching the video and looking at the listed cost of all items ($11.00) it appears that the orders are comparable.</p>
+</section>
+<section id="full-model" class="level3">
+<h3 class="anchored" data-anchor-id="full-model">Full Model</h3>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><span class="fu" style="color: #4758AB;">summary</span>(<span class="fu" style="color: #4758AB;">lm</span>(weight <span class="sc" style="color: #5E5E5E;">~</span> Order <span class="sc" style="color: #5E5E5E;">+</span> Meat <span class="sc" style="color: #5E5E5E;">+</span> Store <span class="sc" style="color: #5E5E5E;">+</span> food, <span class="at" style="color: #657422;">data =</span> food_weight_data))</span></code></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+Call:
+lm(formula = weight ~ Order + Meat + Store + food, data = food_weight_data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-147.79  -43.47   -8.17   52.23  129.06 
+
+Coefficients:
+             Estimate Std. Error t value Pr(&gt;|t|)    
+(Intercept)    843.22      36.42  23.154  &lt; 2e-16 ***
+OrderPerson    160.62      30.22   5.314 1.88e-05 ***
+MeatChicken    -29.47      32.48  -0.907   0.3733    
+StoreStore 2   -62.26      36.74  -1.694   0.1031    
+StoreStore 3   -93.44      36.74  -2.543   0.0178 *  
+foodBurrito    -82.38      30.22  -2.726   0.0118 *  
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 81.84 on 24 degrees of freedom
+Multiple R-squared:  0.6358,    Adjusted R-squared:   0.56 
+F-statistic: 8.381 on 5 and 24 DF,  p-value: 0.0001068</code></pre>
+</div>
+</div>
+
+
+</section>
+</section>
+
+ ]]></description>
+  <category>R</category>
+  <category>Miscellaneous</category>
+  <guid>https://gmcirco.github.io/blog//posts/chipotle-weight/youtube-food.html</guid>
+  <pubDate>Wed, 03 Apr 2024 04:00:00 GMT</pubDate>
+  <media:content url="https://gmcirco.github.io/blog///posts/chipotle-weight/burrito.jpg" medium="image" type="image/jpeg"/>
+</item>
 <item>
   <title>Don’t Evaluate Your Model On a SMOTE Dataset</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>
