@@ -74,21 +74,60 @@ Let's answer this question. To start, we can look at the general distribution of
 quantile(food_weight_data$weight)
 ```
 
-If we plot out a little histogram we can see the distribution of weights is (approximately) normal, with bowls tending to weigh a bit more than burritos.
+If we plot out a little density plot we can see the distribution of weights is (approximately) normal, with online orders appearing to be a bit lighter than in-person ones. Without adjusting for anything else, the median weight of online orders is about 709 grams, and in-person orders are 907. However, just based on this visual we can't be certain it isn't due to other factors (for example, maybe he ordered more heavy items only online).
+
+::: panel-tabset
+## Box Plot
 
 ```{r}
 #| warning: false
 #| message: false
-#| fig-cap: "Bowls tend to weigh more than Burritos" 
+#| fig-cap: "Visually, in-person orders appear to be larger" 
 ggplot(food_weight_data) +
-  geom_density(aes(x = weight, fill = Order), color = 'white', linewidth = 1, bins = 10, alpha = .8) +
-  labs(x = "Weight (grams)", y = "Density") +
+  geom_boxplot(aes(x = weight, y = Order, fill = Order), alpha = .8) +
+  labs(x = "Weight (grams)", y = "Order Type", title = "Box Plot, Chipotle Order Weights (n=30)") +
+  scale_fill_manual(values = c('#4477AA', '#EE6677')) +
+  theme_bw() +
+  theme(legend.position = 'none',
+        legend.title = element_blank(),
+        legend.text = element_text(face = "bold"))
+
+```
+
+## Density Plot
+
+```{r}
+#| warning: false
+#| message: false
+#| fig-cap: "Visually, in-person orders appear to be larger" 
+ggplot(food_weight_data) +
+  geom_density(aes(x = weight, fill = Order), color = 'white', linewidth = 1, alpha = .8) +
+  labs(x = "Weight (grams)", y = "Probability Density", title = "Density Plot, Chipotle Order Weights (n=30)", subtitle = "Y axis is smoothed PDF") +
   scale_fill_manual(values = c('#4477AA', '#EE6677')) +
   theme_bw() +
   theme(legend.position = c(.1,.9),
         legend.title = element_blank(),
         legend.text = element_text(face = "bold"))
 ```
+
+## Histogram
+
+```{r}
+#| warning: false
+#| message: false
+#| fig-cap: "Visually, in-person orders appear to be larger" 
+ggplot(food_weight_data) +
+  geom_histogram(aes(x = weight, fill = Order), color = 'white', linewidth = 1, alpha = .8, bins = 10) +
+  labs(x = "Weight (grams)", y = "Count", title = "Histogram, Chipotle Order Weights (n=30)") +
+  scale_fill_manual(values = c('#4477AA', '#EE6677')) +
+  theme_bw() +
+  theme(legend.position = c(.1,.9),
+        legend.title = element_blank(),
+        legend.text = element_text(face = "bold"))
+
+```
+
+:::
 
 ### Results
 
@@ -112,6 +151,11 @@ So, yes, in this case it does appear that ordering online resulted in smaller or
 ### Caveats
 
 All of this analysis assumes that the online orders were roughly equivalent to the in-person one (e.g. ordering the same ingredients online as in-person). This would *not* be valid if he tended to order more additional items when in the store rather then online. However, from watching the video and looking at the listed cost of all items (\$11.00) it appears that the orders are comparable.
+
+I would also caution against extrapolation. The data here comes for 30 orders
+from a single city in the US. It is a limited set of data with a limited number
+of observations. So, as always with science, some degree of skepticism is always
+warranted.
 
 ### Full Model
 

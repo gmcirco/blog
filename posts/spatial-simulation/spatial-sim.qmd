@@ -1,0 +1,296 @@
+---
+title: "Creating Synthetic Spatial Data"
+subtitle: "Simulating Gas Stations and Robberies"
+author: "Gio Circo, Ph.D."
+date: 2024-6-15
+categories:
+  - R
+  - Synthetic Data
+format: 
+    html:
+        self-contained: true
+        code-fold: true
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+editor: visual
+theme: flatly
+image: "map-gas.png"
+---
+
+```{r, include=FALSE}
+
+library(tidyverse)
+library(spatstat)
+library(sf)
+
+load("../../../data/hartford_data.rda")
+
+hartford <- hartford_data$hartford
+robbery <- hartford_data$robbery
+gas <- hartford_data$gas
+
+# convert to multitype
+sf_to_multitype <- function(window, i, j, i_name, j_name){
+  W <- as.owin(window)
+  
+  i_ppp <- as.ppp(i, W = W)
+  marks(i_ppp) <- i_name
+  
+  j_ppp <- as.ppp(j, W = W)
+  marks(j_ppp) <- j_name
+  
+  ij_multitype <- superimpose(i_ppp, j_ppp, W = W)
+  marks(ij_multitype) <- factor(marks(ij_multitype))
+  
+  return(ij_multitype)
+}
+
+# extract simulations as sf
+sp_to_sf <- function(sim, crs) {
+  out <- st_as_sf(data.frame(x = sim$x, y = sim$y),
+                  coords = c("x", "y")) %>%
+    `st_crs<-`(. , crs)
+  
+  return(out)
+}
+
+```
+
+## Synthetic Data
+
+In my work as a data scientist I have been working increasingly more with synthetic data generation. Synthetic data can be very useful when you are working on products that need reasonable stand-in values to test deployment. For example, a common issue I see is that a team needs data to populate a SQL table so they can populate a demo dashboard. Many times waiting for real data will take too long and unnecessarily stretch out the development time.
+
+Now, when we talk about generating synthetic data we're talking about more than just inserting random values into a table. Good synthetic data should mirror the properties of the original (or the properties of some pre-defined requirements).
+For example, you may want to have an age and race field that match the same 
+demographics of the U.S. Census. Or you might need the relationship between two
+fields to be consistent - like a medical procedure field matched with a cost
+field.
+
+An interesting question I posed to myself was "What if I wanted to generate synthetic *spatial* data?" This is an interesting question, because spatial data need to have additional properties matched. Of course if we want to simulate crimes in a city, we can't just randomly throw points on the map. Crime does [not occur randomly](https://onlinelibrary.wiley.com/doi/full/10.1111/1745-9125.12070), and so if we want to simulate realistic processes, we need methods that generate them accurately.
+
+### Simulating Crime at Gas Stations
+
+My idea here is to try and simulate many different realizations of gas station locations in the region. We don't necessarily care if they exactly match a *real* location, but we care more about the intensity of the pattern. The data I'm using is some Hartford crime data that I collected for my [quickGrid](https://github.com/gmcirco/quickGrid) package.
+
+Below is the locations of gas stations (blue) and robbery incidents (red). 
+
+```{r}
+#| fig-cap: "Robberies and gas stations, Hartford CT (2017)"
+
+# plot robbery ~ gas
+ggplot() +
+  geom_sf(data = hartford, fill = 'grey90', color = 'white') +
+  geom_sf(data = robbery, color = "#EE6677", size = 1, alpha = .5) +
+  geom_sf(data = gas, color = "#4477AA", size = 2) +
+  theme_void()
+
+```
+
+What we want to do is take this information and simulate, many times, different synthetic realizations of this pattern (gas stations and robberies). In practice we could use these simulated datasets to test a statistical method, populate some dashboard or map using de-identified data, or as a step in generating some new model.
+
+## Simulating Gas Station Locations
+
+For this example we'll start with gas stations. Ideally we want to simulate an [Inhomogeneous Poisson point process](https://en.wikipedia.org/wiki/Poisson_point_process#Inhomogeneous_Poisson_point_process). In simple terms, this means that the intensity of the point pattern $lambda$ is not constant across the study region. Logically this makes sense because gas stations are typically confined to commercial areas and don't appear randomly in the middle of parks or waterways. 
+
+In R this is easy to do. We can calculate the intensity of gas station locations by computing the kernel density of observed locations, and then use those density values as input for our simulation. We can do the same for robberies as well.
+
+```{r}
+#| warning: false
+
+# convert to ppp for spatial stuff
+hartford_sp <- as.owin(hartford)
+
+gas_ppp <- as.ppp(gas, W = hartford_sp)
+marks(gas_ppp) <- "gas"
+
+robbery_ppp <- as.ppp(robbery, W = hartford_sp)
+marks(robbery_ppp) <- "robbery"
+
+gas_robbery_ppp <- superimpose(gas_ppp, robbery_ppp, W = hartford_sp)
+marks(gas_robbery_ppp) <- factor(marks(gas_robbery_ppp))
+
+
+# calculate the density of gas stations & robberies
+# replace negative values with 0
+gas_density <- density.ppp(gas_ppp, sigma = 750)
+gas_density[gas_density < 0] <- 0
+
+robbery_density <- density.ppp(robbery_ppp, sigma = 500)
+robbery_density[robbery_density < 0] <- 0
+```
+
+We can plot the density of gas station locations. In this case the density values are based on points per unit (so gas stations per square foot).
+
+```{r}
+#| layout-ncol: 2
+#| fig-cap: 
+#|   - "Kernel density estimate of gas stations"
+#|   - "Kernel density estimate of robberies"
+
+plot(gas_density, main = "Gas Station Density")
+plot(robbery_density, main = "Robbery Density")
+```
+
+### Calculating K-function
+
+As we simulate the position of gas stations in the city, we will want to make sure they are relatively consistent with the patterns observed in reality. For example: we wouldn't expect all 50ish gas stations to be right on top of each other - nor would we expect to see them scattered randomly. What we can do is compute the clustering intensity of the observed point pattern, and then compare that to our simulations.
+
+```{r}
+N_SIM <- 100
+N_GAS <- nrow(gas)
+
+# observed K-function for gas stations
+gas_kest <- Kest(gas_ppp)
+
+# simulate gas stations
+# generate 100 simulations
+gas_sim <- rpoispp(gas_density,nsim = N_SIM)
+robbery_sim <- rpoispp(robbery_density, nsim = N_SIM)
+
+```
+
+This gives us the observed K function for gas stations.
+
+```{r}
+plot(gas_kest)
+```
+
+Now we can simulate. So we're going to take the observed density values as probabilities for an inhomogeneous Poisson point process. 
+
+```{r}
+#| warning: false
+#| 
+# simulate gas stations
+# generate 100 simulations
+gas_sim <- rpoispp(gas_density,nsim = N_SIM)
+
+# get N gas stations generated
+# and intensity of generated function
+sim_N <- sapply(gas_sim, function(x){as.numeric(x$n) })
+sim_L <- lapply(gas_sim, Kest, correction = "border", r = gas_kest$r)
+
+# plot envelopes against observed
+X <- sapply(sim_L, function(x){x$border})
+
+Xdf <- as.data.frame(X)
+Xdf$r <- gas_kest$r
+
+
+# Plot observed K against simulations of K
+obs_K <- data.frame(r = gas_kest$r,
+                    K = gas_kest$border)
+
+```
+
+This plots the minimum and maximum envelopes (in grey) of the simulations against the observed K values in red. In general, we see that the pairwise relationships between gas stations is fairly close to observed, expect at small spatial scales. We appear to be failing to simulate cases where many gas stations are near each other (such as at 4 way intersections with a station on each corner). 
+
+```{r}
+#| fig-cap: "100 Simulation envelopes (grey) compared to observed K (red)"
+Xdf %>%
+  pivot_longer(-r, names_to = "simulation", values_to = "K") %>%
+  group_by(r) %>%
+  summarise(Kmin = min(K),
+            Kmax = max(K)) %>%
+  ggplot() +
+  geom_ribbon(aes(x = r, ymin = Kmin, ymax = Kmax), alpha = .3) +
+  geom_line(data = obs_K, aes(x = r, y = K), linewidth = 1, color = 'red') + 
+  labs(y = 'K(Border)', x = 'Distance (feet)') +
+  theme_bw()
+```
+
+We can also plot the points directly and see what they look like:
+
+```{r}
+#| fig-cap: "Observed robberies and simulated gas station locations"
+
+#| warning: false
+sim_gas_points <-
+  st_as_sf(
+    data.frame(x = gas_sim$`Simulation 10`$x, y = gas_sim$`Simulation 10`$y),
+    coords = c("x", "y")
+  ) %>%
+  `st_crs<-`(. , st_crs(gas))
+
+
+ggplot() +
+  geom_sf(data = hartford, fill = 'grey90', color = 'white') +
+  geom_sf(data = robbery, color = "#EE6677", size = 1, alpha = .3) +
+  geom_sf(data = sim_gas_points, color = "#4477AA", size = 2) +
+  theme_void()
+
+```
+
+## Pairwise Simulation
+
+Naturally, it makes sense to use simulations of both robberies *and* gas stations to create our simulated crime and location data. We should check the cross-K function between our simulated gas stations and simulated robberies. In these cases it is often easier to assess this by performing a transformation of the K function to the variance-stabilized L function. If we subtract the distance at each value of L we get the L-cross - r which is a handy way to visualize a point process.
+
+```{r}
+#| warning: false
+#| fig-cap: "100 Simulation envelopes (grey) compared to observed L-r (red)"
+# compute observed L-function
+gas_robbery_cross <-
+  sf_to_multitype(
+    window = hartford,
+    i = robbery,
+    j = gas,
+    i_name = "robbery",
+    j_name = "gas"
+  )
+
+gas_robbery_lest <- Lcross(gas_robbery_cross, i = "gas", j = "robbery", r = gas_kest$r,  correction = "border")
+
+obs_L <- data.frame(r = gas_robbery_lest$r,
+                    L = gas_robbery_lest$border) %>%
+  mutate(L = L-r)
+
+
+# gather simulations, plot L function
+sim_list <- lapply(gas_sim, sp_to_sf, crs = st_crs(gas))
+sim_list2 <- lapply(robbery_sim, sp_to_sf, crs = st_crs(gas))
+
+sim_cross_list <- list()
+
+for(sim in 1:N_SIM){
+  sim_cross_points <-
+    sf_to_multitype(
+      window = hartford,
+      i = sim_list2[[sim]],
+      j = sim_list[[sim]],
+      i_name = "robbery",
+      j_name = "gas"
+    )
+  sim_cross_list[[sim]] <- sim_cross_points
+}
+
+
+# compute lcross border corrected
+lcross_list <- lapply(sim_cross_list, Lcross, i = "gas", j = "robbery", r = gas_kest$r,  correction = "border")
+
+# plot envelopes against observed
+X_l <- sapply(lcross_list, function(x){x$border})
+
+X_ldf <- as.data.frame(X_l)
+X_ldf$r <- gas_kest$r
+
+
+# plot 
+X_ldf %>%
+  pivot_longer(-r, names_to = "simulation", values_to = "L") %>%
+  mutate(L = L-r) %>%
+  group_by(r) %>%
+  summarise(Lmin = min(L),
+            Lmax = max(L)) %>%
+  ggplot() +
+  geom_ribbon(aes(x = r, ymin = Lmin, ymax = Lmax), alpha = .3) +
+  geom_line(data = obs_L, aes(x = r, y = L), linewidth = 1, color = 'red') + 
+  geom_hline(yintercept = 0) +
+  labs(y = 'L-r(Border)', x = 'Distance (feet)') +
+  theme_bw()
+
+```
+
+And this is why it is important to check. We can clearly see that while our simulated data is fairly close to the observed pattern for most distances 1000 feet and beyond, there is much *less* clustering at small spatial scales. This makes sense, because of how crime is often geo-coded. When you have crimes that occur directly on the location they will typically share the same coordinates. In our case, our points are more spread out than we would expect to see in real life. 
+
+Whether or not this data is "good enough" will depend on the use case at hand. In many cases very rough synthetic data can suffice for many purposes. In other cases, where high-fidelity synthetic data is needed, considerably more post-processing is required to bring the synthetic data in line with the real.
