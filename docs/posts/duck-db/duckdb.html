@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-0.9.434">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Gio Circo, Ph.D.">
+<meta name="dcterms.date" content="2024-07-23">
+
+<title>A Blog for Data Stuff - Dear Crime Analysts: Why You Should Use SQL Inside of R</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link id="quarto-text-highlighting-styles" href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">A Blog for Data Stuff</span>
+  </a>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">About Me</a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/gmcirco"><i class="bi bi-github" role="img">
+</i> 
+ </a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://twitter.com/GioCirco"><i class="bi bi-twitter" role="img">
+</i> 
+ </a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ </a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<header id="title-block-header" class="quarto-title-block default page-columns page-full">
+  <div class="quarto-title-banner page-columns page-full">
+    <div class="quarto-title column-body">
+      <h1 class="title">Dear Crime Analysts: Why You Should Use SQL Inside of R</h1>
+            <p class="subtitle lead">Using duckDB in R to speed up analysis</p>
+                                <div class="quarto-categories">
+                <div class="quarto-category">R</div>
+                <div class="quarto-category">SQL</div>
+              </div>
+                  </div>
+  </div>
+    
+  
+  <div class="quarto-title-meta">
+
+      <div>
+      <div class="quarto-title-meta-heading">Author</div>
+      <div class="quarto-title-meta-contents">
+               <p>Gio Circo, Ph.D. </p>
+            </div>
+    </div>
+      
+      <div>
+      <div class="quarto-title-meta-heading">Published</div>
+      <div class="quarto-title-meta-contents">
+        <p class="date">July 23, 2024</p>
+      </div>
+    </div>
+      
+    </div>
+    
+  
+  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-one-big-thing-i-didnt-learn-in-grad-school" id="toc-the-one-big-thing-i-didnt-learn-in-grad-school" class="nav-link active" data-scroll-target="#the-one-big-thing-i-didnt-learn-in-grad-school">The One Big Thing I <em>Didn’t</em> Learn In Grad School</a></li>
+  <li><a href="#duckdb-and-r" id="toc-duckdb-and-r" class="nav-link" data-scroll-target="#duckdb-and-r">DuckDB and R</a>
+  <ul class="collapse">
+  <li><a href="#setting-it-up" id="toc-setting-it-up" class="nav-link" data-scroll-target="#setting-it-up">Setting it up</a></li>
+  <li><a href="#other-tricks---aggregations-and-plotting" id="toc-other-tricks---aggregations-and-plotting" class="nav-link" data-scroll-target="#other-tricks---aggregations-and-plotting">Other Tricks - Aggregations and Plotting</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content quarto-banner-title-block" id="quarto-document-content">
+
+
+
+
+<section id="the-one-big-thing-i-didnt-learn-in-grad-school" class="level2">
+<h2 class="anchored" data-anchor-id="the-one-big-thing-i-didnt-learn-in-grad-school">The One Big Thing I <em>Didn’t</em> Learn In Grad School</h2>
+<p>When I was in grad school working on my Ph.D.&nbsp;I learned a lot about math, statistics, research methods, and experimental design (among a LOT of other things). For a good part of my time as a grad student I also worked doing crime analysis at the Detroit Police Department for <a href="https://www.tandfonline.com/doi/abs/10.1080/24751979.2020.1827938">Ceasefire</a> and <a href="https://link.springer.com/article/10.1007/s11292-019-09404-y">Project Green Light</a>. However, looking back, I realize one skill I never learned, that has become invaluable today, is something I never would have guessed: SQL. Yes, <em>that</em> SQL.</p>
+<p>For my academic friends who aren’t in the know, SQL stands for “Structured Query Language” and is the number one way that analysts interface with data stored in databases. SQL is great because it is a fast and efficient way to pull data out of very large and complex tables. In addition it doesn’t require you to read an entire table into memory. For reference, at my day job I typically work with medical claims data tables with <em>billions</em> of records. It is simply not possible (nor recommended) to work with the entire table in-memory.</p>
+<p>During grad school my typical workflow was to try and load a single large data table into R and work with it directly, or manually break it into smaller .csv files. Not only is this highly inefficient, it also makes it difficult to replicate the workflow later. I think being able to work with large complex datasets is increasingly important for researchers who want to take control of their workflow.</p>
+</section>
+<section id="duckdb-and-r" class="level2">
+<h2 class="anchored" data-anchor-id="duckdb-and-r">DuckDB and R</h2>
+<p>There are a lot of different ways to interface with SQL. In earlier projects I’ve used a SQLite database to manage a very large dataset and then query it from R. However, this approach requires you to create a <code>.sqlite</code> database and adds a bit of up-front work. Often times I might just have one or two very large tables where this approach is a bit overkill. For example, working with raw NIBRS data entails only a few important tables (victim, offender, offense) but each table is far too large to work with directly.</p>
+<p><a href="https://duckdb.org/">DuckDB</a> is a great option here because it has a ton of very useful functions that allow you to read directly from a <code>.csv</code> or other type of file (JSON, Parquet,etc…). In addition this can work directly in <code>R</code> using a <a href="https://duckdb.org/docs/api/r">client API</a>. For an academic, we often only have simple tables like these to work with and so having an option that we can easily integrate into our workflow is really appealing.</p>
+<section id="setting-it-up" class="level3">
+<h3 class="anchored" data-anchor-id="setting-it-up">Setting it up</h3>
+<p>As an example, I have some crime data from Detroit that I used for a project a few years back. The size of this file is large (although not <em>that</em> large). However it is big enough that it might be reasonable to pull only a subset of the data into memory at a time. Here’s a perfect use-case for duckDB. Below, I start by loading the <code>duckdb</code> library and setting up the working directory of the file location <code>dir</code> as a string. This will make it a bit cleaner to read and pass in to our queries when we start working.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(duckdb)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(sf)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>wd <span class="ot">&lt;-</span> <span class="st">"../Documents/blog/data/"</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>file_name <span class="ot">&lt;-</span> <span class="st">"crime.csv"</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>dir <span class="ot">&lt;-</span> <span class="fu">paste0</span>(wd,file_name)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>We then set up a connection object via <code>dbConnect</code> and use <code>duckdb()</code> as the connector. After we do that all we need to do is built a SQL string and pass it in. The script below reads all the columns (<code>SELECT *</code>) from the table listed in the directory <code>crime.csv</code> and pulls only the top 10 rows. And this builds the connection and executes the query:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>con <span class="ot">=</span> <span class="fu">dbConnect</span>(<span class="fu">duckdb</span>())</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">dbGetQuery</span>(con, <span class="fu">sprintf</span>(<span class="st">"SELECT * FROM read_csv('%s') LIMIT 10"</span>, dir))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>         category       offense       crno       date           address
+1           FRAUD FRAUD (OTHER) 1501070062 2015-01-07     02600 E 8MILE
+2  STOLEN VEHICLE VEHICLE THEFT 1501310051 2015-01-31     15300 VAUGHAN
+3           FRAUD FRAUD (OTHER) 1503160171 2015-02-01     10000 GEORGIA
+4  STOLEN VEHICLE VEHICLE THEFT 1502020211 2015-02-02 14900 E JEFFERSON
+5           FRAUD FRAUD (OTHER) 1504090191 2015-02-02    20500 SAN JUAN
+6         ASSAULT  INTIMIDATION 1502090035 2015-02-09    14400 FREELAND
+7  STOLEN VEHICLE VEHICLE THEFT 1502240058 2015-02-23   15700 KENTFIELD
+8           FRAUD FRAUD (OTHER) 1502240128 2015-02-24   19300 PINEHURST
+9           FRAUD FRAUD (OTHER) 1502270221 2015-02-25      00100 SEWARD
+10          FRAUD FRAUD (OTHER) 1502270182 2015-02-25    19100 KEYSTONE
+        lon     lat     yr_mon crime_type
+1  -83.0759 42.4466 2015-01-01   property
+2  -83.2380 42.4021 2015-01-01   property
+3  -83.0042 42.3961 2015-02-01   property
+4  -82.9388 42.3746 2015-02-01   property
+5  -83.1480 42.4453 2015-02-01   property
+6  -83.1846 42.3945 2015-02-01   disorder
+7  -83.2407 42.4055 2015-02-01   property
+8  -83.1670 42.4333 2015-02-01   property
+9  -83.0786 42.3748 2015-02-01   property
+10 -83.0510 42.4341 2015-02-01   property</code></pre>
+</div>
+</div>
+<p>Voila! As an aside, if you are more familiar with <code>dplyr</code>’s syntax, the equivalent code would be. This is a bit less verbose, but requires you to read in the <em>entire</em> table before selecting just the top 10 rows. It is vastly less efficient and slow in cases where the table sizes become very large.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">read_csv</span>(dir) <span class="sc">%&gt;%</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Rows: 321983 Columns: 9
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+chr  (4): category, offense, address, crime_type
+dbl  (3): crno, lon, lat
+date (2): date, yr_mon
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 10 × 9
+   category  offense   crno date       address   lon   lat yr_mon     crime_type
+   &lt;chr&gt;     &lt;chr&gt;    &lt;dbl&gt; &lt;date&gt;     &lt;chr&gt;   &lt;dbl&gt; &lt;dbl&gt; &lt;date&gt;     &lt;chr&gt;     
+ 1 FRAUD     FRAUD … 1.50e9 2015-01-07 02600 … -83.1  42.4 2015-01-01 property  
+ 2 STOLEN V… VEHICL… 1.50e9 2015-01-31 15300 … -83.2  42.4 2015-01-01 property  
+ 3 FRAUD     FRAUD … 1.50e9 2015-02-01 10000 … -83.0  42.4 2015-02-01 property  
+ 4 STOLEN V… VEHICL… 1.50e9 2015-02-02 14900 … -82.9  42.4 2015-02-01 property  
+ 5 FRAUD     FRAUD … 1.50e9 2015-02-02 20500 … -83.1  42.4 2015-02-01 property  
+ 6 ASSAULT   INTIMI… 1.50e9 2015-02-09 14400 … -83.2  42.4 2015-02-01 disorder  
+ 7 STOLEN V… VEHICL… 1.50e9 2015-02-23 15700 … -83.2  42.4 2015-02-01 property  
+ 8 FRAUD     FRAUD … 1.50e9 2015-02-24 19300 … -83.2  42.4 2015-02-01 property  
+ 9 FRAUD     FRAUD … 1.50e9 2015-02-25 00100 … -83.1  42.4 2015-02-01 property  
+10 FRAUD     FRAUD … 1.50e9 2015-02-25 19100 … -83.1  42.4 2015-02-01 property  </code></pre>
+</div>
+</div>
+</section>
+<section id="other-tricks---aggregations-and-plotting" class="level3">
+<h3 class="anchored" data-anchor-id="other-tricks---aggregations-and-plotting">Other Tricks - Aggregations and Plotting</h3>
+<p>Of course SQL is a very robust scripting language that allows for both simple and complex operations. We can do any kind of reporting and aggregations. For example, if we wanted some basic information about crime at the year-month level we could do:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>qu <span class="ot">=</span> </span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">"SELECT</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="st">      crime_type,</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="st">      yr_mon,</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="st">      COUNT(crime_type) AS N</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="st">  FROM</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="st">      read_csv('%s')</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="st">  GROUP BY</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="st">      crime_type,</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="st">      yr_mon</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="st">  ORDER BY</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="st">      crime_type,</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="st">      yr_mon"</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>tab <span class="ot">&lt;-</span> <span class="fu">dbGetQuery</span>(con, <span class="fu">sprintf</span>(qu, dir))</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(tab)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  crime_type     yr_mon    N
+1   disorder 2015-01-01 1518
+2   disorder 2015-02-01 1447
+3   disorder 2015-03-01 1797
+4   disorder 2015-04-01 1884
+5   disorder 2015-05-01 2125
+6   disorder 2015-06-01 1839</code></pre>
+</div>
+</div>
+<p>This performs the group-by and counts out of memory and then moves the aggregated table right into R as a dataframe. And since the result is just a dataframe, we can pipe it directly into a ggplot visualization, like:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">dbGetQuery</span>(con, <span class="fu">sprintf</span>(qu, dir)) <span class="sc">%&gt;%</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>() <span class="sc">+</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">x =</span> yr_mon, <span class="at">y =</span> N, <span class="at">color =</span> crime_type), <span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>crime_type, <span class="at">scales =</span> <span class="st">"free"</span>, <span class="at">ncol =</span> <span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Year-Month"</span>, <span class="at">y =</span> <span class="st">"Count"</span>) <span class="sc">+</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">'#004488'</span>, <span class="st">'#DDAA33'</span>, <span class="st">'#BB5566'</span>)) <span class="sc">+</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">'none'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="duckdb_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Similarly, this applies to other functions like creating spatial objects. What if we wanted to plot only the violent crimes from the first month of 2015?</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>qu <span class="ot">=</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">"SELECT *</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="st">  FROM </span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="st">      read_csv('%s')</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="st">  WHERE </span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="st">      crime_type = 'violent'</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="st">  AND</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="st">      datepart('year', yr_mon) = 2015</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="st">  AND</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="st">      datepart('month', yr_mon) = 1</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a><span class="st">"</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a><span class="fu">st_as_sf</span>(<span class="fu">dbGetQuery</span>(con, <span class="fu">sprintf</span>(qu, dir)),</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>         <span class="at">coords =</span> <span class="fu">c</span>(<span class="st">'lon'</span>, <span class="st">'lat'</span>),</span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>         <span class="at">crs =</span> <span class="dv">4326</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>() <span class="sc">+</span></span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_sf</span>(<span class="at">shape =</span> <span class="dv">21</span>, <span class="at">alpha =</span> .<span class="dv">2</span>, <span class="at">fill =</span> <span class="st">'#BB5566'</span>) <span class="sc">+</span></span>
+<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_void</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="duckdb_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>This is pretty cool too, because we have access to all the base functions available in duckDB. For example, there are a bunch of <a href="https://duckdb.org/docs/sql/functions/date.html">date handling functions</a> that make these types of queries a lot easier than other base SQL languages. Here, the <code>datepart</code> function lets us split up date objects very easily within SQL.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    setTimeout(function() {
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      let href = ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const cites = ref.parentNode.getAttribute('data-cites').split(' ');
+    tippyHover(ref, function() {
+      var popup = window.document.createElement('div');
+      cites.forEach(function(cite) {
+        var citeDiv = window.document.createElement('div');
+        citeDiv.classList.add('hanging-indent');
+        citeDiv.classList.add('csl-entry');
+        var biblioDiv = window.document.getElementById('ref-' + cite);
+        if (biblioDiv) {
+          citeDiv.innerHTML = biblioDiv.innerHTML;
+        }
+        popup.appendChild(citeDiv);
+      });
+      return popup.innerHTML;
+    });
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>

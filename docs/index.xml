@@ -10,7 +10,180 @@
 <atom:link href="https://gmcirco.github.io/blog//index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-0.9.434</generator>
-<lastBuildDate>Sat, 15 Jun 2024 04:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 23 Jul 2024 04:00:00 GMT</lastBuildDate>
+<item>
+  <title>Dear Crime Analysts: Why You Should Use SQL Inside of R</title>
+  <dc:creator>Gio Circo, Ph.D.</dc:creator>
+  <link>https://gmcirco.github.io/blog//posts/duck-db/duckdb.html</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="the-one-big-thing-i-didnt-learn-in-grad-school" class="level2">
+<h2 class="anchored" data-anchor-id="the-one-big-thing-i-didnt-learn-in-grad-school">The One Big Thing I <em>Didn’t</em> Learn In Grad School</h2>
+<p>When I was in grad school working on my Ph.D.&nbsp;I learned a lot about math, statistics, research methods, and experimental design (among a LOT of other things). For a good part of my time as a grad student I also worked doing crime analysis at the Detroit Police Department for <a href="https://www.tandfonline.com/doi/abs/10.1080/24751979.2020.1827938">Ceasefire</a> and <a href="https://link.springer.com/article/10.1007/s11292-019-09404-y">Project Green Light</a>. However, looking back, I realize one skill I never learned, that has become invaluable today, is something I never would have guessed: SQL. Yes, <em>that</em> SQL.</p>
+<p>For my academic friends who aren’t in the know, SQL stands for “Structured Query Language” and is the number one way that analysts interface with data stored in databases. SQL is great because it is a fast and efficient way to pull data out of very large and complex tables. In addition it doesn’t require you to read an entire table into memory. For reference, at my day job I typically work with medical claims data tables with <em>billions</em> of records. It is simply not possible (nor recommended) to work with the entire table in-memory.</p>
+<p>During grad school my typical workflow was to try and load a single large data table into R and work with it directly, or manually break it into smaller .csv files. Not only is this highly inefficient, it also makes it difficult to replicate the workflow later. I think being able to work with large complex datasets is increasingly important for researchers who want to take control of their workflow.</p>
+</section>
+<section id="duckdb-and-r" class="level2">
+<h2 class="anchored" data-anchor-id="duckdb-and-r">DuckDB and R</h2>
+<p>There are a lot of different ways to interface with SQL. In earlier projects I’ve used a SQLite database to manage a very large dataset and then query it from R. However, this approach requires you to create a <code>.sqlite</code> database and adds a bit of up-front work. Often times I might just have one or two very large tables where this approach is a bit overkill. For example, working with raw NIBRS data entails only a few important tables (victim, offender, offense) but each table is far too large to work with directly.</p>
+<p><a href="https://duckdb.org/">DuckDB</a> is a great option here because it has a ton of very useful functions that allow you to read directly from a <code>.csv</code> or other type of file (JSON, Parquet,etc…). In addition this can work directly in <code>R</code> using a <a href="https://duckdb.org/docs/api/r">client API</a>. For an academic, we often only have simple tables like these to work with and so having an option that we can easily integrate into our workflow is really appealing.</p>
+<section id="setting-it-up" class="level3">
+<h3 class="anchored" data-anchor-id="setting-it-up">Setting it up</h3>
+<p>As an example, I have some crime data from Detroit that I used for a project a few years back. The size of this file is large (although not <em>that</em> large). However it is big enough that it might be reasonable to pull only a subset of the data into memory at a time. Here’s a perfect use-case for duckDB. Below, I start by loading the <code>duckdb</code> library and setting up the working directory of the file location <code>dir</code> as a string. This will make it a bit cleaner to read and pass in to our queries when we start working.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="fu" style="color: #4758AB;">library</span>(tidyverse)</span>
+<span id="cb1-2"><span class="fu" style="color: #4758AB;">library</span>(duckdb)</span>
+<span id="cb1-3"><span class="fu" style="color: #4758AB;">library</span>(sf)</span>
+<span id="cb1-4"></span>
+<span id="cb1-5">wd <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="st" style="color: #20794D;">"../Documents/blog/data/"</span></span>
+<span id="cb1-6">file_name <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="st" style="color: #20794D;">"crime.csv"</span></span>
+<span id="cb1-7">dir <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">paste0</span>(wd,file_name)</span></code></pre></div>
+</div>
+<p>We then set up a connection object via <code>dbConnect</code> and use <code>duckdb()</code> as the connector. After we do that all we need to do is built a SQL string and pass it in. The script below reads all the columns (<code>SELECT *</code>) from the table listed in the directory <code>crime.csv</code> and pulls only the top 10 rows. And this builds the connection and executes the query:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1">con <span class="ot" style="color: #003B4F;">=</span> <span class="fu" style="color: #4758AB;">dbConnect</span>(<span class="fu" style="color: #4758AB;">duckdb</span>())</span>
+<span id="cb2-2"><span class="fu" style="color: #4758AB;">dbGetQuery</span>(con, <span class="fu" style="color: #4758AB;">sprintf</span>(<span class="st" style="color: #20794D;">"SELECT * FROM read_csv('%s') LIMIT 10"</span>, dir))</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>         category       offense       crno       date           address
+1           FRAUD FRAUD (OTHER) 1501070062 2015-01-07     02600 E 8MILE
+2  STOLEN VEHICLE VEHICLE THEFT 1501310051 2015-01-31     15300 VAUGHAN
+3           FRAUD FRAUD (OTHER) 1503160171 2015-02-01     10000 GEORGIA
+4  STOLEN VEHICLE VEHICLE THEFT 1502020211 2015-02-02 14900 E JEFFERSON
+5           FRAUD FRAUD (OTHER) 1504090191 2015-02-02    20500 SAN JUAN
+6         ASSAULT  INTIMIDATION 1502090035 2015-02-09    14400 FREELAND
+7  STOLEN VEHICLE VEHICLE THEFT 1502240058 2015-02-23   15700 KENTFIELD
+8           FRAUD FRAUD (OTHER) 1502240128 2015-02-24   19300 PINEHURST
+9           FRAUD FRAUD (OTHER) 1502270221 2015-02-25      00100 SEWARD
+10          FRAUD FRAUD (OTHER) 1502270182 2015-02-25    19100 KEYSTONE
+        lon     lat     yr_mon crime_type
+1  -83.0759 42.4466 2015-01-01   property
+2  -83.2380 42.4021 2015-01-01   property
+3  -83.0042 42.3961 2015-02-01   property
+4  -82.9388 42.3746 2015-02-01   property
+5  -83.1480 42.4453 2015-02-01   property
+6  -83.1846 42.3945 2015-02-01   disorder
+7  -83.2407 42.4055 2015-02-01   property
+8  -83.1670 42.4333 2015-02-01   property
+9  -83.0786 42.3748 2015-02-01   property
+10 -83.0510 42.4341 2015-02-01   property</code></pre>
+</div>
+</div>
+<p>Voila! As an aside, if you are more familiar with <code>dplyr</code>’s syntax, the equivalent code would be. This is a bit less verbose, but requires you to read in the <em>entire</em> table before selecting just the top 10 rows. It is vastly less efficient and slow in cases where the table sizes become very large.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><span class="fu" style="color: #4758AB;">read_csv</span>(dir) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb4-2">  <span class="fu" style="color: #4758AB;">slice</span>(<span class="dv" style="color: #AD0000;">1</span><span class="sc" style="color: #5E5E5E;">:</span><span class="dv" style="color: #AD0000;">10</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Rows: 321983 Columns: 9
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+chr  (4): category, offense, address, crime_type
+dbl  (3): crno, lon, lat
+date (2): date, yr_mon
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 10 × 9
+   category  offense   crno date       address   lon   lat yr_mon     crime_type
+   &lt;chr&gt;     &lt;chr&gt;    &lt;dbl&gt; &lt;date&gt;     &lt;chr&gt;   &lt;dbl&gt; &lt;dbl&gt; &lt;date&gt;     &lt;chr&gt;     
+ 1 FRAUD     FRAUD … 1.50e9 2015-01-07 02600 … -83.1  42.4 2015-01-01 property  
+ 2 STOLEN V… VEHICL… 1.50e9 2015-01-31 15300 … -83.2  42.4 2015-01-01 property  
+ 3 FRAUD     FRAUD … 1.50e9 2015-02-01 10000 … -83.0  42.4 2015-02-01 property  
+ 4 STOLEN V… VEHICL… 1.50e9 2015-02-02 14900 … -82.9  42.4 2015-02-01 property  
+ 5 FRAUD     FRAUD … 1.50e9 2015-02-02 20500 … -83.1  42.4 2015-02-01 property  
+ 6 ASSAULT   INTIMI… 1.50e9 2015-02-09 14400 … -83.2  42.4 2015-02-01 disorder  
+ 7 STOLEN V… VEHICL… 1.50e9 2015-02-23 15700 … -83.2  42.4 2015-02-01 property  
+ 8 FRAUD     FRAUD … 1.50e9 2015-02-24 19300 … -83.2  42.4 2015-02-01 property  
+ 9 FRAUD     FRAUD … 1.50e9 2015-02-25 00100 … -83.1  42.4 2015-02-01 property  
+10 FRAUD     FRAUD … 1.50e9 2015-02-25 19100 … -83.1  42.4 2015-02-01 property  </code></pre>
+</div>
+</div>
+</section>
+<section id="other-tricks---aggregations-and-plotting" class="level3">
+<h3 class="anchored" data-anchor-id="other-tricks---aggregations-and-plotting">Other Tricks - Aggregations and Plotting</h3>
+<p>Of course SQL is a very robust scripting language that allows for both simple and complex operations. We can do any kind of reporting and aggregations. For example, if we wanted some basic information about crime at the year-month level we could do:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1">qu <span class="ot" style="color: #003B4F;">=</span> </span>
+<span id="cb7-2">  <span class="st" style="color: #20794D;">"SELECT</span></span>
+<span id="cb7-3"><span class="st" style="color: #20794D;">      crime_type,</span></span>
+<span id="cb7-4"><span class="st" style="color: #20794D;">      yr_mon,</span></span>
+<span id="cb7-5"><span class="st" style="color: #20794D;">      COUNT(crime_type) AS N</span></span>
+<span id="cb7-6"><span class="st" style="color: #20794D;">  FROM</span></span>
+<span id="cb7-7"><span class="st" style="color: #20794D;">      read_csv('%s')</span></span>
+<span id="cb7-8"><span class="st" style="color: #20794D;">  GROUP BY</span></span>
+<span id="cb7-9"><span class="st" style="color: #20794D;">      crime_type,</span></span>
+<span id="cb7-10"><span class="st" style="color: #20794D;">      yr_mon</span></span>
+<span id="cb7-11"><span class="st" style="color: #20794D;">  ORDER BY</span></span>
+<span id="cb7-12"><span class="st" style="color: #20794D;">      crime_type,</span></span>
+<span id="cb7-13"><span class="st" style="color: #20794D;">      yr_mon"</span></span>
+<span id="cb7-14"></span>
+<span id="cb7-15">tab <span class="ot" style="color: #003B4F;">&lt;-</span> <span class="fu" style="color: #4758AB;">dbGetQuery</span>(con, <span class="fu" style="color: #4758AB;">sprintf</span>(qu, dir))</span>
+<span id="cb7-16"><span class="fu" style="color: #4758AB;">head</span>(tab)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  crime_type     yr_mon    N
+1   disorder 2015-01-01 1518
+2   disorder 2015-02-01 1447
+3   disorder 2015-03-01 1797
+4   disorder 2015-04-01 1884
+5   disorder 2015-05-01 2125
+6   disorder 2015-06-01 1839</code></pre>
+</div>
+</div>
+<p>This performs the group-by and counts out of memory and then moves the aggregated table right into R as a dataframe. And since the result is just a dataframe, we can pipe it directly into a ggplot visualization, like:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><span class="fu" style="color: #4758AB;">dbGetQuery</span>(con, <span class="fu" style="color: #4758AB;">sprintf</span>(qu, dir)) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb9-2">  <span class="fu" style="color: #4758AB;">ggplot</span>() <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb9-3">  <span class="fu" style="color: #4758AB;">geom_line</span>(<span class="fu" style="color: #4758AB;">aes</span>(<span class="at" style="color: #657422;">x =</span> yr_mon, <span class="at" style="color: #657422;">y =</span> N, <span class="at" style="color: #657422;">color =</span> crime_type), <span class="at" style="color: #657422;">linewidth =</span> <span class="dv" style="color: #AD0000;">1</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb9-4">  <span class="fu" style="color: #4758AB;">facet_wrap</span>(<span class="sc" style="color: #5E5E5E;">~</span>crime_type, <span class="at" style="color: #657422;">scales =</span> <span class="st" style="color: #20794D;">"free"</span>, <span class="at" style="color: #657422;">ncol =</span> <span class="dv" style="color: #AD0000;">2</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb9-5">  <span class="fu" style="color: #4758AB;">labs</span>(<span class="at" style="color: #657422;">x =</span> <span class="st" style="color: #20794D;">"Year-Month"</span>, <span class="at" style="color: #657422;">y =</span> <span class="st" style="color: #20794D;">"Count"</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb9-6">  <span class="fu" style="color: #4758AB;">scale_color_manual</span>(<span class="at" style="color: #657422;">values =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'#004488'</span>, <span class="st" style="color: #20794D;">'#DDAA33'</span>, <span class="st" style="color: #20794D;">'#BB5566'</span>)) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb9-7">  <span class="fu" style="color: #4758AB;">theme_minimal</span>() <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb9-8">  <span class="fu" style="color: #4758AB;">theme</span>(<span class="at" style="color: #657422;">legend.position =</span> <span class="st" style="color: #20794D;">'none'</span>)</span></code></pre></div>
+<div class="cell-output-display">
+<p><img src="https://gmcirco.github.io/blog//posts\duck-db\duckdb_files\figure-html\unnamed-chunk-6-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Similarly, this applies to other functions like creating spatial objects. What if we wanted to plot only the violent crimes from the first month of 2015?</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1">qu <span class="ot" style="color: #003B4F;">=</span></span>
+<span id="cb10-2">  <span class="st" style="color: #20794D;">"SELECT *</span></span>
+<span id="cb10-3"><span class="st" style="color: #20794D;">  FROM </span></span>
+<span id="cb10-4"><span class="st" style="color: #20794D;">      read_csv('%s')</span></span>
+<span id="cb10-5"><span class="st" style="color: #20794D;">  WHERE </span></span>
+<span id="cb10-6"><span class="st" style="color: #20794D;">      crime_type = 'violent'</span></span>
+<span id="cb10-7"><span class="st" style="color: #20794D;">  AND</span></span>
+<span id="cb10-8"><span class="st" style="color: #20794D;">      datepart('year', yr_mon) = 2015</span></span>
+<span id="cb10-9"><span class="st" style="color: #20794D;">  AND</span></span>
+<span id="cb10-10"><span class="st" style="color: #20794D;">      datepart('month', yr_mon) = 1</span></span>
+<span id="cb10-11"><span class="st" style="color: #20794D;">"</span></span>
+<span id="cb10-12"></span>
+<span id="cb10-13"><span class="fu" style="color: #4758AB;">st_as_sf</span>(<span class="fu" style="color: #4758AB;">dbGetQuery</span>(con, <span class="fu" style="color: #4758AB;">sprintf</span>(qu, dir)),</span>
+<span id="cb10-14">         <span class="at" style="color: #657422;">coords =</span> <span class="fu" style="color: #4758AB;">c</span>(<span class="st" style="color: #20794D;">'lon'</span>, <span class="st" style="color: #20794D;">'lat'</span>),</span>
+<span id="cb10-15">         <span class="at" style="color: #657422;">crs =</span> <span class="dv" style="color: #AD0000;">4326</span>) <span class="sc" style="color: #5E5E5E;">%&gt;%</span></span>
+<span id="cb10-16">  <span class="fu" style="color: #4758AB;">ggplot</span>() <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb10-17">  <span class="fu" style="color: #4758AB;">geom_sf</span>(<span class="at" style="color: #657422;">shape =</span> <span class="dv" style="color: #AD0000;">21</span>, <span class="at" style="color: #657422;">alpha =</span> .<span class="dv" style="color: #AD0000;">2</span>, <span class="at" style="color: #657422;">fill =</span> <span class="st" style="color: #20794D;">'#BB5566'</span>) <span class="sc" style="color: #5E5E5E;">+</span></span>
+<span id="cb10-18">  <span class="fu" style="color: #4758AB;">theme_void</span>()</span></code></pre></div>
+<div class="cell-output-display">
+<p><img src="https://gmcirco.github.io/blog//posts\duck-db\duckdb_files\figure-html\unnamed-chunk-7-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>This is pretty cool too, because we have access to all the base functions available in duckDB. For example, there are a bunch of <a href="https://duckdb.org/docs/sql/functions/date.html">date handling functions</a> that make these types of queries a lot easier than other base SQL languages. Here, the <code>datepart</code> function lets us split up date objects very easily within SQL.</p>
+
+
+</section>
+</section>
+
+ ]]></description>
+  <category>R</category>
+  <category>SQL</category>
+  <guid>https://gmcirco.github.io/blog//posts/duck-db/duckdb.html</guid>
+  <pubDate>Tue, 23 Jul 2024 04:00:00 GMT</pubDate>
+  <media:content url="https://gmcirco.github.io/blog///posts/duck-db/duck.jpg" medium="image" type="image/jpeg"/>
+</item>
 <item>
   <title>Creating Synthetic Spatial Data</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>

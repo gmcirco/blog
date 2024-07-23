@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/duck-db/duckdb.html",
       "/posts/spatial-simulation/spatial-sim.html",
       "/posts/chipotle-weight/youtube-food.html",
       "/posts/tiny-recid/recid.html",

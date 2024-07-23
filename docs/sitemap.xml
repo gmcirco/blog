@@ -2,74 +2,78 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://gmcirco.github.io/blog/about.html</loc>
-    <lastmod>2024-06-15T20:45:42.008Z</lastmod>
+    <lastmod>2024-07-23T12:40:43.046Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/index.html</loc>
-    <lastmod>2024-06-15T20:45:44.944Z</lastmod>
+    <lastmod>2024-07-23T12:40:46.649Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</loc>
-    <lastmod>2024-06-15T20:45:47.330Z</lastmod>
+    <lastmod>2024-07-23T12:40:49.209Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/chipotle-weight/youtube-food.html</loc>
-    <lastmod>2024-06-15T20:45:49.105Z</lastmod>
+    <lastmod>2024-07-23T12:40:50.940Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/coffee/coffee.html</loc>
-    <lastmod>2024-06-15T20:45:49.872Z</lastmod>
+    <lastmod>2024-07-23T12:40:51.822Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/distance-plotting/distance-plotting.html</loc>
-    <lastmod>2024-06-15T20:45:50.413Z</lastmod>
+    <lastmod>2024-07-23T12:40:52.606Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/duck-db/duckdb.html</loc>
+    <lastmod>2024-07-23T12:40:53.329Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/gmm/gmm.html</loc>
-    <lastmod>2024-06-15T20:45:50.924Z</lastmod>
+    <lastmod>2024-07-23T12:40:54.089Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
-    <lastmod>2024-06-15T20:45:51.563Z</lastmod>
+    <lastmod>2024-07-23T12:40:54.977Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
-    <lastmod>2024-06-15T20:45:53.407Z</lastmod>
+    <lastmod>2024-07-23T12:40:56.883Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/mmm-bayesian/mmm.html</loc>
-    <lastmod>2024-06-15T20:45:55.854Z</lastmod>
+    <lastmod>2024-07-23T12:40:59.266Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/nlp-falls/nlp_falls.html</loc>
-    <lastmod>2024-06-15T20:45:57.605Z</lastmod>
+    <lastmod>2024-07-23T12:41:00.950Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
-    <lastmod>2024-06-15T20:45:59.562Z</lastmod>
+    <lastmod>2024-07-23T12:41:02.642Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
-    <lastmod>2024-06-15T20:46:00.181Z</lastmod>
+    <lastmod>2024-07-23T12:41:03.164Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
-    <lastmod>2024-06-15T20:46:00.692Z</lastmod>
+    <lastmod>2024-07-23T12:41:03.652Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/rtm-spatial/rtm.html</loc>
-    <lastmod>2024-06-15T20:46:01.522Z</lastmod>
+    <lastmod>2024-07-23T12:41:04.394Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/spatial-simulation/spatial-sim.html</loc>
-    <lastmod>2024-06-15T20:46:03.446Z</lastmod>
+    <lastmod>2024-07-23T12:41:06.102Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/synth-impact/synth_impact.html</loc>
-    <lastmod>2024-06-15T20:46:04.185Z</lastmod>
+    <lastmod>2024-07-23T12:41:06.824Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/tiny-recid/recid.html</loc>
-    <lastmod>2024-06-15T20:46:04.810Z</lastmod>
+    <lastmod>2024-07-23T12:41:07.332Z</lastmod>
   </url>
 </urlset>
