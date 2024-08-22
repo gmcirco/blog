@@ -126,7 +126,6 @@ ggplot(food_weight_data) +
         legend.text = element_text(face = "bold"))
 
 ```
-
 :::
 
 ### Results
@@ -152,10 +151,7 @@ So, yes, in this case it does appear that ordering online resulted in smaller or
 
 All of this analysis assumes that the online orders were roughly equivalent to the in-person one (e.g. ordering the same ingredients online as in-person). This would *not* be valid if he tended to order more additional items when in the store rather then online. However, from watching the video and looking at the listed cost of all items (\$11.00) it appears that the orders are comparable.
 
-I would also caution against extrapolation. The data here comes for 30 orders
-from a single city in the US. It is a limited set of data with a limited number
-of observations. So, as always with science, some degree of skepticism is always
-warranted.
+I would also caution against extrapolation. The data here comes for 30 orders from a single city in the US. It is a limited set of data with a limited number of observations. So, as always with science, some degree of skepticism is always warranted.
 
 ### Full Model
 

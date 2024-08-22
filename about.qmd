@@ -13,27 +13,24 @@ about:
     - icon: github
       text: Github
       href: https://github.com/gmcirco
-
 ---
 
 ## Who Am I?
 
-I'm Gio Circo, a Ph.D. in criminology and former assistant professor. I currently
-work at Gainwell technologies as a data scientist. My work primarily focuses on
-causal inference, Bayesian statistics, and anomaly detection. 
+I'm Gio Circo, a Ph.D. in criminology and former assistant professor. I currently work at Gainwell technologies as a data scientist. My work primarily focuses on causal inference, Bayesian statistics, and anomaly detection.
 
-I'm big into food, wine, and spirits - especially cocktails. 
+I'm big into food, wine, and spirits - especially cocktails.
 
 ## Education
 
-Michigan State University | Lansing, MI |
-PhD in Criminal Justice | August 2013 - May 2018
+Michigan State University \| Lansing, MI \| PhD in Criminal Justice \| August 2013 - May 2018
 
-Illinois State University| Normal, IL |
-B.A in  Criminal Justice | August 2010 - June 2012
+Illinois State University\| Normal, IL \| B.A in Criminal Justice \| August 2010 - June 2012
 
 ## Experience
 
-Gainwell Technologies | Data Scientist | June 2022 - present
+Gainwell Technologies \| Data Scientist \| June 2022 - present University of New Haven \| Assistant Professor \| August 2018 - May 2022
 
-University of New Haven | Assistant Professor | August 2018 - May 2022
+## Resume
+
+[**Non-Academic Resume**](https://www.dropbox.com/scl/fi/03mm9ynq8o0n9i50cnp9d/circo_resume.pdf?rlkey=dlho0ftabpnvh6f3munxu87q4&dl=0)

@@ -1,0 +1,172 @@
+---
+title: "Going Back to (Bayesian) School"
+subtitle: "Self-study with Regression and Other Stories"
+author: "Gio Circo, Ph.D."
+date: 2024-8-05
+format: 
+    html:
+        self-contained: false
+        code-fold: true
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+categories:
+  - R
+  - Bayesian
+theme: flatly
+image: duck.jpg
+---
+
+## Working with Bayesian Statistics
+
+```{r, include=FALSE}
+library(tidyverse)
+library(broom.mixed)
+library(brms)
+
+set.seed(55432)
+
+# list of files
+dir1 <- "https://raw.githubusercontent.com/avehtari/ROS-Examples/master/ElectionsEconomy/data/hibbs.dat"
+
+# EXAMPLE 1: GDP GROWTH AND ELECTION VOTE SHARE
+# quick simple example, using bayes for a linear regression
+# what is the impact of economic growth on incumbent vote share?
+election <- read_delim(dir1, delim = " ")
+
+
+# plot 100 simulations from the posterior
+plot_posterior <- function(fit){
+  M <- as.matrix(fit)
+  sims <- 100
+  sims_idx <- sample(1:nrow(M), size=sims)
+  
+  model_sims <-
+    M[sims_idx, ][, c(1, 2)] %>% data.frame() %>% setNames(c("intercept", "slope"))
+  
+  plot1.1 +
+    geom_abline(data=model_sims, aes(slope = slope, intercept = intercept), alpha = .2, color = '#004488')
+}
+```
+
+## A Basic Regression Example
+
+### The Hibbs "Bread and Peace" Model
+
+The data below is part of Douglas Hibb's ["Bread and Peace"](https://www.jstor.org/stable/pdf/30026466.pdf?casa_token=ndkpZ4OA8qsAAAAA:wmCzUl5_lrseqgvVh1QljGQcY4zt7RjL6qVVDpVx3FP7cH11_L_GYRP82RTjht1Q6jC8UpDiKVv97q1KAcvOzdj71tnb-YRpr_VKxlMiVoXrjuF0xzw) model of U.S. elections. The data below show the proportion of the 2-party vote share for the incumbent party against a measure of personal income growth during that party's tenure. As seen in the plot, there appears to be a fairly strong relationship between the economic status under the incumbent party and their share of the 2 party vote.
+
+::: panel-tabset
+
+## "Bread and Peace" Raw Data
+
+```{r}
+#| fig-cap: "Growth in personal income is associated with higher vote shares for the incumbent party" 
+plot1.1 <- 
+  ggplot(election) +
+  geom_point(aes(x = growth, y = vote), size = 2, shape = 22, fill = '#004488', color = '#004488') +
+  labs(x = "Growth in Personal Income", y = "Incumbent vote share") +
+  theme_bw() +
+  theme(axis.text = element_text(size = 11))
+plot1.1
+```
+
+## "Bread and Peace" by Year
+
+```{r}
+#| fig-cap: "The 1980 election saw Jimmy Carter lose decsively to Ronald Regan amid a floundering economy." 
+plot1.2 <- 
+  ggplot(election) +
+  geom_text(aes(x = growth, y = vote, label = year), size = 3.5, fontface = 'bold', color = '#004488') +
+  labs(x = "Growth in Personal Income", y = "Incumbent vote share") +
+  theme_bw() +
+  theme(axis.text = element_text(size = 11))
+plot1.2
+```
+
+:::
+
+Therefore, we have the simple regression equation:
+
+$$y = \beta_0 + \beta_{1}income + \epsilon$$
+Where the expected two party vote share $y$ is assumed to be a function of the growth in personal income growth $\beta_1$ plus unmeasured residual error $\epsilon$. So far this isn't any different than your bog-standard `lm(y~x)` type model. The difference is how a Bayesian model handles the model parameters. In short, while a frequentist model views parameters as "fixed", a Bayesian model views them as random variables modeled as draws from a posterior distribution. This posterior distribution is formed from a likelihood (the observed data), and a prior distribution. 
+
+Because this isn't meant to be a full introduction to Bayesian inference, feel free to review some good articles [here](http://www.stat.columbia.edu/~gelman/research/published/43586_2020_1_Author.pdfand), or [here](https://arxiv.org/pdf/2011.01808).
+
+### The Bayesian approach
+
+```{r}
+#| message: false
+#| warning: false
+
+# let's regress!
+fit2_prior <- c(prior(normal(5, 2), class = 'b'))
+
+# model 1 has default (flat) priors on betas
+# 1 percentage point in growth is associated with ~ 3% increase in vote share
+fit1 <-
+  brm(vote ~ growth,
+      data = election,
+      family = "gaussian",
+      file = "hibbs_fit1.Rdata")
+tidy(fit1)
+
+# same model, with much tighter priors
+# assuming a mean effect of about 2.5% +- 1.5%
+fit2 <-
+  brm(
+    vote ~ growth,
+    data = election,
+    family = "gaussian",
+    prior = fit2_prior,
+    file = "hibbs_fit2.Rdata"
+  )
+tidy(fit2)
+```
+
+## Predictions for a new value of `x`
+
+We can create a prediction for `y` given a new value of `x`. For example, what would the expected vote share be, given the growth in personal income was 2%? Here we can access the posterior distribution for a prediction of `y`. This prediction itself is constructed as a distribution from the posterior, which gives us a range of values for the prediction. Below we see the mean prediction for incumbent vote share where $y=2$ is 52.3, but this could plausibly range between as low as 44 or as high as 61.
+
+::: panel-tabset
+
+```{r}
+# what is the predicted vote share given a 2% growth rate?
+# 52%, but with a pretty big margin of error
+newgrowth = 2.0
+newprobs = c(.025, .25, .75, 0.975)
+
+pred1 <- posterior_predict(fit1, newdata = data.frame(growth=newgrowth))
+
+ypred = mean(pred1)
+ypred_quantile = quantile(pred1, newprobs)
+
+
+ggplot(data.frame(x = pred1)) + geom_density(aes(x = x), linewidth = 1, color = '#DDAA33', fill = '#DDAA33', alpha = .2) +
+  labs(x = "Predicted Vote Share (y=2)", y = "Probability Density") +
+  theme_bw() +
+  theme(axis.text = element_text(size = 11))
+```
+
+```{r}
+# plot the 50% and 95% credible intervals for the point estimate of 2% growth
+plot1.1 +
+  annotate(geom = "linerange", x = newgrowth, ymin = ypred_quantile[2], ymax = ypred_quantile[3], color = '#DDAA33',  linewidth = 1) +
+  annotate(geom = "linerange", x = newgrowth, ymin = ypred_quantile[1], ymax = ypred_quantile[4], color = '#DDAA33') +
+  annotate(geom = "point", x = newgrowth, y = ypred, fill = '#DDAA33', color = 'white', stroke = 2, size = 3, shape = 21)
+```
+
+We can also access simulations for the intercepts and slopes of each model.
+
+::: panel-tabset
+
+## Flat prior
+```{r}
+plot_posterior(fit1)
+```
+
+## Informative prior
+```{r}
+plot_posterior(fit2)
+```
+:::

@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/bayes-study-1/bayes-study-1.html",
       "/posts/duck-db/duckdb.html",
       "/posts/spatial-simulation/spatial-sim.html",
       "/posts/chipotle-weight/youtube-food.html",
