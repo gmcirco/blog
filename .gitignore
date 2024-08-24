@@ -1,5 +1,6 @@
 *.Rproj.user
 *.Rhistory
+*.Rdata.rds
 *.Rdata
 *.Ruserdata
 *.csv

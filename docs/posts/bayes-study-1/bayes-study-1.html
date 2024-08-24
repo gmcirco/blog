@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Gio Circo, Ph.D.">
-<meta name="dcterms.date" content="2024-08-05">
+<meta name="dcterms.date" content="2024-08-24">
 
 <title>A Blog for Data Stuff - Going Back to (Bayesian) School</title>
 <style>
@@ -187,7 +187,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
       <div>
       <div class="quarto-title-meta-heading">Published</div>
       <div class="quarto-title-meta-contents">
-        <p class="date">August 5, 2024</p>
+        <p class="date">August 24, 2024</p>
       </div>
     </div>
       
@@ -203,12 +203,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
    
   <ul>
   <li><a href="#working-with-bayesian-statistics" id="toc-working-with-bayesian-statistics" class="nav-link active" data-scroll-target="#working-with-bayesian-statistics">Working with Bayesian Statistics</a></li>
-  <li><a href="#a-basic-regression-example" id="toc-a-basic-regression-example" class="nav-link" data-scroll-target="#a-basic-regression-example">A Basic Regression Example</a>
+  <li><a href="#chapter-8-fitting-regression-models" id="toc-chapter-8-fitting-regression-models" class="nav-link" data-scroll-target="#chapter-8-fitting-regression-models">Chapter 8: Fitting Regression Models</a>
   <ul class="collapse">
   <li><a href="#the-hibbs-bread-and-peace-model" id="toc-the-hibbs-bread-and-peace-model" class="nav-link" data-scroll-target="#the-hibbs-bread-and-peace-model">The Hibbs “Bread and Peace” Model</a></li>
   <li><a href="#the-bayesian-approach" id="toc-the-bayesian-approach" class="nav-link" data-scroll-target="#the-bayesian-approach">The Bayesian approach</a></li>
-  </ul></li>
   <li><a href="#predictions-for-a-new-value-of-x" id="toc-predictions-for-a-new-value-of-x" class="nav-link" data-scroll-target="#predictions-for-a-new-value-of-x">Predictions for a new value of <code>x</code></a></li>
+  </ul></li>
+  <li><a href="#wrapping-it-up" id="toc-wrapping-it-up" class="nav-link" data-scroll-target="#wrapping-it-up">Wrapping it Up</a></li>
+  <li><a href="#full-code" id="toc-full-code" class="nav-link" data-scroll-target="#full-code">Full Code</a></li>
   </ul>
 </nav>
     </div>
@@ -220,9 +222,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 
 <section id="working-with-bayesian-statistics" class="level2">
 <h2 class="anchored" data-anchor-id="working-with-bayesian-statistics">Working with Bayesian Statistics</h2>
+<p>This is just a bit of fun, mostly for myself. In my day-to-day as a data scientist, I don’t get to use Bayesian statistics as much as I would like. In my role, a lot of the tools we use are things like boosted tree models, anomaly detection ensembles, and other less inferential models. That’s not to say I don’t think Bayesian methods can be used at my job, but there is definitely a different toolset involved.</p>
+<p>I do a bit of side work (some for money, others just for fun) where I really do prefer to use Bayesian statistics. I’ve always liked the flexibility it allows in contrast to frequentist methods. In addition, I find it invaluable for stuff like psychometrics (e.g.&nbsp;IRT models) and survey analysis. I have to admit, I am a bit rusty with some of the foundations, and I’ve decided to make an abbreviated run through one of my favorite recent stats books: <a href="https://avehtari.github.io/ROS-Examples/">“Regression and Other Stories”</a>. The previous book that was absolutely invaluable for me in grad school was the 2007 <a href="http://www.stat.columbia.edu/~gelman/arm/">“Data Analysis Using Regression and Multilevel/Hierarchical Models”</a>. So for personal growth and fun, I’m going to work on a few interesting examples from this more recent book, starting from the beginning of the book all the way through the end - tossing in a bit of my own opinions on this.</p>
 </section>
-<section id="a-basic-regression-example" class="level2">
-<h2 class="anchored" data-anchor-id="a-basic-regression-example">A Basic Regression Example</h2>
+<section id="chapter-8-fitting-regression-models" class="level2">
+<h2 class="anchored" data-anchor-id="chapter-8-fitting-regression-models">Chapter 8: Fitting Regression Models</h2>
+<p>Before working on anything too complicated, I think it is refreshing to start with a very simple regression problem. I know this already Chapter 8, but the first several chapters of the book are mostly a very basic intro into Bayesian statistics, data analysis, and some other more standard stuff. I’m choosing to skip ahead a bit. Chapter 8 starts with an introduction to a very simple bivariate regression using an interesting dataset from Douglas Hibbs’ fundementals-based election forecasting model (oddly appropriate, given when I am writing this):</p>
 <section id="the-hibbs-bread-and-peace-model" class="level3">
 <h3 class="anchored" data-anchor-id="the-hibbs-bread-and-peace-model">The Hibbs “Bread and Peace” Model</h3>
 <p>The data below is part of Douglas Hibb’s <a href="https://www.jstor.org/stable/pdf/30026466.pdf?casa_token=ndkpZ4OA8qsAAAAA:wmCzUl5_lrseqgvVh1QljGQcY4zt7RjL6qVVDpVx3FP7cH11_L_GYRP82RTjht1Q6jC8UpDiKVv97q1KAcvOzdj71tnb-YRpr_VKxlMiVoXrjuF0xzw">“Bread and Peace”</a> model of U.S. elections. The data below show the proportion of the 2-party vote share for the incumbent party against a measure of personal income growth during that party’s tenure. As seen in the plot, there appears to be a fairly strong relationship between the economic status under the incumbent party and their share of the 2 party vote.</p>
@@ -275,18 +280,19 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 </div>
-<p>Therefore, we have the simple regression equation:</p>
+<p>Given this data we, therefore, have the simple regression equation:</p>
 <p><span class="math display">\[y = \beta_0 + \beta_{1}income + \epsilon\]</span></p>
-<p>Where the expected two party vote share <span class="math inline">\(y\)</span> is assumed to be a function of the growth in personal income growth <span class="math inline">\(\beta_1\)</span> plus unmeasured residual error <span class="math inline">\(\epsilon\)</span>. So far this isn’t any different than your bog-standard <code>lm(y~x)</code> type model. The difference is how a Bayesian model handles the model parameters. In short, while a frequentist model views parameters as “fixed”, a Bayesian model views them as random variables modeled as draws from a posterior distribution. This posterior distribution is formed from a likelihood (the observed data), and a prior distribution.</p>
+<p>Where the expected two party vote share <span class="math inline">\(y\)</span> is assumed to be a function of the change in personal income growth <span class="math inline">\(\beta_1\)</span> plus unmeasured residual error <span class="math inline">\(\epsilon\)</span>. So far this isn’t any different than your bog-standard <code>lm(y~x)</code> type model. The difference is how a Bayesian model handles the model parameters. In short, while a frequentist model views parameters as “fixed”, a Bayesian model views them as random variables modeled as draws from a posterior distribution. This posterior distribution is formed from a likelihood (the observed data), and a prior distribution.</p>
 <p>Because this isn’t meant to be a full introduction to Bayesian inference, feel free to review some good articles <a href="http://www.stat.columbia.edu/~gelman/research/published/43586_2020_1_Author.pdfand">here</a>, or <a href="https://arxiv.org/pdf/2011.01808">here</a>.</p>
 </section>
 <section id="the-bayesian-approach" class="level3">
 <h3 class="anchored" data-anchor-id="the-bayesian-approach">The Bayesian approach</h3>
+<p>For our models we have two sets of priors. One is a ‘flat’ prior which is drawn from a uniform distribution. This essentially adds zero additional information to the model. The other we can provide is an “informative” prior that contains some knowledge about the value of the estimates. This can be “weakly-informative” which just keeps the estimates within some reasonable bounds, or truly informative which reflects real-world knowledge. Here, I will add an informative prior to the second model reflecting my belief that a 1% increase in personal income growth is likely to increase vote share by about 3%, which is unlikely to be higher 5% or lower than 1%.</p>
 <div class="cell">
 <details>
 <summary>Code</summary>
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># let's regress!</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>fit2_prior <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">5</span>, <span class="dv">2</span>), <span class="at">class =</span> <span class="st">'b'</span>))</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>fit2_prior <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">3</span>, <span class="dv">1</span>), <span class="at">class =</span> <span class="st">'b'</span>))</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># model 1 has default (flat) priors on betas</span></span>
 <span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co"># 1 percentage point in growth is associated with ~ 3% increase in vote share</span></span>
@@ -295,96 +301,176 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> election,</span>
 <span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>      <span class="at">family =</span> <span class="st">"gaussian"</span>,</span>
 <span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>      <span class="at">file =</span> <span class="st">"hibbs_fit1.Rdata"</span>)</span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="fu">tidy</span>(fit1)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</details>
-<div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 3 × 8
-  effect   component group    term         estimate std.error conf.low conf.high
-  &lt;chr&gt;    &lt;chr&gt;     &lt;chr&gt;    &lt;chr&gt;           &lt;dbl&gt;     &lt;dbl&gt;    &lt;dbl&gt;     &lt;dbl&gt;
-1 fixed    cond      &lt;NA&gt;     (Intercept)     46.2      1.75     42.6      49.7 
-2 fixed    cond      &lt;NA&gt;     growth           3.08     0.762     1.54      4.57
-3 ran_pars cond      Residual sd__Observa…     4.05     0.813     2.82      5.97</code></pre>
-</div>
-<details>
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># same model, with much tighter priors</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="co"># assuming a mean effect of about 2.5% +- 1.5%</span></span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>fit2 <span class="ot">&lt;-</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">brm</span>(</span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    vote <span class="sc">~</span> growth,</span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> election,</span>
-<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">family =</span> <span class="st">"gaussian"</span>,</span>
-<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">prior =</span> fit2_prior,</span>
-<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">file =</span> <span class="st">"hibbs_fit2.Rdata"</span></span>
-<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="fu">tidy</span>(fit2)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</details>
-<div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 3 × 8
-  effect   component group    term         estimate std.error conf.low conf.high
-  &lt;chr&gt;    &lt;chr&gt;     &lt;chr&gt;    &lt;chr&gt;           &lt;dbl&gt;     &lt;dbl&gt;    &lt;dbl&gt;     &lt;dbl&gt;
-1 fixed    cond      &lt;NA&gt;     (Intercept)     45.7      1.67     42.4      48.9 
-2 fixed    cond      &lt;NA&gt;     growth           3.30     0.716     1.90      4.75
-3 ran_pars cond      Residual sd__Observa…     4.01     0.818     2.83      5.97</code></pre>
-</div>
-</div>
-</section>
-</section>
-<section id="predictions-for-a-new-value-of-x" class="level2">
-<h2 class="anchored" data-anchor-id="predictions-for-a-new-value-of-x">Predictions for a new value of <code>x</code></h2>
-<p>We can create a prediction for <code>y</code> given a new value of <code>x</code>. For example, what would the expected vote share be, given the growth in personal income was 2%? Here we can access the posterior distribution for a prediction of <code>y</code></p>
-<div class="cell">
-<details>
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># what is the predicted vote share given a 2% growth rate?</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="co"># 52%, but with a pretty big margin of error</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>newgrowth <span class="ot">=</span> <span class="fl">2.0</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>newprobs <span class="ot">=</span> <span class="fu">c</span>(.<span class="dv">025</span>, .<span class="dv">25</span>, .<span class="dv">75</span>, <span class="fl">0.975</span>)</span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>pred1 <span class="ot">&lt;-</span> <span class="fu">posterior_predict</span>(fit1, <span class="at">newdata =</span> <span class="fu">data.frame</span>(<span class="at">growth=</span>newgrowth))</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>ypred <span class="ot">=</span> <span class="fu">mean</span>(pred1)</span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>ypred_quantile <span class="ot">=</span> <span class="fu">quantile</span>(pred1, newprobs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</details>
-</div>
-<p>This prediction itself is constructed as a distribution from the posterior, which gives us a range of values for the prediction. Below we see the mean prediction for incumbent vote share where <span class="math inline">\(y=2\)</span> is 52.3, but this could plausibly range between as low as 44 or as high as 61.</p>
-<div class="cell">
-<details>
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(<span class="fu">data.frame</span>(<span class="at">x =</span> pred1)) <span class="sc">+</span> <span class="fu">geom_density</span>(<span class="fu">aes</span>(<span class="at">x =</span> x), <span class="at">linewidth =</span> <span class="dv">1</span>, <span class="at">color =</span> <span class="st">'#DDAA33'</span>, <span class="at">fill =</span> <span class="st">'#DDAA33'</span>, <span class="at">alpha =</span> .<span class="dv">2</span>) <span class="sc">+</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Predicted Vote Share (y=2)"</span>, <span class="at">y =</span> <span class="st">"Probability Density"</span>) <span class="sc">+</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>() <span class="sc">+</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">11</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="fu">tidy</span>(fit1) <span class="sc">%&gt;%</span> <span class="fu">kable</span>(<span class="at">digits =</span> <span class="dv">2</span>, <span class="at">caption =</span> <span class="st">"Flat prior"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
-<p><img src="bayes-study-1_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid" width="672"></p>
+<table class="table table-sm table-striped">
+<caption>Flat prior</caption>
+<colgroup>
+<col style="width: 10%">
+<col style="width: 12%">
+<col style="width: 10%">
+<col style="width: 19%">
+<col style="width: 10%">
+<col style="width: 12%">
+<col style="width: 10%">
+<col style="width: 12%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">effect</th>
+<th style="text-align: left;">component</th>
+<th style="text-align: left;">group</th>
+<th style="text-align: left;">term</th>
+<th style="text-align: right;">estimate</th>
+<th style="text-align: right;">std.error</th>
+<th style="text-align: right;">conf.low</th>
+<th style="text-align: right;">conf.high</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">fixed</td>
+<td style="text-align: left;">cond</td>
+<td style="text-align: left;">NA</td>
+<td style="text-align: left;">(Intercept)</td>
+<td style="text-align: right;">46.19</td>
+<td style="text-align: right;">1.75</td>
+<td style="text-align: right;">42.63</td>
+<td style="text-align: right;">49.66</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">fixed</td>
+<td style="text-align: left;">cond</td>
+<td style="text-align: left;">NA</td>
+<td style="text-align: left;">growth</td>
+<td style="text-align: right;">3.08</td>
+<td style="text-align: right;">0.76</td>
+<td style="text-align: right;">1.54</td>
+<td style="text-align: right;">4.57</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">ran_pars</td>
+<td style="text-align: left;">cond</td>
+<td style="text-align: left;">Residual</td>
+<td style="text-align: left;">sd__Observation</td>
+<td style="text-align: right;">4.05</td>
+<td style="text-align: right;">0.81</td>
+<td style="text-align: right;">2.82</td>
+<td style="text-align: right;">5.97</td>
+</tr>
+</tbody>
+</table>
 </div>
-</div>
-<div class="cell">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># plot the 50% and 95% credible intervals for the point estimate of 2% growth</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>plot1<span class="fl">.1</span> <span class="sc">+</span></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">annotate</span>(<span class="at">geom =</span> <span class="st">"linerange"</span>, <span class="at">x =</span> newgrowth, <span class="at">ymin =</span> ypred_quantile[<span class="dv">2</span>], <span class="at">ymax =</span> ypred_quantile[<span class="dv">3</span>], <span class="at">color =</span> <span class="st">'#DDAA33'</span>,  <span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">annotate</span>(<span class="at">geom =</span> <span class="st">"linerange"</span>, <span class="at">x =</span> newgrowth, <span class="at">ymin =</span> ypred_quantile[<span class="dv">1</span>], <span class="at">ymax =</span> ypred_quantile[<span class="dv">4</span>], <span class="at">color =</span> <span class="st">'#DDAA33'</span>) <span class="sc">+</span></span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">annotate</span>(<span class="at">geom =</span> <span class="st">"point"</span>, <span class="at">x =</span> newgrowth, <span class="at">y =</span> ypred, <span class="at">fill =</span> <span class="st">'#DDAA33'</span>, <span class="at">color =</span> <span class="st">'white'</span>, <span class="at">stroke =</span> <span class="dv">2</span>, <span class="at">size =</span> <span class="dv">3</span>, <span class="at">shape =</span> <span class="dv">21</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># same model, with much tighter priors</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co"># assuming a mean effect of about 2.5% +- 1.5%</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>fit2 <span class="ot">&lt;-</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">brm</span>(</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    vote <span class="sc">~</span> growth,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> election,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">family =</span> <span class="st">"gaussian"</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">prior =</span> fit2_prior,</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">file =</span> <span class="st">"hibbs_fit2.Rdata"</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="fu">tidy</span>(fit2) <span class="sc">%&gt;%</span> <span class="fu">kable</span>(<span class="at">digits =</span> <span class="dv">2</span>, <span class="at">caption =</span> <span class="st">"Informative prior"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
-<p><img src="bayes-study-1_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid" width="672"></p>
+<table class="table table-sm table-striped">
+<caption>Informative prior</caption>
+<colgroup>
+<col style="width: 10%">
+<col style="width: 12%">
+<col style="width: 10%">
+<col style="width: 19%">
+<col style="width: 10%">
+<col style="width: 12%">
+<col style="width: 10%">
+<col style="width: 12%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">effect</th>
+<th style="text-align: left;">component</th>
+<th style="text-align: left;">group</th>
+<th style="text-align: left;">term</th>
+<th style="text-align: right;">estimate</th>
+<th style="text-align: right;">std.error</th>
+<th style="text-align: right;">conf.low</th>
+<th style="text-align: right;">conf.high</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">fixed</td>
+<td style="text-align: left;">cond</td>
+<td style="text-align: left;">NA</td>
+<td style="text-align: left;">(Intercept)</td>
+<td style="text-align: right;">46.24</td>
+<td style="text-align: right;">1.51</td>
+<td style="text-align: right;">43.19</td>
+<td style="text-align: right;">49.12</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">fixed</td>
+<td style="text-align: left;">cond</td>
+<td style="text-align: left;">NA</td>
+<td style="text-align: left;">growth</td>
+<td style="text-align: right;">3.03</td>
+<td style="text-align: right;">0.58</td>
+<td style="text-align: right;">1.91</td>
+<td style="text-align: right;">4.17</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">ran_pars</td>
+<td style="text-align: left;">cond</td>
+<td style="text-align: left;">Residual</td>
+<td style="text-align: left;">sd__Observation</td>
+<td style="text-align: right;">4.01</td>
+<td style="text-align: right;">0.82</td>
+<td style="text-align: right;">2.83</td>
+<td style="text-align: right;">6.04</td>
+</tr>
+</tbody>
+</table>
 </div>
 </div>
-<p>We can also access simulations for the intercepts and slopes of each model.</p>
+<p>If we look at the parameter estimates from the two models we see they are roughly the same. A 1% increase in personal income growth is associated with a 3% increase increase in vote share for the incumbent party. Our choice of prior doesn’t really affect the point estimate, but we can see that restricting the plausible range has shrunk the standard error and credible interval range. This is because we are adding additional data to the model, based on our prior beliefs. Bayesian statistics in action!</p>
+</section>
+<section id="predictions-for-a-new-value-of-x" class="level3">
+<h3 class="anchored" data-anchor-id="predictions-for-a-new-value-of-x">Predictions for a new value of <code>x</code></h3>
+<p>Of course, we can also create a prediction for <code>y</code> given a new value of <code>x</code>. For example, what would the expected vote share be, given the growth in personal income was 2%? Here we can access the posterior distribution for a prediction of <code>y</code>. This prediction itself is constructed as a distribution from the posterior, which gives us a range of values for the prediction. Below we see the mean prediction for incumbent vote share where <span class="math inline">\(x=2\)</span> is 52.3, but this could plausibly range between as low as 44 or as high as 61.</p>
 <div class="panel-tabset">
-<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-2-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-1" role="tab" aria-controls="tabset-2-1" aria-selected="true">Flat prior</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-2-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-2" role="tab" aria-controls="tabset-2-2" aria-selected="false">Informative prior</a></li></ul>
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-2-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-1" role="tab" aria-controls="tabset-2-1" aria-selected="true">Estimate Distribution</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-2-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-2" role="tab" aria-controls="tabset-2-2" aria-selected="false">Point Estimate and Intervals</a></li></ul>
 <div class="tab-content">
 <div id="tabset-2-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-2-1-tab">
 <div class="cell">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_posterior</span>(fit1)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># what is the predicted vote share given a 2% growth rate?</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="co"># ~52%, but with a pretty big margin of error</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>newgrowth <span class="ot">=</span> <span class="fl">2.0</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>newprobs <span class="ot">=</span> <span class="fu">c</span>(.<span class="dv">025</span>, .<span class="dv">25</span>, .<span class="dv">75</span>, <span class="fl">0.975</span>)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>pred1 <span class="ot">&lt;-</span> <span class="fu">posterior_predict</span>(fit1, <span class="at">newdata =</span> <span class="fu">data.frame</span>(<span class="at">growth=</span>newgrowth))</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>ypred <span class="ot">=</span> <span class="fu">mean</span>(pred1) </span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>ypred_quantile <span class="ot">=</span> <span class="fu">quantile</span>(pred1, newprobs)</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(<span class="fu">data.frame</span>(<span class="at">x =</span> pred1)) <span class="sc">+</span> <span class="fu">geom_density</span>(<span class="fu">aes</span>(<span class="at">x =</span> x), <span class="at">linewidth =</span> <span class="dv">1</span>, <span class="at">color =</span> <span class="st">'#DDAA33'</span>, <span class="at">fill =</span> <span class="st">'#DDAA33'</span>, <span class="at">alpha =</span> .<span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Predicted Vote Share (x=2)"</span>, <span class="at">y =</span> <span class="st">"Probability Density"</span>) <span class="sc">+</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>() <span class="sc">+</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">11</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
-<p><img src="bayes-study-1_files/figure-html/unnamed-chunk-8-1.png" class="img-fluid" width="672"></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="bayes-study-1_files/figure-html/unnamed-chunk-5-1.png" class="img-fluid figure-img" width="672"></p>
+<p></p><figcaption aria-hidden="true" class="figure-caption">Distribution of estimates for y, given x = 2</figcaption><p></p>
+</figure>
+</div>
 </div>
 </div>
 </div>
@@ -392,14 +478,144 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <div class="cell">
 <details>
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_posterior</span>(fit2)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># plot the 50% and 95% credible intervals for the point estimate of 2% growth</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>plot1<span class="fl">.1</span> <span class="sc">+</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">annotate</span>(<span class="at">geom =</span> <span class="st">"linerange"</span>, <span class="at">x =</span> newgrowth, <span class="at">ymin =</span> ypred_quantile[<span class="dv">2</span>], <span class="at">ymax =</span> ypred_quantile[<span class="dv">3</span>], <span class="at">color =</span> <span class="st">'#DDAA33'</span>,  <span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">annotate</span>(<span class="at">geom =</span> <span class="st">"linerange"</span>, <span class="at">x =</span> newgrowth, <span class="at">ymin =</span> ypred_quantile[<span class="dv">1</span>], <span class="at">ymax =</span> ypred_quantile[<span class="dv">4</span>], <span class="at">color =</span> <span class="st">'#DDAA33'</span>) <span class="sc">+</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">annotate</span>(<span class="at">geom =</span> <span class="st">"point"</span>, <span class="at">x =</span> newgrowth, <span class="at">y =</span> ypred, <span class="at">fill =</span> <span class="st">'#DDAA33'</span>, <span class="at">color =</span> <span class="st">'white'</span>, <span class="at">stroke =</span> <span class="dv">2</span>, <span class="at">size =</span> <span class="dv">3</span>, <span class="at">shape =</span> <span class="dv">21</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
-<p><img src="bayes-study-1_files/figure-html/unnamed-chunk-9-1.png" class="img-fluid" width="672"></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="bayes-study-1_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid figure-img" width="672"></p>
+<p></p><figcaption aria-hidden="true" class="figure-caption">Point estimate, and 50% and 95% credible intervals for x=2</figcaption><p></p>
+</figure>
 </div>
 </div>
 </div>
 </div>
+</div>
+</div>
+<p>We can also access simulations for the intercepts and slopes of each model. Below we have 100 draws from the posterior distribution, showing a range of values for the intercept and slope. Together, this gives us a range of plausible values for the predicted relationship between personal income growth and vote share.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_posterior</span>(fit2)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="bayes-study-1_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="wrapping-it-up" class="level2">
+<h2 class="anchored" data-anchor-id="wrapping-it-up">Wrapping it Up</h2>
+<p>One lesson down. In this one I just ran through the most basic task of fitting an extremely simple regression. However, all the major parts of the Bayesian workflow are present:</p>
+<ul>
+<li>Setting priors</li>
+<li>Estimating parameters from the model</li>
+<li>Accessing posterior draws for prediction</li>
+</ul>
+<p>The third one is probably the most useful and important. Having access to the full posterior gives us incredible flexibility of what we want to do with the model (more on this soon!)</p>
+</section>
+<section id="full-code" class="level2">
+<h2 class="anchored" data-anchor-id="full-code">Full Code</h2>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(broom.mixed)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(brms)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(knitr)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">55432</span>)</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="co"># list of files</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>dir1 <span class="ot">&lt;-</span> <span class="st">"https://raw.githubusercontent.com/avehtari/ROS-Examples/master/ElectionsEconomy/data/hibbs.dat"</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="co"># EXAMPLE 1: GDP GROWTH AND ELECTION VOTE SHARE</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="co"># quick simple example, using bayes for a linear regression</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="co"># what is the impact of economic growth on incumbent vote share?</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>election <span class="ot">&lt;-</span> <span class="fu">read_delim</span>(dir1, <span class="at">delim =</span> <span class="st">" "</span>)</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a><span class="co"># plot 100 simulations from the posterior</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>plot_posterior <span class="ot">&lt;-</span> <span class="cf">function</span>(fit){</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>  M <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(fit)</span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>  sims <span class="ot">&lt;-</span> <span class="dv">100</span></span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>  sims_idx <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(M), <span class="at">size=</span>sims)</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>  model_sims <span class="ot">&lt;-</span></span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a>    M[sims_idx, ][, <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">2</span>)] <span class="sc">%&gt;%</span> <span class="fu">data.frame</span>() <span class="sc">%&gt;%</span> <span class="fu">setNames</span>(<span class="fu">c</span>(<span class="st">"intercept"</span>, <span class="st">"slope"</span>))</span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true" tabindex="-1"></a>  plot1<span class="fl">.1</span> <span class="sc">+</span></span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_abline</span>(<span class="at">data=</span>model_sims, <span class="fu">aes</span>(<span class="at">slope =</span> slope, <span class="at">intercept =</span> intercept), <span class="at">alpha =</span> .<span class="dv">2</span>, <span class="at">color =</span> <span class="st">'#004488'</span>)</span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb8-29"><a href="#cb8-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-30"><a href="#cb8-30" aria-hidden="true" tabindex="-1"></a>plot1<span class="fl">.1</span> <span class="ot">&lt;-</span> </span>
+<span id="cb8-31"><a href="#cb8-31" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(election) <span class="sc">+</span></span>
+<span id="cb8-32"><a href="#cb8-32" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="fu">aes</span>(<span class="at">x =</span> growth, <span class="at">y =</span> vote), <span class="at">size =</span> <span class="dv">2</span>, <span class="at">shape =</span> <span class="dv">22</span>, <span class="at">fill =</span> <span class="st">'#004488'</span>, <span class="at">color =</span> <span class="st">'#004488'</span>) <span class="sc">+</span></span>
+<span id="cb8-33"><a href="#cb8-33" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Growth in Personal Income"</span>, <span class="at">y =</span> <span class="st">"Incumbent vote share"</span>) <span class="sc">+</span></span>
+<span id="cb8-34"><a href="#cb8-34" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>() <span class="sc">+</span></span>
+<span id="cb8-35"><a href="#cb8-35" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">11</span>))</span>
+<span id="cb8-36"><a href="#cb8-36" aria-hidden="true" tabindex="-1"></a>plot1<span class="fl">.1</span></span>
+<span id="cb8-37"><a href="#cb8-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-38"><a href="#cb8-38" aria-hidden="true" tabindex="-1"></a>plot1<span class="fl">.2</span> <span class="ot">&lt;-</span> </span>
+<span id="cb8-39"><a href="#cb8-39" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(election) <span class="sc">+</span></span>
+<span id="cb8-40"><a href="#cb8-40" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_text</span>(<span class="fu">aes</span>(<span class="at">x =</span> growth, <span class="at">y =</span> vote, <span class="at">label =</span> year), <span class="at">size =</span> <span class="fl">3.5</span>, <span class="at">fontface =</span> <span class="st">'bold'</span>, <span class="at">color =</span> <span class="st">'#004488'</span>) <span class="sc">+</span></span>
+<span id="cb8-41"><a href="#cb8-41" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Growth in Personal Income"</span>, <span class="at">y =</span> <span class="st">"Incumbent vote share"</span>) <span class="sc">+</span></span>
+<span id="cb8-42"><a href="#cb8-42" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>() <span class="sc">+</span></span>
+<span id="cb8-43"><a href="#cb8-43" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">11</span>))</span>
+<span id="cb8-44"><a href="#cb8-44" aria-hidden="true" tabindex="-1"></a>plot1<span class="fl">.2</span></span>
+<span id="cb8-45"><a href="#cb8-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-46"><a href="#cb8-46" aria-hidden="true" tabindex="-1"></a><span class="co"># let's regress!</span></span>
+<span id="cb8-47"><a href="#cb8-47" aria-hidden="true" tabindex="-1"></a>fit2_prior <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fu">prior</span>(<span class="fu">normal</span>(<span class="dv">3</span>, <span class="dv">1</span>), <span class="at">class =</span> <span class="st">'b'</span>))</span>
+<span id="cb8-48"><a href="#cb8-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-49"><a href="#cb8-49" aria-hidden="true" tabindex="-1"></a><span class="co"># model 1 has default (flat) priors on betas</span></span>
+<span id="cb8-50"><a href="#cb8-50" aria-hidden="true" tabindex="-1"></a><span class="co"># 1 percentage point in growth is associated with ~ 3% increase in vote share</span></span>
+<span id="cb8-51"><a href="#cb8-51" aria-hidden="true" tabindex="-1"></a>fit1 <span class="ot">&lt;-</span></span>
+<span id="cb8-52"><a href="#cb8-52" aria-hidden="true" tabindex="-1"></a>  <span class="fu">brm</span>(vote <span class="sc">~</span> growth,</span>
+<span id="cb8-53"><a href="#cb8-53" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> election,</span>
+<span id="cb8-54"><a href="#cb8-54" aria-hidden="true" tabindex="-1"></a>      <span class="at">family =</span> <span class="st">"gaussian"</span>,</span>
+<span id="cb8-55"><a href="#cb8-55" aria-hidden="true" tabindex="-1"></a>      <span class="at">file =</span> <span class="st">"hibbs_fit1.Rdata"</span>)</span>
+<span id="cb8-56"><a href="#cb8-56" aria-hidden="true" tabindex="-1"></a><span class="fu">tidy</span>(fit1) <span class="sc">%&gt;%</span> <span class="fu">kable</span>(<span class="at">digits =</span> <span class="dv">2</span>, <span class="at">caption =</span> <span class="st">"Flat prior"</span>)</span>
+<span id="cb8-57"><a href="#cb8-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-58"><a href="#cb8-58" aria-hidden="true" tabindex="-1"></a><span class="co"># same model, with much tighter priors</span></span>
+<span id="cb8-59"><a href="#cb8-59" aria-hidden="true" tabindex="-1"></a><span class="co"># assuming a mean effect of about 2.5% +- 1.5%</span></span>
+<span id="cb8-60"><a href="#cb8-60" aria-hidden="true" tabindex="-1"></a>fit2 <span class="ot">&lt;-</span></span>
+<span id="cb8-61"><a href="#cb8-61" aria-hidden="true" tabindex="-1"></a>  <span class="fu">brm</span>(</span>
+<span id="cb8-62"><a href="#cb8-62" aria-hidden="true" tabindex="-1"></a>    vote <span class="sc">~</span> growth,</span>
+<span id="cb8-63"><a href="#cb8-63" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> election,</span>
+<span id="cb8-64"><a href="#cb8-64" aria-hidden="true" tabindex="-1"></a>    <span class="at">family =</span> <span class="st">"gaussian"</span>,</span>
+<span id="cb8-65"><a href="#cb8-65" aria-hidden="true" tabindex="-1"></a>    <span class="at">prior =</span> fit2_prior,</span>
+<span id="cb8-66"><a href="#cb8-66" aria-hidden="true" tabindex="-1"></a>    <span class="at">file =</span> <span class="st">"hibbs_fit2.Rdata"</span></span>
+<span id="cb8-67"><a href="#cb8-67" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb8-68"><a href="#cb8-68" aria-hidden="true" tabindex="-1"></a><span class="fu">tidy</span>(fit2) <span class="sc">%&gt;%</span> <span class="fu">kable</span>(<span class="at">digits =</span> <span class="dv">2</span>, <span class="at">caption =</span> <span class="st">"Informative prior"</span>)</span>
+<span id="cb8-69"><a href="#cb8-69" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-70"><a href="#cb8-70" aria-hidden="true" tabindex="-1"></a><span class="co"># what is the predicted vote share given a 2% growth rate?</span></span>
+<span id="cb8-71"><a href="#cb8-71" aria-hidden="true" tabindex="-1"></a><span class="co"># ~52%, but with a pretty big margin of error</span></span>
+<span id="cb8-72"><a href="#cb8-72" aria-hidden="true" tabindex="-1"></a>newgrowth <span class="ot">=</span> <span class="fl">2.0</span></span>
+<span id="cb8-73"><a href="#cb8-73" aria-hidden="true" tabindex="-1"></a>newprobs <span class="ot">=</span> <span class="fu">c</span>(.<span class="dv">025</span>, .<span class="dv">25</span>, .<span class="dv">75</span>, <span class="fl">0.975</span>)</span>
+<span id="cb8-74"><a href="#cb8-74" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-75"><a href="#cb8-75" aria-hidden="true" tabindex="-1"></a>pred1 <span class="ot">&lt;-</span> <span class="fu">posterior_predict</span>(fit1, <span class="at">newdata =</span> <span class="fu">data.frame</span>(<span class="at">growth=</span>newgrowth))</span>
+<span id="cb8-76"><a href="#cb8-76" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-77"><a href="#cb8-77" aria-hidden="true" tabindex="-1"></a>ypred <span class="ot">=</span> <span class="fu">mean</span>(pred1) </span>
+<span id="cb8-78"><a href="#cb8-78" aria-hidden="true" tabindex="-1"></a>ypred_quantile <span class="ot">=</span> <span class="fu">quantile</span>(pred1, newprobs)</span>
+<span id="cb8-79"><a href="#cb8-79" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-80"><a href="#cb8-80" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-81"><a href="#cb8-81" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(<span class="fu">data.frame</span>(<span class="at">x =</span> pred1)) <span class="sc">+</span> <span class="fu">geom_density</span>(<span class="fu">aes</span>(<span class="at">x =</span> x), <span class="at">linewidth =</span> <span class="dv">1</span>, <span class="at">color =</span> <span class="st">'#DDAA33'</span>, <span class="at">fill =</span> <span class="st">'#DDAA33'</span>, <span class="at">alpha =</span> .<span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb8-82"><a href="#cb8-82" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Predicted Vote Share (x=2)"</span>, <span class="at">y =</span> <span class="st">"Probability Density"</span>) <span class="sc">+</span></span>
+<span id="cb8-83"><a href="#cb8-83" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>() <span class="sc">+</span></span>
+<span id="cb8-84"><a href="#cb8-84" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">11</span>))</span>
+<span id="cb8-85"><a href="#cb8-85" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-86"><a href="#cb8-86" aria-hidden="true" tabindex="-1"></a><span class="co"># plot the 50% and 95% credible intervals for the point estimate of 2% growth</span></span>
+<span id="cb8-87"><a href="#cb8-87" aria-hidden="true" tabindex="-1"></a>plot1<span class="fl">.1</span> <span class="sc">+</span></span>
+<span id="cb8-88"><a href="#cb8-88" aria-hidden="true" tabindex="-1"></a>  <span class="fu">annotate</span>(<span class="at">geom =</span> <span class="st">"linerange"</span>, <span class="at">x =</span> newgrowth, <span class="at">ymin =</span> ypred_quantile[<span class="dv">2</span>], <span class="at">ymax =</span> ypred_quantile[<span class="dv">3</span>], <span class="at">color =</span> <span class="st">'#DDAA33'</span>,  <span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb8-89"><a href="#cb8-89" aria-hidden="true" tabindex="-1"></a>  <span class="fu">annotate</span>(<span class="at">geom =</span> <span class="st">"linerange"</span>, <span class="at">x =</span> newgrowth, <span class="at">ymin =</span> ypred_quantile[<span class="dv">1</span>], <span class="at">ymax =</span> ypred_quantile[<span class="dv">4</span>], <span class="at">color =</span> <span class="st">'#DDAA33'</span>) <span class="sc">+</span></span>
+<span id="cb8-90"><a href="#cb8-90" aria-hidden="true" tabindex="-1"></a>  <span class="fu">annotate</span>(<span class="at">geom =</span> <span class="st">"point"</span>, <span class="at">x =</span> newgrowth, <span class="at">y =</span> ypred, <span class="at">fill =</span> <span class="st">'#DDAA33'</span>, <span class="at">color =</span> <span class="st">'white'</span>, <span class="at">stroke =</span> <span class="dv">2</span>, <span class="at">size =</span> <span class="dv">3</span>, <span class="at">shape =</span> <span class="dv">21</span>)</span>
+<span id="cb8-91"><a href="#cb8-91" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-92"><a href="#cb8-92" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_posterior</span>(fit2)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 
 
