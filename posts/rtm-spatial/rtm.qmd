@@ -14,6 +14,7 @@ format:
 categories:
   - R
   - Spatial Statistics
+  - Machine Learning & Prediction
 bibliography: refs.bib
 theme: flatly
 image: "city.jpg"
@@ -51,36 +52,13 @@ area_coords <- st_transform(boundry_grid, crs = 4326) %>%
 
 ## Spatial Features
 
-In criminology there is a considerable research on the role that fixed spatial
-features in the environment have on crime. These spatial risk factors have 
-criminogenic qualities that make them "attractors" or "generators"[@brantingham1995criminality]. 
-Absent some change, these places typically contribute a disproportionate share of crime that is
-largely stable over time[@sherman1989hot].
-The classic example is a bar or night club. Alcohol plays a large role in a 
-lot of crime, and locations where many people congregate and become intoxicated 
-also have higher incidences of crime. We can use information about the environment to
-help solve problems or prioritize patrol areas.
+In criminology there is a considerable research on the role that fixed spatial features in the environment have on crime. These spatial risk factors have criminogenic qualities that make them "attractors" or "generators"[@brantingham1995criminality]. Absent some change, these places typically contribute a disproportionate share of crime that is largely stable over time[@sherman1989hot]. The classic example is a bar or night club. Alcohol plays a large role in a lot of crime, and locations where many people congregate and become intoxicated also have higher incidences of crime. We can use information about the environment to help solve problems or prioritize patrol areas.
 
-One challenge in research is obtaining the point locations for these features.
-Generally when we perform some kind of spatial analysis we have a study area 
-(e.g. a city or other boundary file) and a set of labeled point features 
-corresponding to the locations of interest. However, reliable places to get this
-information is often hard to come by. Some cities provide open data portals
-with commercial information, but these are typically limited to larger cities.
-In my work I've had people ask how to get spatial risk factors for their research,
-often times for something related to the "Risk Terrain Modeling" approach of 
-spatial analysis. I've worked on a few projects now where I've had to generate
-these myself, and have had some success using open data sources like Google to
-help with it.
+One challenge in research is obtaining the point locations for these features. Generally when we perform some kind of spatial analysis we have a study area (e.g. a city or other boundary file) and a set of labeled point features corresponding to the locations of interest. However, reliable places to get this information is often hard to come by. Some cities provide open data portals with commercial information, but these are typically limited to larger cities. In my work I've had people ask how to get spatial risk factors for their research, often times for something related to the "Risk Terrain Modeling" approach of spatial analysis. I've worked on a few projects now where I've had to generate these myself, and have had some success using open data sources like Google to help with it.
 
 ## Querying Google Places
 
-Google has a lot of paid API services which are quite useful for researchers. In 
-most cases there is a free tier, and for smaller one-off projects this makes their
-API services attractive for research. Let's walk through an example of how we 
-might do this. For our example we will use the Swedish city of Malmö 
-(which, incidentially is a very lovely city I've been lucky enough to visit). 
-We have a shapefile that looks like this:
+Google has a lot of paid API services which are quite useful for researchers. In most cases there is a free tier, and for smaller one-off projects this makes their API services attractive for research. Let's walk through an example of how we might do this. For our example we will use the Swedish city of Malmö (which, incidentially is a very lovely city I've been lucky enough to visit). We have a shapefile that looks like this:
 
 ```{r}
 #| echo: false
@@ -89,18 +67,9 @@ ggplot() +
   theme_void()
 ```
 
-Our goal is to query the[**Google Places API**](https://developers.google.com/maps/documentation/places/web-service/overview) 
-to get the locations of criminogenic
-spatial risk factors (here, bars and gas stations). One significant limitation
-with the Google Places API is that there is a limit to the number of locations
-that will show up for a single query. This means if you ran the query on the
-entire city, it would only return up to 20 locations. However, we can bypass
-this by running multiple queries on smaller spatial regions. Other bloggers have
-provided similar advice as well (see [**here**](https://blog.apify.com/google-maps-how-to-overcome-google-api-limit-120-places/) and [**here**](https://andrewpwheeler.com/2021/06/20/using-google-places-api-in-criminology-research/)).
+Our goal is to query the[**Google Places API**](https://developers.google.com/maps/documentation/places/web-service/overview) to get the locations of criminogenic spatial risk factors (here, bars and gas stations). One significant limitation with the Google Places API is that there is a limit to the number of locations that will show up for a single query. This means if you ran the query on the entire city, it would only return up to 20 locations. However, we can bypass this by running multiple queries on smaller spatial regions. Other bloggers have provided similar advice as well (see [**here**](https://blog.apify.com/google-maps-how-to-overcome-google-api-limit-120-places/) and [**here**](https://andrewpwheeler.com/2021/06/20/using-google-places-api-in-criminology-research/)).
 
-To do the actual interfacing with the Google Places API we will use the very
-handy [**googleway**](https://cran.r-project.org/web/packages/googleway/vignettes/googleway-vignette.html)
-package.
+To do the actual interfacing with the Google Places API we will use the very handy [**googleway**](https://cran.r-project.org/web/packages/googleway/vignettes/googleway-vignette.html) package.
 
 ### Splitting up into a grid
 
@@ -150,10 +119,7 @@ area_coords <- st_transform(boundry_grid, crs = 4326) %>%
 
 ```
 
-We can divide the city into a series of grids, then iterate through each grid
-cell and query within it. This way we are more likely to obtain all of the 
-relevant features in that grid cell without hitting the limit. Here, I create
-150 1200 square meter grid cells, which gives us something like this:
+We can divide the city into a series of grids, then iterate through each grid cell and query within it. This way we are more likely to obtain all of the relevant features in that grid cell without hitting the limit. Here, I create 150 1200 square meter grid cells, which gives us something like this:
 
 ```{r}
 #| echo: false
@@ -162,9 +128,7 @@ ggplot() +
   theme_void()
 ```
 
-In addition we extract the X-Y coordinates for the grid centroid, which we will
-use as our location for the API query. This means we hit the API 150 times, once
-for each grid cell. This is well within the free number that Google allows. 
+In addition we extract the X-Y coordinates for the grid centroid, which we will use as our location for the API query. This means we hit the API 150 times, once for each grid cell. This is well within the free number that Google allows.
 
 ### Querying our features
 
@@ -231,11 +195,7 @@ feature_out <- area_dataframe %>%
   distinct(address, .keep_all = TRUE)
 ```
 
-We can use the code above to iterate through each grid cell, hit the API, and 
-then store the results in a list. I include a few helper functions to assist 
-with pulling out the names and coordinates, binding them into a dataframe, 
-and setting them up to export. The key bit of code is below, which is the part
-that queries the API for each of the grid cells:
+We can use the code above to iterate through each grid cell, hit the API, and then store the results in a list. I include a few helper functions to assist with pulling out the names and coordinates, binding them into a dataframe, and setting them up to export. The key bit of code is below, which is the part that queries the API for each of the grid cells:
 
 ```{r}
 #| code-fold: false
@@ -286,12 +246,7 @@ tbl <- tibble(city) %>%
   st_as_sf()
 ```
 
-Now that we have our city boundary and our spatial risk factors, all we need to 
-do now is compute the distance from each grid cell to its nearest risk factor.
-In the end, what we will want is a dataframe with grid cell ids, and columns
-corresponding to distance to the nearest feature. After merging them, we can 
-create a nice map like this - showing the location sand distances of
-our risk factors.
+Now that we have our city boundary and our spatial risk factors, all we need to do now is compute the distance from each grid cell to its nearest risk factor. In the end, what we will want is a dataframe with grid cell ids, and columns corresponding to distance to the nearest feature. After merging them, we can create a nice map like this - showing the location sand distances of our risk factors.
 
 ```{r}
 #| code-fold: false
@@ -312,7 +267,7 @@ ggplot() +
         legend.position = 'bottom')
 ```
 
-You can then use these features in other kinds of spatial risk models (for a great walk through, see [@wheeler2021mapping].The big advantage of this approach is that you have the flexibility to implement any kind of model you want at this point - whether it is a conventional RTM model, or a [**boosted tree model**](https://github.com/gmcirco/quickGrid). 
+You can then use these features in other kinds of spatial risk models (for a great walk through, see [@wheeler2021mapping].The big advantage of this approach is that you have the flexibility to implement any kind of model you want at this point - whether it is a conventional RTM model, or a [**boosted tree model**](https://github.com/gmcirco/quickGrid).
 
 ## Full Code
 

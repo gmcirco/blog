@@ -13,13 +13,13 @@ format:
         title-block-banner: true
 categories:
   - R
-  - Prediction
+  - Machine Learning & Prediction
 theme: flatly
 ---
 
 ## The Paper
 
-I recently found a paper published called "[**Advancing Recidivism Prediction for Male Juvenile Offenders: A Machine Learning Approach Applied to Prisoners in Hunan Province**](https://books.google.com/books?id=HWD8EAAAQBAJ&newbks=0&printsec=frontcover&pg=PA184&hl=en&source=newbks_fb)". In it, the authors make use of a very small recidivism data set focusing on youth in Hunan province, which originally appears in a 2017 PLOS ONE article here: "[**Predicting Reoffending Using the Structured Assessment of Violence Risk in Youth (SAVRY): A 5-Year Follow-Up Study of Male Juvenile Offenders in Hunan Province, China**](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0169251)". 
+I recently found a paper published called "[**Advancing Recidivism Prediction for Male Juvenile Offenders: A Machine Learning Approach Applied to Prisoners in Hunan Province**](https://books.google.com/books?id=HWD8EAAAQBAJ&newbks=0&printsec=frontcover&pg=PA184&hl=en&source=newbks_fb)". In it, the authors make use of a very small recidivism data set focusing on youth in Hunan province, which originally appears in a 2017 PLOS ONE article here: "[**Predicting Reoffending Using the Structured Assessment of Violence Risk in Youth (SAVRY): A 5-Year Follow-Up Study of Male Juvenile Offenders in Hunan Province, China**](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0169251)".
 
 The authors of the new study explain how they can use machine learning to improve the prediction of recidivism (which, in of itself is a highly contentious topic). In general, it is a pretty harmless paper of virtually zero significance. They're using a tiny data set to test out machine learning models that only really work well when you are flush with data. However, a single line stuck out to me when I was scanning their paper:
 
@@ -31,10 +31,9 @@ What's the problem? Well, looking at the associated figure and table they show o
 
 ![](table_4.png)
 
-
 ### The Data
 
-Below, I pull the original data set from the PLOS One paper (thanks to the authors for making it publicly available!). There is a single missing value for education, which I impute to the median value. 
+Below, I pull the original data set from the PLOS One paper (thanks to the authors for making it publicly available!). There is a single missing value for education, which I impute to the median value.
 
 ```{r}
 #| message: false
@@ -64,12 +63,7 @@ N = nrow(df)
 
 ## Doing it the Normal Way
 
-The normal workflow in this case is to set up a test-train split, fit a model on
-the training data set, then evaluate the out-of-sample performance on the test
-set. Despite the very small sample size here I'll just follow the bog standard
-approach to illustrate. A 20% test set gives us: $246 - (246*.2) = 196.8$. So 
-just under 200 cases to train on, which is really *quite* small for a task like
-recidivism prediction.
+The normal workflow in this case is to set up a test-train split, fit a model on the training data set, then evaluate the out-of-sample performance on the test set. Despite the very small sample size here I'll just follow the bog standard approach to illustrate. A 20% test set gives us: $246 - (246*.2) = 196.8$. So just under 200 cases to train on, which is really *quite* small for a task like recidivism prediction.
 
 ```{r}
 #| message: false
@@ -92,10 +86,7 @@ y_train = y[train_idx]
 X_train = X[train_idx,]
 ```
 
-Despite the authors of the previous paper using some boosting methods, this data
-is really just too small to make use of those approaches usefully. Here, I'm
-fitting a logistic regression with no regularization and a random forest with 
-500 trees.
+Despite the authors of the previous paper using some boosting methods, this data is really just too small to make use of those approaches usefully. Here, I'm fitting a logistic regression with no regularization and a random forest with 500 trees.
 
 ```{r}
 #| warning: false
@@ -121,31 +112,17 @@ roc(y_test, pred_1_glm, quiet = T)$auc
 roc(as.factor(y_test), pred_1_rf, quiet = T)$auc
 ```
 
-So about .74 for the logistic regression and .72 for the random forest. Not 
-great, not terrible.
+So about .74 for the logistic regression and .72 for the random forest. Not great, not terrible.
 
 ## Doing it with SMOTE
 
-So the argument with SMOTE is that training models on data sets with very large
-imbalances in positive vs. negative cases is that the models only learn from
-the negative cases and not the positive ones. A good example might be a fraud
-data set where you have 100,000 legitimate credit card transactions and only 100
-cases of fraud (so something like .1%). SMOTE is intended to help with training
-a model by synthesizing a balanced data set where the ratio of positive to 
-negative cases are much closer to 50/50. Without going too much into it, this
-actually rarely solves and problems and often induces some.
+So the argument with SMOTE is that training models on data sets with very large imbalances in positive vs. negative cases is that the models only learn from the negative cases and not the positive ones. A good example might be a fraud data set where you have 100,000 legitimate credit card transactions and only 100 cases of fraud (so something like .1%). SMOTE is intended to help with training a model by synthesizing a balanced data set where the ratio of positive to negative cases are much closer to 50/50. Without going too much into it, this actually rarely solves and problems and often induces some.
 
-What I suspect the authors of this paper did is that they generated a SMOTE 
-data set with a balanced ratio of positive to negative cases, then created a 
-test-train split from *that* data set, and evaluated their metrics on a test 
-data set derived from the SMOTE model. That is very, *very* wrong.
+What I suspect the authors of this paper did is that they generated a SMOTE data set with a balanced ratio of positive to negative cases, then created a test-train split from *that* data set, and evaluated their metrics on a test data set derived from the SMOTE model. That is very, *very* wrong.
 
 ### Doing SMOTE the wrong way
 
-So let's try it. I'll synthesize a SMOTE data set from the full set of cases, 
-then walk through the whole process using *only* the synthesized data. This
-creates a data set with 126 new observations, and brings the balance of positive
-to negative cases to almost exactly 50/50 (rather than 25/75 in the original).
+So let's try it. I'll synthesize a SMOTE data set from the full set of cases, then walk through the whole process using *only* the synthesized data. This creates a data set with 126 new observations, and brings the balance of positive to negative cases to almost exactly 50/50 (rather than 25/75 in the original).
 
 ```{r}
 #| warning: false
@@ -189,15 +166,11 @@ roc(y_test_smote, pred_2_glm_smote, quiet = T)$auc
 roc(as.factor(y_test_smote), pred_2_rf_smote, quiet = T)$auc
 ```
 
-Wow! Look at that, we just increased our AUC for the random forest model from 
-.72 to .97! But what if we do what we're supposed to and see how it works on real out-of 
-sample data? 
+Wow! Look at that, we just increased our AUC for the random forest model from .72 to .97! But what if we do what we're supposed to and see how it works on real out-of sample data?
 
 ### Doing SMOTE the (less) wrong way
 
-Same as above, except we create a SMOTE data set from our original training data
-and then we evaluate our model on the original *test* data set that is not 
-synthetically balanced.
+Same as above, except we create a SMOTE data set from our original training data and then we evaluate our model on the original *test* data set that is not synthetically balanced.
 
 ```{r}
 #| warning: false
@@ -223,14 +196,6 @@ Oh.
 
 ## Summary
 
-In summary, if you wrongfully evaluate your model that was trained on a SMOTE 
-data set against a hold-out sample from that same SMOTE data your out-of-sample
-metrics will be falsely confident. This is because is much easier to perform 
-classification on data that are artificially balanced. However, actually using
-these models in real life entails data that almost never follow this. 
+In summary, if you wrongfully evaluate your model that was trained on a SMOTE data set against a hold-out sample from that same SMOTE data your out-of-sample metrics will be falsely confident. This is because is much easier to perform classification on data that are artificially balanced. However, actually using these models in real life entails data that almost never follow this.
 
-Finally, I don't mean to focus on these authors specifically. The analysis they 
-are doing is with some good intentions, but is mostly misguided. The data here
-are mostly unsuited for examining more complex models and processes. In addition,
-what I see here is a common issue for many data analysts, which is why being 
-thoughtful and careful at the start of your analysis is very important.
+Finally, I don't mean to focus on these authors specifically. The analysis they are doing is with some good intentions, but is mostly misguided. The data here are mostly unsuited for examining more complex models and processes. In addition, what I see here is a common issue for many data analysts, which is why being thoughtful and careful at the start of your analysis is very important.

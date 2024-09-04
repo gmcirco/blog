@@ -4,9 +4,9 @@ subtitle: "Applying a PCA anomaly detector"
 author: "Gio Circo, Ph.D."
 date: 2023-4-24
 categories:
+  - R
   - Anomaly Detection
-  - PCA
-  - Time Series
+  - Machine Learning & Prediction
 format: 
     html:
         self-contained: false
@@ -85,9 +85,9 @@ scored_data$date <- as.Date(names(daily_24_ts_list))
 
 ## An Unsupervised Approach to Time Series Anomalies
 
-Identifying outliers in time series is one of the more common applications for unsupervised anomaly detection. Some of the most common examples come from network intrusion detection, mechanical processes, and other types of high-volume streaming data. 
+Identifying outliers in time series is one of the more common applications for unsupervised anomaly detection. Some of the most common examples come from network intrusion detection, mechanical processes, and other types of high-volume streaming data.
 
-Of course, there are just as many proposed ways of identifying outliers from the simple (basic Z-scores) to the complex (convolutional neural networks). There are also some approaches that rely on more conventional tabular approaches. Rob Hyndman proposed a few approaches [here](https://robjhyndman.com/papers/icdm2015.pdf) and [here](https://arxiv.org/ftp/arxiv/papers/1908/1908.04000.pdf) showing how many high-volume time series can be compressed into a tabular dataset. The general idea is that you can decompose many time series into tabular observations by creating a large variety of features describing each series. 
+Of course, there are just as many proposed ways of identifying outliers from the simple (basic Z-scores) to the complex (convolutional neural networks). There are also some approaches that rely on more conventional tabular approaches. Rob Hyndman proposed a few approaches [here](https://robjhyndman.com/papers/icdm2015.pdf) and [here](https://arxiv.org/ftp/arxiv/papers/1908/1908.04000.pdf) showing how many high-volume time series can be compressed into a tabular dataset. The general idea is that you can decompose many time series into tabular observations by creating a large variety of features describing each series.
 
 ### Featurizing a time series dataset
 
@@ -119,7 +119,7 @@ daily_24_ts_list <- lapply(daily_ts_list, function(x) {
 daily_24_ts_list <- purrr::discard(daily_24_ts_list, ~any(is.na(.)))
 ```
 
-After converting the list of values to a data frame, we can proceed with the featurization. As we said before, we can use the [tsfeatures](https://pkg.robjhyndman.com/tsfeatures/articles/tsfeatures.html) library to decompose each day's hourly values into a single observation. We can see this creates a data frame with 17 features, which correspond to various measures, including: autocorrelation, seasonality, entropy and other ad-hoc measures of time series behavior. 
+After converting the list of values to a data frame, we can proceed with the featurization. As we said before, we can use the [tsfeatures](https://pkg.robjhyndman.com/tsfeatures/articles/tsfeatures.html) library to decompose each day's hourly values into a single observation. We can see this creates a data frame with 17 features, which correspond to various measures, including: autocorrelation, seasonality, entropy and other ad-hoc measures of time series behavior.
 
 ```{r, eval=FALSE}
 #| code-fold: false
@@ -182,7 +182,7 @@ ggplot(data = elec_plot, aes(x = Datetime, y = AEP_MW, group = date)) +
 
 ```
 
-We can also see what these anomalous series look like compared to the other series on a hourly basis. This plot clearly shows one series with a unusual early-morning spike, and several series with flatter trajectories compared to more normally expected seasonality - in particular, they are days with low power consumption in the afternoon when consumption is usually at its highest. 
+We can also see what these anomalous series look like compared to the other series on a hourly basis. This plot clearly shows one series with a unusual early-morning spike, and several series with flatter trajectories compared to more normally expected seasonality - in particular, they are days with low power consumption in the afternoon when consumption is usually at its highest.
 
 ```{r, warning=FALSE, message=FALSE}
 #| fig-cap: "Anomalous days often have flatter curves and dip during high-load hours of the day."

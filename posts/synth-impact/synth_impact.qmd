@@ -14,6 +14,7 @@ format:
 categories:
   - R
   - Causal Inference
+  - Bayesian Statistics
 theme: flatly
 image: "data.jpg"
 bibliography: refs.bib
@@ -57,9 +58,7 @@ fit <-
 
 ## Synthetic Controls in Statistics
 
-[Andrew Gelman](https://statmodeling.stat.columbia.edu/2023/10/12/debate-over-effect-of-reduced-prosecutions-on-urban-homicides-also-larger-questions-about-synthetic-control-methods-in-causal-inference/) recently covered a mildly [controversial paper](https://onlinelibrary.wiley.com/doi/abs/10.1111/1745-9133.12597) in criminology that suggested that a policy of "de-prosecution" by the Philadelphia District 
-Attorney's office resulted in an increase in homicides. This has sparked a lot of back-and-forth discussion
-on the appropriateness of the analysis and the kind of synthetic control method used. I'm not here to discuss any of these things, as many other smart people have already debated this to death (plus, given Hogan is reticent to release his data or code we may never really know exactly *what* he did).
+[Andrew Gelman](https://statmodeling.stat.columbia.edu/2023/10/12/debate-over-effect-of-reduced-prosecutions-on-urban-homicides-also-larger-questions-about-synthetic-control-methods-in-causal-inference/) recently covered a mildly [controversial paper](https://onlinelibrary.wiley.com/doi/abs/10.1111/1745-9133.12597) in criminology that suggested that a policy of "de-prosecution" by the Philadelphia District Attorney's office resulted in an increase in homicides. This has sparked a lot of back-and-forth discussion on the appropriateness of the analysis and the kind of synthetic control method used. I'm not here to discuss any of these things, as many other smart people have already debated this to death (plus, given Hogan is reticent to release his data or code we may never really know exactly *what* he did).
 
 However, what I do want to discuss is something else Gelman wrote about on his blog:
 
@@ -73,7 +72,7 @@ Gelman further writes:
 
 > My understanding of a synthetic controls analysis went like this. You want to compare Philadelphia to other cities, but there are no other cities that are just like Philadelphia, so you break up the city into neighborhoods and find comparable neighborhoods in other cities . . . and when you’re done you’ve created this composite “city,” using pieces of other cities, that functions as a pseudo-Philadelphia. In creating this composite, you use lots of neighborhood characteristics, not just matching on a single outcome variable. And then you do all of this with other cities in your treatment group (cities that followed a de-prosecution strategy).
 
-Which describes another approach that has grown in popularity, especially among criminologists. This so-called "micro-synthetic" approach constructs synthetic controls from many small pieces to comprise a larger treated piece. The classic criminological example might be that you have a neighborhood in your city with 20 census blocks that gets some focused deterrence intervention. You can use the remaining "untreated" census blocks in the city to use as composite pieces as part of the synthetic control. This approach is especially appealing because so much criminological research has a focus on small, disaggregated regions. 
+Which describes another approach that has grown in popularity, especially among criminologists. This so-called "micro-synthetic" approach constructs synthetic controls from many small pieces to comprise a larger treated piece. The classic criminological example might be that you have a neighborhood in your city with 20 census blocks that gets some focused deterrence intervention. You can use the remaining "untreated" census blocks in the city to use as composite pieces as part of the synthetic control. This approach is especially appealing because so much criminological research has a focus on small, disaggregated regions.
 
 ## An Example: Operation Impact (2014)
 
@@ -81,7 +80,7 @@ As a quick demo, here's an example I presented for part of NIJ's [Smart Suite](h
 
 ![](impact_79.jpg)
 
-The data I organized for this example contains block-level census data from the American Community Survey, as well as monthly counts of some major crime categories (here: assault, burglary, motor vehicle theft, robbery, and larceny-theft). This is organized in a long-form dataset, which is indexed by precinct * geoid * month.
+The data I organized for this example contains block-level census data from the American Community Survey, as well as monthly counts of some major crime categories (here: assault, burglary, motor vehicle theft, robbery, and larceny-theft). This is organized in a long-form dataset, which is indexed by precinct \* geoid \* month.
 
 ```{r}
 #| echo: false
@@ -119,7 +118,7 @@ fit <-
     omnibus.var = c('assault', 'robbery'))
 ```
 
-As a start, we can assess whether our synthetic control is appropriately balanced on pre-treatment differences. As we saw above, we matched on both time-varying and non time-varying covariates. Looking at the balance table below we see that we achieved *exact* balance on all our variables - which is quite good! This should give us more confidence that the outcomes we observe in the post period are due to the intervention, and not a result of systematic differences between treated and control units. 
+As a start, we can assess whether our synthetic control is appropriately balanced on pre-treatment differences. As we saw above, we matched on both time-varying and non time-varying covariates. Looking at the balance table below we see that we achieved *exact* balance on all our variables - which is quite good! This should give us more confidence that the outcomes we observe in the post period are due to the intervention, and not a result of systematic differences between treated and control units.
 
 ```{r}
 #| echo: false

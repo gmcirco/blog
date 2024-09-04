@@ -95,10 +95,9 @@ extract_posterior_predictions <- function(x){
 }
 
 stack_extract_posterior_predictions_naive <- function(x1, x2, weights = c(.5, .5)){
-  # c
   pred1 <- posterior_predict(x1)
   pred2 <- posterior_predict(x2)
-  pred_avg <- (pred1 * weights[1]) + (pred2 * weights[2])
+  pred_avg <- (pred1 * weights[1]) + (pred2 * weights[2]) 
   ypred <- apply(pred_avg, 2, quantile, probs = c(.025, .5, .975)) %>% round()
   
   data.frame(t(ypred)) %>% set_names(c("ymin","median","ymax"))
@@ -176,7 +175,7 @@ fit2.2s <-
 # add predictions back to dataframe with weighted predictions
 # weight 1 = hlm, weight 2 = smoothing model
 # more weight on #2 = more smoothing
-weights = c(.33, .67)
+weights = c(.3, .7)
 pred_dem <- cbind.data.frame(stack_extract_posterior_predictions_naive(fit2.1, fit2.1s, weights = weights), all_polls_df[dem,])
 pred_gop <- cbind.data.frame(stack_extract_posterior_predictions_naive(fit2.2, fit2.2s, weights = weights), all_polls_df[gop,])
 
@@ -232,3 +231,6 @@ plot1 +
   geom_point(data = all_polls_df, aes(x = end, y = pct, color = party, fill = party, size = pop), alpha = .2) +
   geom_ribbon(aes(ymin = ymin, ymax = ymax, group = party, fill = party), color = 'white', alpha = .2)
 
+
+
+posterior_predict(fit2.1)

@@ -4,8 +4,8 @@ subtitle: "Or: An Old Dog Learning New Tricks"
 author: Gio Circo, Ph.D.
 date: 2024-1-8
 categories:
-  - Natural Language Processing
   - Python
+  - Data Science Applications
 format: 
     html:
         self-contained: true
@@ -20,13 +20,13 @@ image: words.jpg
 
 ## Natural Language Processing and Deep Learning
 
-There's no question that natural language processing (NLP) facilitated by deep learning has exploded in popularity (much of which is popularized by the ChatGPT family of models). This is an exciting time to be involved in AI and machine learning. However, for the kinds of tasks I typically work on in my day job, a lot of the deep learning models don't provide much benefit. In fact, for most tabular data problems, random forests + boosting tend to work incredibly well. Areas where deep learning excels, like unstructured text or image input, are not things I find myself working on. That being said, I am always sharpening my skills and dipping my toes into areas where I am least familiar. 
+There's no question that natural language processing (NLP) facilitated by deep learning has exploded in popularity (much of which is popularized by the ChatGPT family of models). This is an exciting time to be involved in AI and machine learning. However, for the kinds of tasks I typically work on in my day job, a lot of the deep learning models don't provide much benefit. In fact, for most tabular data problems, random forests + boosting tend to work incredibly well. Areas where deep learning excels, like unstructured text or image input, are not things I find myself working on. That being said, I am always sharpening my skills and dipping my toes into areas where I am least familiar.
 
-A huge advantage today, compared to even ten years ago, is the ecosystem of open data and pre-trained models. [HuggingFace](https://huggingface.co/) in particular has a lot of easily obtainable pre-trained models. Stuff like the [Transformers](https://huggingface.co/docs/transformers/index) library make it easy for a neophyte like me to hop in and start doing work without too much overhead. 
+A huge advantage today, compared to even ten years ago, is the ecosystem of open data and pre-trained models. [HuggingFace](https://huggingface.co/) in particular has a lot of easily obtainable pre-trained models. Stuff like the [Transformers](https://huggingface.co/docs/transformers/index) library make it easy for a neophyte like me to hop in and start doing work without too much overhead.
 
 ## Predicting Elderly Falls from Medical Narratives
 
-For this example I am going to rely on some data from [DrivenData](https://www.drivendata.org/competitions/217/cdc-fall-narratives/page/763/) - an organization that hosts data competitions. The data here are verified fall events for adults aged 65+. This sample comes more broadly from the [National Electronic Injury Survellience System](https://www.cpsc.gov/Research--Statistics/NEISS-Injury-Data)(NEISS). This is useful because the sample of cases here are human-verified falls cases, in which case we have a source of truth. While you could probably get pretty far just doing some regex like `str.match("FALL|FELL|SLIPPED")` but it would likely miss more subtle cases. This is where having something like a BERT model is useful. 
+For this example I am going to rely on some data from [DrivenData](https://www.drivendata.org/competitions/217/cdc-fall-narratives/page/763/) - an organization that hosts data competitions. The data here are verified fall events for adults aged 65+. This sample comes more broadly from the [National Electronic Injury Survellience System](https://www.cpsc.gov/Research--Statistics/NEISS-Injury-Data)(NEISS). This is useful because the sample of cases here are human-verified falls cases, in which case we have a source of truth. While you could probably get pretty far just doing some regex like `str.match("FALL|FELL|SLIPPED")` but it would likely miss more subtle cases. This is where having something like a BERT model is useful.
 
 Let's say we have a set of verified falls narratives (which we do) and we have a large set of miscellanous narratives that contain falls cases, as well as other injuries that are not falls. Our goal is to find narratives that are likely to be related to elderly fall cases. To do this, we will use the verified falls cases narratives from DataDriven as our "training data" so to speak, and we will use an NLP model to find cases that are semantically similar to these verified falls cases.
 
@@ -55,7 +55,7 @@ neis = pd.read_csv("../../../data/falls/neis.csv")
 falls['treatment_date'] = pd.to_datetime(falls['treatment_date'])
 ```
 
-To get set up we read in the verified falls narratives, as well as the full sample of NEIS cases from 2022. After reading in our data we can perform some minor data cleaning to the narratives. Specifically, because we want to isolate narrative characterics associated with falls we should exclude the leading information about the patient's age and sex, as well as some other medical terminology. We can also remap some abbreviations to English and properly extract the actual age of the patient from the narrative. 
+To get set up we read in the verified falls narratives, as well as the full sample of NEIS cases from 2022. After reading in our data we can perform some minor data cleaning to the narratives. Specifically, because we want to isolate narrative characterics associated with falls we should exclude the leading information about the patient's age and sex, as well as some other medical terminology. We can also remap some abbreviations to English and properly extract the actual age of the patient from the narrative.
 
 ```{python}
 # define remappings of abbreviations
@@ -206,7 +206,7 @@ And the 10 *least* similar narratives:
 sorted(out, key=out.get, reverse=False)[:10]
 ```
 
-So in general, it did a pretty good job. The most similar cases are all clearly related to falls, while the least similar ones are all a mix of other injuries. While I don't have any tests here (coming soon!) I suspect this does better than very simple regex queries. If only because it has the ability to find similarities without needing to match on specific strings. 
+So in general, it did a pretty good job. The most similar cases are all clearly related to falls, while the least similar ones are all a mix of other injuries. While I don't have any tests here (coming soon!) I suspect this does better than very simple regex queries. If only because it has the ability to find similarities without needing to match on specific strings.
 
 ## Singular Queries
 
@@ -254,7 +254,7 @@ FallsQuery.encode()
 FallsQuery.search_narrative(query="SLIPPED IN BATHTUB", K = 10)
 ```
 
-Now *this* is cool. Using the sentence transformer we are able to get passages that are similar in style to what we searched, without sharing the exact same language. For example, the search query is `"SLIPPED IN BATHTUB"` but we get results like `"FELL IN THE SHOWER"` and `"SLIP AND FALL IN THE TUB"`. If we were looking specifically for passages related to falls in the bathtub these obviously make sense (many bathtubs are also just showers as well). 
+Now *this* is cool. Using the sentence transformer we are able to get passages that are similar in style to what we searched, without sharing the exact same language. For example, the search query is `"SLIPPED IN BATHTUB"` but we get results like `"FELL IN THE SHOWER"` and `"SLIP AND FALL IN THE TUB"`. If we were looking specifically for passages related to falls in the bathtub these obviously make sense (many bathtubs are also just showers as well).
 
 ## Finally
 

@@ -11,8 +11,8 @@ format:
         toc: true
         title-block-banner: true
 categories:
+  - R
   - Bayesian Statistics
-  - HLM
 theme: flatly
 bibliography: refs.bib
 image: "box.png"
@@ -34,7 +34,7 @@ inj_wh <- osha %>%
 
 ## Injuries and Low Base Counts
 
-My friend, Andy Wheeler, just recently posted on his blog about [reported injuries at Amazon warehouses](https://andrewpwheeler.com/2022/11/05/injury-rates-at-amazon-warehouses/). As he rightly points out, the apparent high number of injuries at these warehouses is primarily a function of the size of the locations. 
+My friend, Andy Wheeler, just recently posted on his blog about [reported injuries at Amazon warehouses](https://andrewpwheeler.com/2022/11/05/injury-rates-at-amazon-warehouses/). As he rightly points out, the apparent high number of injuries at these warehouses is primarily a function of the size of the locations.
 
 In criminology we often deal with similar issues (namely, why we use crime *rates* rather than raw counts when comparing geographies of different populations). While I don't have much to add to Andy's post, one thing did stand out to me - the issue of low base counts.
 

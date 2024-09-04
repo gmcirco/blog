@@ -13,7 +13,9 @@ format:
         title-block-banner: true
         draft: true
 categories:
+  - R
   - Anomaly Detection
+  - Machine Learning & Prediction
 theme: flatly
 image: "house.png"
 ---
@@ -66,19 +68,15 @@ adKNN <- function(X, k = 5, method = 'max'){
 
 ## Part 2: The K-nearest neighbor anomaly detector
 
-This is the second part of a 3-part series. In the previous post I talked a bit 
-about my desire to work on building the pieces of an outlier ensemble from 
-"scratch" (e.g. mostly base R code with some helpers). 
+This is the second part of a 3-part series. In the previous post I talked a bit about my desire to work on building the pieces of an outlier ensemble from "scratch" (e.g. mostly base R code with some helpers).
 
-In the first post I talked about my approach building a [principal components analysis anomaly detector](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html). In
-this post I'll work on the K-nearest neighbors anomaly detector using the same
-base data.
+In the first post I talked about my approach building a [principal components analysis anomaly detector](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html). In this post I'll work on the K-nearest neighbors anomaly detector using the same base data.
 
 To date, the three parts of the ensemble contain:
 
-1. "Soft" principal components anomaly detector
-2. **K-nearest neighbors anomaly detector**
-3. Isolation forest or histogram-based anomaly detector
+1.  "Soft" principal components anomaly detector
+2.  **K-nearest neighbors anomaly detector**
+3.  Isolation forest or histogram-based anomaly detector
 
 ## Creating the KNN anomaly detector
 
@@ -111,7 +109,7 @@ You will notice that we set $k$ to $k+1$ to avoid calculating the nearest-neighb
 d[1:3,]
 ```
 
-Which gives us the standardized (Z-score) distance to the $k$ nearest neighbor of point $i$. Now all we need to do is decide on how we will summarize this distance. 
+Which gives us the standardized (Z-score) distance to the $k$ nearest neighbor of point $i$. Now all we need to do is decide on how we will summarize this distance.
 
 ## Distance Measures
 
@@ -131,7 +129,7 @@ anom_mean <- adKNN(d, k = 20, method = "mean")
 
 In many cases there will be very strong overlap between the two metrics, but in my personal experience I find that in unsupervised cases it is usually better to err on the safe side and go with metrics that do not depend on a single decision (hence, the entire purpose of outlier ensembling!)
 
-Like before we can specify a cut-point to flag outliers. Here, it might be reasonable to set it to the highest 5% of anomaly scores. Unfortunately, there's not necessarily a clear p-value available here like there was with the PCA anomaly detector. Ideally, if we have some prior information about the expected amount of contamination we could use that as our threshold instead. The plot below displays the 10 observations with the highest anomaly scores. The values flagged here look [very similar](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html#flagging-outliers) to the ones that were identified by the PCA anomaly detector as well, which should give us some confidence. 
+Like before we can specify a cut-point to flag outliers. Here, it might be reasonable to set it to the highest 5% of anomaly scores. Unfortunately, there's not necessarily a clear p-value available here like there was with the PCA anomaly detector. Ideally, if we have some prior information about the expected amount of contamination we could use that as our threshold instead. The plot below displays the 10 observations with the highest anomaly scores. The values flagged here look [very similar](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html#flagging-outliers) to the ones that were identified by the PCA anomaly detector as well, which should give us some confidence.
 
 ```{r}
 #| fig-cap: "Inliers (blue) and outliers (red) displayed in 2D space"

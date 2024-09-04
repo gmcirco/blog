@@ -43,7 +43,7 @@ cities_sub <- cities %>%
   slice(1:50)
 ```
 
-Here's a quick one. I was recently asked how you might plot the travel of individuals over time on a map. For example, if you had longitudinal data recording the residences of respondents over a course of many years, it might be interesting to see to where and how far they traveled. Doing this in R isn't too difficult, but it isn't quite straightforward either. Below I'll show off my approach using the `sf` package. 
+Here's a quick one. I was recently asked how you might plot the travel of individuals over time on a map. For example, if you had longitudinal data recording the residences of respondents over a course of many years, it might be interesting to see to where and how far they traveled. Doing this in R isn't too difficult, but it isn't quite straightforward either. Below I'll show off my approach using the `sf` package.
 
 ```{r, eval=FALSE}
 library(tidyverse)
@@ -160,8 +160,7 @@ for(p in 1:length(linestring_list)){
 }
 ```
 
-So we just simulate a lot of journeys that go between 2 and 5 states, store them in a list, then
-run our `linestring_list` function over it. The for-loop to add lines is a bit hack-y, but it works. We can then just plot them out:
+So we just simulate a lot of journeys that go between 2 and 5 states, store them in a list, then run our `linestring_list` function over it. The for-loop to add lines is a bit hack-y, but it works. We can then just plot them out:
 
 ```{r}
 base_map +

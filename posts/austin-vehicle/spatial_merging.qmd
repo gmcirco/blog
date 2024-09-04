@@ -12,6 +12,7 @@ format:
         toc: true
         title-block-banner: true
 categories:
+  - R
   - Spatial Statistics
 theme: flatly
 image: "car.png"
@@ -76,7 +77,7 @@ camera <- camera[austin,]
 crash_sf <- crash_sf[austin,]
 ```
 
-This is a bit of a mini-blog post based on a workflow that I have used based on some of my own work. A common issue in spatial analysis - and especially in criminology - is the need to analyze points that are merged to another point. 
+This is a bit of a mini-blog post based on a workflow that I have used based on some of my own work. A common issue in spatial analysis - and especially in criminology - is the need to analyze points that are merged to another point.
 
 In criminology we might say that assaults occurring right outside of a bar are within it's "spatial influence". Typically what is done is we define a "buffer" around each of the points $j$ (like bars, or gas stations) of interest and merge all of the crime incidents $i$ that are within each of the $j$ points' buffer area. This is something I've done before looking at the effect of [CCTV cameras on crime at businesses in Detroit](https://link.springer.com/article/10.1007/s11292-019-09404-y). This is pretty common across a lot of criminology research (e.g. finding all crime that occurs within a 1-block radius of bars and liquor stores).
 

@@ -12,7 +12,9 @@ format:
         toc: true
         title-block-banner: true
 categories:
+  - R
   - Anomaly Detection
+  - Machine Learning & Prediction
 bibliography: refs.bib
 theme: flatly
 image: "hist.png"
@@ -97,15 +99,11 @@ adHBOS <- function(X, ub = 15){
 
 ## Part 3: The histogram-based anomaly detector
 
-This is the third part of a 3-part series. In the first two posts I described
-how I built a [principal components analysis anomaly detector](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html) and
-a k-nearest neighbors anomaly detector as components for a ensemble model. This
-third post will discuss the last piece, which is a histogram-based anomaly
-detector.
+This is the third part of a 3-part series. In the first two posts I described how I built a [principal components analysis anomaly detector](https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html) and a k-nearest neighbors anomaly detector as components for a ensemble model. This third post will discuss the last piece, which is a histogram-based anomaly detector.
 
-1. "Soft" principal components anomaly detector
-2. K-nearest neighbors anomaly detector
-3. **Isolation forest or histogram-based anomaly detector**
+1.  "Soft" principal components anomaly detector
+2.  K-nearest neighbors anomaly detector
+3.  **Isolation forest or histogram-based anomaly detector**
 
 ## Building a Histogram-Based Outlier Detector
 
@@ -135,7 +133,7 @@ grid <- expand.grid(stay_len = seq(min(hdf$stay_len), max(hdf$stay_len), length.
 
 ```
 
-If we plot each of these histograms, we can observe that most values concentrate in a few bins, while a small number of values are in more sparsely-populated bins. Obviously this shows us that the majority of stay lengths are between 0-10 days, and the average cost per-stay is around $4,000.
+If we plot each of these histograms, we can observe that most values concentrate in a few bins, while a small number of values are in more sparsely-populated bins. Obviously this shows us that the majority of stay lengths are between 0-10 days, and the average cost per-stay is around \$4,000.
 
 ```{r}
 #| fig-cap: "A histogram's bins are proportional to the number of observations."
@@ -164,8 +162,7 @@ ggplot() +
 
 With this in mind, we are essentially going to do the above, but in $d$ dimensions (where $d$ is the number of input features). To give each observation an anomaly score, we will follow a [very simple scoring mechanism](https://www.goldiges.de/publications/HBOS-KI-2012.pdf) proposed by the original authors of the method where:
 
-$$HBOS(p) = \sum^d_{i=0}log(\frac{1}{hist_i(p)})$$
-Which states that the histogram-based anomaly score is the sum of the log of inverse histogram densities. More simply, for each feature $d$ we compute a histogram density, and each observation is scored based on the inverse of its bin density [@goldstein2012histogram]. This means observations in sparsely populated bins receive higher scores, and vice-versa. One of the trade-offs here is that we have to assume feature independence (which is a tenuous assumption in a lot of cases), but even violations of this might not be *too* bad.
+$$HBOS(p) = \sum^d_{i=0}log(\frac{1}{hist_i(p)})$$ Which states that the histogram-based anomaly score is the sum of the log of inverse histogram densities. More simply, for each feature $d$ we compute a histogram density, and each observation is scored based on the inverse of its bin density [@goldstein2012histogram]. This means observations in sparsely populated bins receive higher scores, and vice-versa. One of the trade-offs here is that we have to assume feature independence (which is a tenuous assumption in a lot of cases), but even violations of this might not be *too* bad.
 
 ### A brief aside: choosing the optimal bin size
 
@@ -279,7 +276,7 @@ ggplot() +
 
 As we expect, most of the observations that are flagged as outliers reside in bins with few other observations. This is pretty consistent with the other two methods we used before (PCA and KNN anomaly detectors). One specific advantage of the HBOS method is that it is very fast for even large datasets. However, with higher levels of dimensionality it is very likely that the assumption of feature independence is tenuous at best. Other methods, like the isolation forest can often perform better in higher dimensions. However, the simplicity of the method makes it easy to explain, which can be a benefit in many cases!
 
-### HBOS Anomaly Detector: Example Function{#sec-hbos}
+### HBOS Anomaly Detector: Example Function {#sec-hbos}
 
 Here's a minimal working example of the procedure above. As we build our ensemble, we'll come back to this function later.
 

@@ -31,55 +31,21 @@ file_name <- "crime.csv"
 dir <- paste0(wd,file_name)
 ```
 
-When I was in grad school working on my Ph.D. I learned a lot about math,
-statistics, research methods, and experimental design (among a LOT of other things).
-For a good part of my time as a grad student I also worked doing crime analysis at
-the Detroit Police Department for [Ceasefire](https://www.tandfonline.com/doi/abs/10.1080/24751979.2020.1827938) and [Project Green Light](https://link.springer.com/article/10.1007/s11292-019-09404-y).
-However, looking back, I realize one skill I never learned, that has become invaluable
-today, is something I never would have guessed: SQL. Yes, *that* SQL. 
+When I was in grad school working on my Ph.D. I learned a lot about math, statistics, research methods, and experimental design (among a LOT of other things). For a good part of my time as a grad student I also worked doing crime analysis at the Detroit Police Department for [Ceasefire](https://www.tandfonline.com/doi/abs/10.1080/24751979.2020.1827938) and [Project Green Light](https://link.springer.com/article/10.1007/s11292-019-09404-y). However, looking back, I realize one skill I never learned, that has become invaluable today, is something I never would have guessed: SQL. Yes, *that* SQL.
 
-For my academic friends who aren't in the know, SQL stands for "Structured Query
-Language" and is the number one way that analysts interface with data stored in 
-databases. SQL is great because it is a fast and efficient way to pull data out
-of very large and complex tables. In addition it doesn't require you to read
-an entire table into memory. For reference, at my day job I typically work with 
-medical claims data tables with *billions* of records. It is simply not 
-possible (nor recommended) to work with the entire table in-memory.
+For my academic friends who aren't in the know, SQL stands for "Structured Query Language" and is the number one way that analysts interface with data stored in databases. SQL is great because it is a fast and efficient way to pull data out of very large and complex tables. In addition it doesn't require you to read an entire table into memory. For reference, at my day job I typically work with medical claims data tables with *billions* of records. It is simply not possible (nor recommended) to work with the entire table in-memory.
 
-During grad school my typical workflow was to try and load a single large data
-table into R and work with it directly, or manually break it into smaller .csv
-files. Not only is this highly inefficient, it also makes it difficult to 
-replicate the workflow later. I think being able to work with large complex 
-datasets is increasingly important for researchers who want to take control of
-their workflow. 
+During grad school my typical workflow was to try and load a single large data table into R and work with it directly, or manually break it into smaller .csv files. Not only is this highly inefficient, it also makes it difficult to replicate the workflow later. I think being able to work with large complex datasets is increasingly important for researchers who want to take control of their workflow.
 
 ## DuckDB and R
 
-There are a lot of different ways to interface with SQL. In earlier projects
-I've used a SQLite database to manage a very large dataset and then query it 
-from R. However, this approach requires you to create a `.sqlite` database and
-adds a bit of up-front work. Often times I might just have one or two very large
-tables where this approach is a bit overkill. For example, working with raw 
-NIBRS data entails only a few important tables (victim, offender, offense) but
-each table is far too large to work with directly. 
+There are a lot of different ways to interface with SQL. In earlier projects I've used a SQLite database to manage a very large dataset and then query it from R. However, this approach requires you to create a `.sqlite` database and adds a bit of up-front work. Often times I might just have one or two very large tables where this approach is a bit overkill. For example, working with raw NIBRS data entails only a few important tables (victim, offender, offense) but each table is far too large to work with directly.
 
-[DuckDB](https://duckdb.org/) is a great option here because it has a ton of 
-very useful functions that allow you to read directly from a `.csv` or other type of 
-file (JSON, Parquet,etc...). In addition this can work directly in `R` using a
-[client API](https://duckdb.org/docs/api/r). For an academic, we often only have simple tables 
-like these to work with and so having an option that we can easily integrate into 
-our workflow is really appealing.
-
+[DuckDB](https://duckdb.org/) is a great option here because it has a ton of very useful functions that allow you to read directly from a `.csv` or other type of file (JSON, Parquet,etc...). In addition this can work directly in `R` using a [client API](https://duckdb.org/docs/api/r). For an academic, we often only have simple tables like these to work with and so having an option that we can easily integrate into our workflow is really appealing.
 
 ### Setting it up
 
-As an example, I have some crime data from Detroit that I used for a project
-a few years back. The size of this file is large (although not *that* large). 
-However it is big enough that it might be reasonable to pull only a subset of
-the data into memory at a time. Here's a perfect use-case for duckDB. Below,
-I start by loading the `duckdb` library and setting up the working directory
-of the file location `dir` as a string. This will make it a bit cleaner to read 
-and pass in to our queries when we start working.
+As an example, I have some crime data from Detroit that I used for a project a few years back. The size of this file is large (although not *that* large). However it is big enough that it might be reasonable to pull only a subset of the data into memory at a time. Here's a perfect use-case for duckDB. Below, I start by loading the `duckdb` library and setting up the working directory of the file location `dir` as a string. This will make it a bit cleaner to read and pass in to our queries when we start working.
 
 ```{r, eval=FALSE}
 
@@ -93,10 +59,7 @@ dir <- paste0(wd,file_name)
 
 ```
 
-We then set up a connection object via `dbConnect` and use `duckdb()` as the 
-connector. After we do that all we need to do is built a SQL string and pass it 
-in. The script below reads all the columns (`SELECT *`) from the table listed in
-the directory `crime.csv` and pulls only the top 10 rows. And this builds the connection and executes the query:
+We then set up a connection object via `dbConnect` and use `duckdb()` as the connector. After we do that all we need to do is built a SQL string and pass it in. The script below reads all the columns (`SELECT *`) from the table listed in the directory `crime.csv` and pulls only the top 10 rows. And this builds the connection and executes the query:
 
 ```{r}
 
@@ -104,10 +67,7 @@ con = dbConnect(duckdb())
 dbGetQuery(con, sprintf("SELECT * FROM read_csv('%s') LIMIT 10", dir))
 ```
 
-Voila! As an aside, if you are more familiar with `dplyr`'s syntax, the equivalent
-code would be. This is a bit less verbose, but requires you to read in the *entire*
-table before selecting just the top 10 rows. It is vastly less efficient and
-slow in cases where the table sizes become very large.
+Voila! As an aside, if you are more familiar with `dplyr`'s syntax, the equivalent code would be. This is a bit less verbose, but requires you to read in the *entire* table before selecting just the top 10 rows. It is vastly less efficient and slow in cases where the table sizes become very large.
 
 ```{r}
 read_csv(dir) %>%
@@ -116,11 +76,7 @@ read_csv(dir) %>%
 
 ### Other Tricks - Aggregations and Plotting
 
-
-Of course SQL is a very robust scripting language that allows for both simple and 
-complex operations. We can do any kind of reporting and aggregations. For example, 
-if we wanted some basic information about crime at the year-month level we could
-do:
+Of course SQL is a very robust scripting language that allows for both simple and complex operations. We can do any kind of reporting and aggregations. For example, if we wanted some basic information about crime at the year-month level we could do:
 
 ```{r}
 qu = 
@@ -142,9 +98,7 @@ head(tab)
 
 ```
 
-This performs the group-by and counts out of memory and then moves the aggregated
-table right into R as a dataframe. And since the result is just a dataframe, we can 
-pipe it directly into a ggplot visualization, like:
+This performs the group-by and counts out of memory and then moves the aggregated table right into R as a dataframe. And since the result is just a dataframe, we can pipe it directly into a ggplot visualization, like:
 
 ```{r}
 dbGetQuery(con, sprintf(qu, dir)) %>%
@@ -157,8 +111,7 @@ dbGetQuery(con, sprintf(qu, dir)) %>%
   theme(legend.position = 'none')
 ```
 
-Similarly, this applies to other functions like creating spatial objects. What
-if we wanted to plot only the violent crimes from the first month of 2015?
+Similarly, this applies to other functions like creating spatial objects. What if we wanted to plot only the violent crimes from the first month of 2015?
 
 ```{r}
 qu =

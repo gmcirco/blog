@@ -5,7 +5,7 @@ author: "Gio Circo, Ph.D."
 date: 2024-6-15
 categories:
   - R
-  - Synthetic Data
+  - Spatial Statistics
 format: 
     html:
         self-contained: true
@@ -62,11 +62,7 @@ sp_to_sf <- function(sim, crs) {
 
 In my work as a data scientist I have been working increasingly more with synthetic data generation. Synthetic data can be very useful when you are working on products that need reasonable stand-in values to test deployment. For example, a common issue I see is that a team needs data to populate a SQL table so they can populate a demo dashboard. Many times waiting for real data will take too long and unnecessarily stretch out the development time.
 
-Now, when we talk about generating synthetic data we're talking about more than just inserting random values into a table. Good synthetic data should mirror the properties of the original (or the properties of some pre-defined requirements).
-For example, you may want to have an age and race field that match the same 
-demographics of the U.S. Census. Or you might need the relationship between two
-fields to be consistent - like a medical procedure field matched with a cost
-field.
+Now, when we talk about generating synthetic data we're talking about more than just inserting random values into a table. Good synthetic data should mirror the properties of the original (or the properties of some pre-defined requirements). For example, you may want to have an age and race field that match the same demographics of the U.S. Census. Or you might need the relationship between two fields to be consistent - like a medical procedure field matched with a cost field.
 
 An interesting question I posed to myself was "What if I wanted to generate synthetic *spatial* data?" This is an interesting question, because spatial data need to have additional properties matched. Of course if we want to simulate crimes in a city, we can't just randomly throw points on the map. Crime does [not occur randomly](https://onlinelibrary.wiley.com/doi/full/10.1111/1745-9125.12070), and so if we want to simulate realistic processes, we need methods that generate them accurately.
 
@@ -74,7 +70,7 @@ An interesting question I posed to myself was "What if I wanted to generate synt
 
 My idea here is to try and simulate many different realizations of gas station locations in the region. We don't necessarily care if they exactly match a *real* location, but we care more about the intensity of the pattern. The data I'm using is some Hartford crime data that I collected for my [quickGrid](https://github.com/gmcirco/quickGrid) package.
 
-Below is the locations of gas stations (blue) and robbery incidents (red). 
+Below is the locations of gas stations (blue) and robbery incidents (red).
 
 ```{r}
 #| fig-cap: "Robberies and gas stations, Hartford CT (2017)"
@@ -92,7 +88,7 @@ What we want to do is take this information and simulate, many times, different 
 
 ## Simulating Gas Station Locations
 
-For this example we'll start with gas stations. Ideally we want to simulate an [Inhomogeneous Poisson point process](https://en.wikipedia.org/wiki/Poisson_point_process#Inhomogeneous_Poisson_point_process). In simple terms, this means that the intensity of the point pattern $lambda$ is not constant across the study region. Logically this makes sense because gas stations are typically confined to commercial areas and don't appear randomly in the middle of parks or waterways. 
+For this example we'll start with gas stations. Ideally we want to simulate an [Inhomogeneous Poisson point process](https://en.wikipedia.org/wiki/Poisson_point_process#Inhomogeneous_Poisson_point_process). In simple terms, this means that the intensity of the point pattern $lambda$ is not constant across the study region. Logically this makes sense because gas stations are typically confined to commercial areas and don't appear randomly in the middle of parks or waterways.
 
 In R this is easy to do. We can calculate the intensity of gas station locations by computing the kernel density of observed locations, and then use those density values as input for our simulation. We can do the same for robberies as well.
 
@@ -157,7 +153,7 @@ This gives us the observed K function for gas stations.
 plot(gas_kest)
 ```
 
-Now we can simulate. So we're going to take the observed density values as probabilities for an inhomogeneous Poisson point process. 
+Now we can simulate. So we're going to take the observed density values as probabilities for an inhomogeneous Poisson point process.
 
 ```{r}
 #| warning: false
@@ -184,7 +180,7 @@ obs_K <- data.frame(r = gas_kest$r,
 
 ```
 
-This plots the minimum and maximum envelopes (in grey) of the simulations against the observed K values in red. In general, we see that the pairwise relationships between gas stations is fairly close to observed, expect at small spatial scales. We appear to be failing to simulate cases where many gas stations are near each other (such as at 4 way intersections with a station on each corner). 
+This plots the minimum and maximum envelopes (in grey) of the simulations against the observed K values in red. In general, we see that the pairwise relationships between gas stations is fairly close to observed, expect at small spatial scales. We appear to be failing to simulate cases where many gas stations are near each other (such as at 4 way intersections with a station on each corner).
 
 ```{r}
 #| fig-cap: "100 Simulation envelopes (grey) compared to observed K (red)"
@@ -291,6 +287,6 @@ X_ldf %>%
 
 ```
 
-And this is why it is important to check. We can clearly see that while our simulated data is fairly close to the observed pattern for most distances 1000 feet and beyond, there is much *less* clustering at small spatial scales. This makes sense, because of how crime is often geo-coded. When you have crimes that occur directly on the location they will typically share the same coordinates. In our case, our points are more spread out than we would expect to see in real life. 
+And this is why it is important to check. We can clearly see that while our simulated data is fairly close to the observed pattern for most distances 1000 feet and beyond, there is much *less* clustering at small spatial scales. This makes sense, because of how crime is often geo-coded. When you have crimes that occur directly on the location they will typically share the same coordinates. In our case, our points are more spread out than we would expect to see in real life.
 
 Whether or not this data is "good enough" will depend on the use case at hand. In many cases very rough synthetic data can suffice for many purposes. In other cases, where high-fidelity synthetic data is needed, considerably more post-processing is required to bring the synthetic data in line with the real.

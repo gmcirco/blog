@@ -14,6 +14,7 @@ format:
 categories:
   - R
   - Bayesian Statistics
+  - Miscellaneous
 theme: flatly
 image: "coffee.jpg"
 ---
@@ -139,17 +140,17 @@ In October I was lucky enough to participate in popular coffee YouTuber James Ho
 
 The one we're going to focus on is the unusual [**Coffee 'D'**](https://youtu.be/bMOOQfeloH0?si=E9xaNcI-JBsR8-Yw&t=422). In contrast to the other coffees in the taste test, Coffee 'D' was a natural process. The difference between a washed coffee and natural coffee is:
 
->Washed coffee and natural process coffee differ primarily in their processing methods. Washed coffee involves removing the outer fruit from the coffee bean before drying, using water to ferment and wash away the pulp, resulting in a clean, bright flavor profile with pronounced acidity. In contrast, natural process coffee involves drying the whole coffee cherry intact, allowing the bean to ferment inside the fruit, imparting a fruitier, sometimes wine-like, sweetness with a heavier body due to prolonged contact with the fruit, often exhibiting complex, earthy, or fermented flavor notes. These distinct processes significantly influence the taste and characteristics of the final brew, offering a spectrum of flavors to coffee enthusiasts.
+> Washed coffee and natural process coffee differ primarily in their processing methods. Washed coffee involves removing the outer fruit from the coffee bean before drying, using water to ferment and wash away the pulp, resulting in a clean, bright flavor profile with pronounced acidity. In contrast, natural process coffee involves drying the whole coffee cherry intact, allowing the bean to ferment inside the fruit, imparting a fruitier, sometimes wine-like, sweetness with a heavier body due to prolonged contact with the fruit, often exhibiting complex, earthy, or fermented flavor notes. These distinct processes significantly influence the taste and characteristics of the final brew, offering a spectrum of flavors to coffee enthusiasts.
 
-The tl;dr is that natural process coffees tend to have more fermented, fruity flavors that are prized by some consumers, but often disliked by others. This is the one we're going to focus our attention on here. 
+The tl;dr is that natural process coffees tend to have more fermented, fruity flavors that are prized by some consumers, but often disliked by others. This is the one we're going to focus our attention on here.
 
 ### The survey
 
 While there were numerous questions on the [survey](https://tally.so/r/wzy48M), my focus was primarily on the following:
 
-- Age
-- Gender
-- Self-rated coffee expertise
+-   Age
+-   Gender
+-   Self-rated coffee expertise
 
 I categorized ages into groups (`18-24`, `25-34`, `35-44`, `45-54`, and `55+`), and gender into `(Male`, `Female`). The self-rated coffee expertise was on a scale from 1 to 10, with 1 representing *"I'm a novice"* and 10 representing *"I'm a coffee expert."*
 
@@ -227,11 +228,11 @@ filter(res, variable %in% vals[6]) %>%
 
 ```
 
-From this we see results that largely fit with what was reported in the video. Older people tend to dislike Coffee 'A' and 'D' more, and people with higher expertise tend to like them more. 
+From this we see results that largely fit with what was reported in the video. Older people tend to dislike Coffee 'A' and 'D' more, and people with higher expertise tend to like them more.
 
 ### Digging a little deeper: Males vs. Females
 
-Let's start by looking at *all* the predicted rankings for coffee 'D'. In this case we have 500 different predictions, corresponding to all possible age x gender x expertise x ranking combinations. Each individual line represents the estimated ranking for a particular consumer. 
+Let's start by looking at *all* the predicted rankings for coffee 'D'. In this case we have 500 different predictions, corresponding to all possible age x gender x expertise x ranking combinations. Each individual line represents the estimated ranking for a particular consumer.
 
 ```{r}
 #| echo: false
@@ -262,8 +263,7 @@ Using this data we can do some simple comparisons. For example: what is the esti
 
 So what if we control for expertise, and see what the estimated difference in gender is assuming they are otherwise comparable coffee consumers. Below, we set the expertise for predictions to the median, which is 6.
 
-::: {#fig-elephants layout-ncol=2}
-
+::: {#fig-elephants layout-ncol="2"}
 ```{r}
 #| echo: false
 
@@ -299,7 +299,9 @@ plot_coffee_d +
   theme(legend.position = "none")
 ```
 
-So really, there aren't very large difference in regards to gender after we control for expertise. The large gender difference that James sees in the survey is likely mostly an artifact of differences in experience with coffee between males and females^[Given the viewership demographics for James' channel, I actually assume that many of the female ratings are the partners of the male viewers, and are probably not as experienced as their partners]. 
+So really, there aren't very large difference in regards to gender after we control for expertise. The large gender difference that James sees in the survey is likely mostly an artifact of differences in experience with coffee between males and females[^1].
+
+[^1]: Given the viewership demographics for James' channel, I actually assume that many of the female ratings are the partners of the male viewers, and are probably not as experienced as their partners
 
 ```{r}
 #| echo: false
@@ -334,11 +336,11 @@ plot_coffee_d +
   theme(legend.position = 'none')
 ```
 
-If it's not already clear, the biggest differences in rating the unusual natural-process coffee is not really related to gender, but rather it is mostly based on an individuals expertise or 'expertise' with coffee. 
+If it's not already clear, the biggest differences in rating the unusual natural-process coffee is not really related to gender, but rather it is mostly based on an individuals expertise or 'expertise' with coffee.
 
 ## Comparing two hypothetical consumers
 
-So now that we have our model, we can use it to pose any number of comparisons by relying on posterior draws. 
+So now that we have our model, we can use it to pose any number of comparisons by relying on posterior draws.
 
 Let's first look at the most common age-gender-expertise combinations. Below we see that males largely make up the most common individuals who completed the survey. From a hypothetical perspective, let's compare how the most common male respondent (between 25-34 years old with an expertise of 7) would rate a given coffee compared to the most common female respondent (25-34 with an expertise of 5).
 

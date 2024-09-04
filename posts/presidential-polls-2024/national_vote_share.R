@@ -9,8 +9,6 @@ vote_df <-
   states_votes %>%
   mutate(
     party_simplified = ifelse(
-      party_simplified == 'DEMOCRATIC-FARMER-LABOR',
-      "DEMOCRAT",
       party_simplified
     )
   ) %>%
