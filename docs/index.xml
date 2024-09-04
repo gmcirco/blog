@@ -11863,10 +11863,386 @@ Goldstein, Markus, and Andreas Dengel. 2012. <span>“Histogram-Based Outlier Sc
   <media:content url="https://gmcirco.github.io/blog/posts/hbos-anomaly/hist.png" medium="image" type="image/png" height="144" width="144"/>
 </item>
 <item>
-  <title></title>
+  <title>Building an Outlier Ensemble from ‘Scratch’</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>
   <link>https://gmcirco.github.io/blog/posts/knn-anomaly/knn_anomaly.html</link>
-  <description><![CDATA[ undefined ]]></description>
+  <description><![CDATA[ 
+
+
+
+
+
+<section id="part-2-the-k-nearest-neighbor-anomaly-detector" class="level2">
+<h2 class="anchored" data-anchor-id="part-2-the-k-nearest-neighbor-anomaly-detector">Part 2: The K-nearest neighbor anomaly detector</h2>
+<p>This is the second part of a 3-part series. In the previous post I talked a bit about my desire to work on building the pieces of an outlier ensemble from “scratch” (e.g.&nbsp;mostly base R code with some helpers).</p>
+<p>In the first post I talked about my approach building a <a href="https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html">principal components analysis anomaly detector</a>. In this post I’ll work on the K-nearest neighbors anomaly detector using the same base data.</p>
+<p>To date, the three parts of the ensemble contain:</p>
+<ol type="1">
+<li>“Soft” principal components anomaly detector</li>
+<li><strong>K-nearest neighbors anomaly detector</strong></li>
+<li>Isolation forest or histogram-based anomaly detector</li>
+</ol>
+</section>
+<section id="creating-the-knn-anomaly-detector" class="level2">
+<h2 class="anchored" data-anchor-id="creating-the-knn-anomaly-detector">Creating the KNN anomaly detector</h2>
+<section id="defining-distance" class="level3">
+<h3 class="anchored" data-anchor-id="defining-distance">Defining distance</h3>
+<p>In a way, the K-nearest neighbors anomaly detector is incredibly simple. To compute the anomalousness of a single point we measure its distance to its <img src="https://latex.codecogs.com/png.latex?k"> nearest neighbors. We then use either the maximum or average distance among those <img src="https://latex.codecogs.com/png.latex?k"> points as its anomaly score. However, there is some additional complexity here regarding the choice of <img src="https://latex.codecogs.com/png.latex?k"> in an unsupervised setting - but we’ll get to that in a moment.</p>
+<p>One issue is that computing all pairs of nearest neighbors has <img src="https://latex.codecogs.com/png.latex?O(N%5E2)"> time complexity. However, we only need to know the number of nearest neighbors up to our value of <img src="https://latex.codecogs.com/png.latex?k">. Therefore, we can avoid computing nearest unnecessary distances by applying more efficient algorithms - like <a href="https://en.wikipedia.org/wiki/K-d_tree">k-d trees</a>. In the case for <img src="https://latex.codecogs.com/png.latex?k"> nearest neighbors the time complexity is <img src="https://latex.codecogs.com/png.latex?O(N%20*%20log(N)">. The <code>RANN</code> package in R does this fairly efficiently. We’ll use the same data as in the <a href="https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html">previous post</a> for this example.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># scale input attributes</span></span>
+<span id="cb1-2">X <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> df[, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7</span>]</span>
+<span id="cb1-3">X <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">scale</span>(X)</span>
+<span id="cb1-4"></span>
+<span id="cb1-5"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># compute NN distance between all points</span></span>
+<span id="cb1-6"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># set n neighbors</span></span>
+<span id="cb1-7">k <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span></span>
+<span id="cb1-8"></span>
+<span id="cb1-9"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># compute k nearest neighbor distances</span></span>
+<span id="cb1-10"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># using kd-trees</span></span>
+<span id="cb1-11">d <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> RANN<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span><span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">nn2</span>(X, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">k =</span> k<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>)</span>
+<span id="cb1-12">d <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> d[[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span>]][,<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span>k<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>]</span></code></pre></div>
+</div>
+<p>You will notice that we set <img src="https://latex.codecogs.com/png.latex?k"> to <img src="https://latex.codecogs.com/png.latex?k+1"> to avoid calculating the nearest-neighbor distance to the each point itself (which is always zero). The <code>nn2</code> package gives us the Euclidean nearest-neighbor distances for each point arranged from nearest to farthest. For example if we look at the top 3 rows of the distance matrix we see:</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1">d[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span>,]</span></code></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>          [,1]      [,2]      [,3]      [,4]      [,5]
+[1,] 0.1457822 0.3123632 0.3311984 0.3641609 0.3726815
+[2,] 0.5261689 0.6887312 0.9636189 1.0087124 1.0097114
+[3,] 0.2874466 0.3044159 0.3723676 0.4139428 0.4251863</code></pre>
+</div>
+</div>
+<p>Which gives us the standardized (Z-score) distance to the <img src="https://latex.codecogs.com/png.latex?k"> nearest neighbor of point <img src="https://latex.codecogs.com/png.latex?i">. Now all we need to do is decide on how we will summarize this distance.</p>
+</section>
+</section>
+<section id="distance-measures" class="level2">
+<h2 class="anchored" data-anchor-id="distance-measures">Distance Measures</h2>
+<p>We have a few options for distance measures. The most common, and simplest to understand arguably, is to compute a score based on the distance to each observations <em>farthest</em> <img src="https://latex.codecogs.com/png.latex?k"> neighbor (so if <img src="https://latex.codecogs.com/png.latex?k=5"> the score is the largest distance among those 5 neighbors). We can accomplish this by just getting the <code>max</code> value from each row.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1">anom_max <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">apply</span>(d, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>, max)</span></code></pre></div>
+</div>
+<p>We also have another option. Rather than choosing the maximum of the 5 nearest neighbors, we can average over a larger number of neighbors. This has the advantage of removing some of the variance implicit in the choice of <img src="https://latex.codecogs.com/png.latex?k">. For example, imagine the distance to the 6 nearest neighbors of one point are <img src="https://latex.codecogs.com/png.latex?%5B1,%202,%205,%207,%208,%20100%5D">. If we chose <img src="https://latex.codecogs.com/png.latex?k=5"> we would miss the obvious outlier that would have been found had we instead chosen <img src="https://latex.codecogs.com/png.latex?k=6">. A good alternative to is set <img src="https://latex.codecogs.com/png.latex?k"> much higher and get the <em>average</em> of all neighbors within that range. Here, we might set <img src="https://latex.codecogs.com/png.latex?k"> to 20 and average over the distances.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1">anom_mean <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">adKNN</span>(d, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">k =</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">20</span>, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">method =</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"mean"</span>)</span></code></pre></div>
+</div>
+<p>In many cases there will be very strong overlap between the two metrics, but in my personal experience I find that in unsupervised cases it is usually better to err on the safe side and go with metrics that do not depend on a single decision (hence, the entire purpose of outlier ensembling!)</p>
+<p>Like before we can specify a cut-point to flag outliers. Here, it might be reasonable to set it to the highest 5% of anomaly scores. Unfortunately, there’s not necessarily a clear p-value available here like there was with the PCA anomaly detector. Ideally, if we have some prior information about the expected amount of contamination we could use that as our threshold instead. The plot below displays the 10 observations with the highest anomaly scores. The values flagged here look <a href="https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html#flagging-outliers">very similar</a> to the ones that were identified by the PCA anomaly detector as well, which should give us some confidence.</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1">scored_data <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">data.frame</span>(df,anom_mean)</span>
+<span id="cb6-2"></span>
+<span id="cb6-3">flag <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> scored_data<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">$</span>anom_mean <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;=</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">quantile</span>(scored_data<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">$</span>anom_mean, .<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">95</span>)</span>
+<span id="cb6-4"></span>
+<span id="cb6-5"><span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">ggplot</span>() <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span></span>
+<span id="cb6-6">  <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">geom_point</span>(<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">data =</span> scored_data, <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">aes</span>(<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">x =</span> stay_len, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">y =</span> diff), <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">color =</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'#004488'</span>, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">size =</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span>, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">alpha =</span> .<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">25</span>) <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span></span>
+<span id="cb6-7">  <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">geom_point</span>(<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">data =</span> scored_data[flag,], <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">aes</span>(<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">x =</span> stay_len, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">y =</span> diff), <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">color =</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'#BB5566'</span>, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">size =</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2.5</span>) <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span></span>
+<span id="cb6-8">  <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">labs</span>(<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">x =</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Stay Length"</span>, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">y =</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Avg. Payment Difference"</span>) <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span></span>
+<span id="cb6-9">  <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">theme_minimal</span>() <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span></span>
+<span id="cb6-10">  <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">theme</span>(<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">axis.text =</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">element_text</span>(<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">size =</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">12</span>),</span>
+<span id="cb6-11">        <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">axis.title =</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">element_text</span>(<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">face =</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"bold"</span>))</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="https://gmcirco.github.io/blog/posts/knn-anomaly/knn_anomaly_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption>Inliers (blue) and outliers (red) displayed in 2D space</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<section id="knn-anaomaly-detector-example-function" class="level3">
+<h3 class="anchored" data-anchor-id="knn-anaomaly-detector-example-function">KNN Anaomaly Detector: Example Function</h3>
+<p>Here’s a minimal working example of the procedure above. As we build our ensemble, we’ll come back to this function later.</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Run a principal components anomaly detector</span></span>
+<span id="cb7-2">adKNN <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">function</span>(X, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">k =</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span>, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">method =</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'max'</span>){</span>
+<span id="cb7-3">  </span>
+<span id="cb7-4">  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># compute k nearest neighbor distances</span></span>
+<span id="cb7-5">  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># using kd-trees</span></span>
+<span id="cb7-6">  d <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> RANN<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span><span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">nn2</span>(X, <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">k =</span> k<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>)</span>
+<span id="cb7-7">  d <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> d[[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span>]][,<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span>k<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>]</span>
+<span id="cb7-8">  </span>
+<span id="cb7-9">  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># aggregate scores</span></span>
+<span id="cb7-10">  <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span>(method <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'max'</span>)</span>
+<span id="cb7-11">    anom <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">apply</span>(d, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>, max)</span>
+<span id="cb7-12">  <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span>(method <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'mean'</span>)</span>
+<span id="cb7-13">    anom <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">apply</span>(d, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>, mean)</span>
+<span id="cb7-14">  <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span></span>
+<span id="cb7-15">    <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">print</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Function not found"</span>)</span>
+<span id="cb7-16">  </span>
+<span id="cb7-17">  <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">return</span>(anom)</span>
+<span id="cb7-18">  </span>
+<span id="cb7-19">}</span></code></pre></div>
+</details>
+</div>
+
+
+</section>
+</section>
+
+ ]]></description>
   <category>R</category>
   <category>Anomaly Detection</category>
   <category>Machine Learning &amp; Prediction</category>
