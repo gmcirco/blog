@@ -2,6 +2,7 @@ library(tidyverse)
 library(brms)
 
 polls <- read_csv("https://projects.fivethirtyeight.com/polls-page/data/president_polls.csv")
+fund <- read_csv("C:/Users/gioc4/Documents/blog/data/abramowitz_data.csv")
 
 set.seed(8372)
 
@@ -41,6 +42,7 @@ polls %>%
          entry_date = as.Date(created_at, "%m/%d/%y")) %>%
   filter(question_id %in% harris_trump,
          is.na(state),
+         !is.na(pollscore),
          answer %in% matchup,
          end > as.Date("2024-06-01"),
          t >= begin & !is.na(t) & (vtype %in% c("lv","rv","a")),
@@ -70,6 +72,9 @@ all_polls_df <-
   group_by(entry_date, pollster, pop, party) %>%
   arrange(desc(entry_date), desc(end)) %>%
   slice(1)
+
+# transform abrom data
+fund$incvote <- fund$incvote - 50
 
 # plot the 2 party pct
 all_polls_df %>%
@@ -124,15 +129,21 @@ bprior <- c(
 sprior <- c(prior(normal(0, 0.5), class = 'Intercept'),
             prior(normal(0, 1), class = 'sds'))
 
+# rescaled polster weights, mean of 1
+W <- all_polls_df$numeric_grade/mean(all_polls_df$numeric_grade)
+W_dem = W[dem]
+W_gop = W[gop]
+
 # aggregation model
 fit2.1 <-
   brm(
     n_votes |
-      trials(pop) ~ 1 + partisan + method + vtype +
+      trials(pop) + weights(W_dem) ~ 1 + partisan + method + vtype +
       (1 | index_t) +
       (1 | index_p),
     family = "binomial",
     data = all_polls_df[dem, ],
+    data2 = list(W_dem = W_dem),
     prior = bprior,
     chains = 4,
     cores = 4
@@ -141,11 +152,12 @@ fit2.1 <-
 fit2.2 <-
   brm(
     n_votes |
-      trials(pop) ~ 1 + partisan + method + vtype +
+      trials(pop) + weights(W_gop) ~ 1 + partisan + method + vtype +
       (1 | index_t) +
       (1 | index_p),
     family = "binomial",
     data = all_polls_df[gop, ],
+    data2 = list(W_gop = W_gop),
     prior = bprior,
     chains = 4,
     cores = 4
@@ -153,8 +165,9 @@ fit2.2 <-
 
 # using a cubic regression spline for smoothing
 fit2.1s <-
-  brm(n_votes | trials(pop) ~ 1 + s(index_t, bs = 'cr'),
+  brm(n_votes | trials(pop) + weights(W_dem) ~ 1 + s(index_t, bs = 'cr'),
     data = all_polls_df[dem, ],
+    data2 = list(W_dem = W_dem),
     family = "binomial",
     prior = sprior,
     chains = 4,
@@ -163,29 +176,41 @@ fit2.1s <-
   )
 
 fit2.2s <-
-  brm(n_votes |trials(pop) ~ 1 + s(index_t, bs = 'cr'),
+  brm(n_votes |trials(pop) + weights(W_gop) ~ 1 + s(index_t, bs = 'cr'),
     data = all_polls_df[gop, ],
     family = "binomial",
     prior = sprior,
+    data2 = list(W_gop = W_gop),
     chains = 4,
     cores = 4,
     control = list(adapt_delta = 0.99)
   )
 
+# Abramowitz "fundementals" model
+# regress june approval, q2gpd, and incumbency advantage on vote share
+# just use default flat priors here, prob ok
+# here, assuming a -18 june approval rating, 2.8 q2 gdp growth, and incumbency advantage
+
+#fit3 <- brm(incvote ~ juneapp + q2gdp + inc1, data = fund, chains = 4, cores =4)
+#fund_preds <- posterior_predict(fit3, newdata = data.frame(juneapp = -18, q2gdp = 2.8, inc1 = 1))
+#fund_preds_q <- apply(fund_preds, 2, quantile, probs = c(.025, .5, .975))
+
+
 # add predictions back to dataframe with weighted predictions
 # weight 1 = hlm, weight 2 = smoothing model
 # more weight on #2 = more smoothing
-weights = c(.3, .7)
+# default is about 60% smoothing model
+weights = c(.4, .6)
 pred_dem <- cbind.data.frame(stack_extract_posterior_predictions_naive(fit2.1, fit2.1s, weights = weights), all_polls_df[dem,])
 pred_gop <- cbind.data.frame(stack_extract_posterior_predictions_naive(fit2.2, fit2.2s, weights = weights), all_polls_df[gop,])
-
 
 test <-
   rbind.data.frame(pred_dem, pred_gop)  %>%
   mutate(across(ymin:ymax, function(x)
     (x / pop)*100)) %>%
   group_by(party, end) %>%
-  summarise(across(ymin:ymax, mean))
+  summarise(across(ymin:ymax, mean)) %>%
+  ungroup()
 
 plot1<-
 test %>%
@@ -232,5 +257,3 @@ plot1 +
   geom_ribbon(aes(ymin = ymin, ymax = ymax, group = party, fill = party), color = 'white', alpha = .2)
 
 
-
-posterior_predict(fit2.1)

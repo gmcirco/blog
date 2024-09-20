@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/hello-world/hello.html",
       "/posts/bayes-study-1/bayes-study-1.html",
       "/posts/duck-db/duckdb.html",
       "/posts/spatial-simulation/spatial-sim.html",
