@@ -14,7 +14,7 @@ format:
 categories:
   - R
 theme: flatly
-image: reg.png
+image: plot_main.png
 bibliography: refs.bib
 ---
 
@@ -362,6 +362,10 @@ state_recoveries %>%
         col.names = c("Registered State", "Crime Guns", "Proportion"))
 ```
 
-## Gun Control in the US
+## What Does This Mean For Gun Control?
 
-I've done a lot of work on guns and gun violence in my [academic career](https://scholar.google.com/citations?user=6ja2D_cAAAAJ&hl=en). To be clear, I believe gun ownership is a right that many owners take quite seriously (indeed, I am a gun owner as well). However, it's also clear that the proliferation of guns in the United States is a serious public health problem [@bauchner2017death]. Laws restricting gun ownership in many cases makes sense - for example among perpetrators of intimate partner violence [@zeoli2016risks]. What is less clear is how we make this work in a country with a patchwork of laws and a highly politicized environment around gun ownership. While I think gun legislation is a key part of reducing the burden that gun violence plays in the US, I also think a more "holistic" approach is also needed to address other parts of the problem - like access to mental health and addressing concentrated disadvantage in many places.
+I've done a lot of work on guns and gun violence in my [academic career](https://scholar.google.com/citations?user=6ja2D_cAAAAJ&hl=en). To be clear, I believe gun ownership is a right that many owners take quite seriously (indeed, I am a gun owner as well). However, it's also clear that the proliferation of guns in the United States is a serious public health problem [@bauchner2017death]. Laws restricting gun ownership in many cases makes sense - for example among perpetrators of intimate partner violence [@zeoli2016risks]. What is less clear is how we make this work in a country with a patchwork of laws and a highly politicized environment around gun ownership. While I think gun legislation is a key part of reducing the burden that gun violence plays in the US, I also think a more "holistic" approach is also needed to address other parts of the problem - like access to mental health and addressing concentrated disadvantage in many places. Given the environment we live in, simply passing more restrictive laws are unlikely to fix everything. 
+
+## Comments {.unlisted}
+
+{{< bluesky-comments https://bsky.app/profile/giocirco.bsky.social/post/3lckv4he7r22p >}}
