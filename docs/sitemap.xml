@@ -25,12 +25,16 @@
     <lastmod>2024-09-04T02:49:34.764Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/gmm/gmm.html</loc>
-    <lastmod>2024-09-04T02:50:08.758Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
+    <lastmod>2024-09-04T02:49:54.583Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/distance-plotting/distance-plotting.html</loc>
-    <lastmod>2024-09-04T02:50:37.768Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/duck-db/duckdb.html</loc>
+    <lastmod>2024-09-20T20:37:28.237Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/crime-guns/crime-guns.html</loc>
+    <lastmod>2024-12-05T14:13:47.901Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/chipotle-weight/youtube-food.html</loc>
@@ -50,19 +54,27 @@
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/bayes-study-1/bayes-study-1.html</loc>
-    <lastmod>2024-09-04T02:51:13.032Z</lastmod>
+    <lastmod>2024-11-17T21:08:10.077Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/coffee/coffee.html</loc>
     <lastmod>2024-09-04T02:50:51.802Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/duck-db/duckdb.html</loc>
-    <lastmod>2024-09-04T02:50:26.184Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/distance-plotting/distance-plotting.html</loc>
+    <lastmod>2024-09-04T02:50:37.768Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
-    <lastmod>2024-09-04T02:49:54.583Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/gmm/gmm.html</loc>
+    <lastmod>2024-09-04T02:50:08.758Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/hello-world/hello.html</loc>
+    <lastmod>2024-09-20T20:39:17.459Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/knn-anomaly/knn_anomaly.html</loc>
+    <lastmod>2024-09-04T12:35:17.536Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/nlp-falls/nlp_falls.html</loc>
@@ -79,13 +91,5 @@
   <url>
     <loc>https://gmcirco.github.io/blog/posts/synth-impact/synth_impact.html</loc>
     <lastmod>2024-09-04T02:44:59.694Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/knn-anomaly/knn_anomaly.html</loc>
-    <lastmod>2024-09-04T03:01:06.779Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/hello-world/hello.html</loc>
-    <lastmod>2024-09-20T20:39:17.459Z</lastmod>
   </url>
 </urlset>

@@ -2,7 +2,6 @@ library(tidyverse)
 library(brms)
 
 polls <- read_csv("https://projects.fivethirtyeight.com/polls-page/data/president_polls.csv")
-fund <- read_csv("C:/Users/gioc4/Documents/blog/data/abramowitz_data.csv")
 
 set.seed(8372)
 
@@ -64,7 +63,7 @@ polls %>%
          index_p = as.numeric(as.factor(as.character(pollster))),
          n_votes =  round(pop * (pct/100))) %>%
   distinct(t, pollster, pop, party, .keep_all = TRUE) %>%
-  select(t, begin, end, entry_date, pollster, partisan, numeric_grade, pollscore, vtype, method, pop, n_votes, pct,party,answer, week, day_of_week, starts_with("index_"))
+  select(poll_id, t, begin, end, entry_date, pollster, partisan, numeric_grade, pollscore, vtype, method, pop, n_votes, pct,party,answer, week, day_of_week, starts_with("index_"))
 
 # remove overlapping polls
 all_polls_df <-
@@ -73,8 +72,16 @@ all_polls_df <-
   arrange(desc(entry_date), desc(end)) %>%
   slice(1)
 
-# transform abrom data
-fund$incvote <- fund$incvote - 50
+# drop polls with combined 2-party vote share < 85%
+low_vote <-
+  all_polls_df %>%
+  group_by(poll_id, entry_date, pollster, pop) %>%
+  summarise(total_votes = sum(n_votes), .groups = 'drop') %>%
+  mutate(prop = total_votes / pop) %>%
+  filter(prop < .85) %>%
+  select(poll_id, entry_date, pollster, pop)
+
+all_polls_df <- anti_join(all_polls_df, low_vote)
 
 # plot the 2 party pct
 all_polls_df %>%
@@ -99,13 +106,21 @@ extract_posterior_predictions <- function(x){
   data.frame(t(ypred)) %>% set_names(c("ymin","median","ymax"))
 }
 
-stack_extract_posterior_predictions_naive <- function(x1, x2, weights = c(.5, .5)){
+stack_extract_posterior_predictions_naive <- function(x1, x2, weights = c(.5, .5), return = "agg"){
+  # average weighted predictions from two models
   pred1 <- posterior_predict(x1)
   pred2 <- posterior_predict(x2)
-  pred_avg <- (pred1 * weights[1]) + (pred2 * weights[2]) 
-  ypred <- apply(pred_avg, 2, quantile, probs = c(.025, .5, .975)) %>% round()
+  pred_avg <- (pred1 * weights[1]) + (pred2 * weights[2])
   
-  data.frame(t(ypred)) %>% set_names(c("ymin","median","ymax"))
+  if(return=="agg"){
+    ypred <- apply(pred_avg, 2, quantile, probs = c(.025, .5, .975)) %>% round()
+    out <- data.frame(t(ypred)) %>% set_names(c("ymin","median","ymax"))
+  }
+  else if(return=="raw"){
+    out <- pred_avg
+  }
+  
+  return(out)
 }
 
 stack_extract_posterior_predictions <- function(x1, x2){
@@ -123,11 +138,11 @@ gop <- all_polls_df$party == 'REP'
 bprior <- c(
   prior(normal(0, 0.5), class = 'Intercept'),
   prior(normal(0, 0.5), class = 'b'),               
-  prior(normal(0, 1), class = 'sd')                
+  prior(student_t(3, 0, 1), class = 'sd')                
 )
 
 sprior <- c(prior(normal(0, 0.5), class = 'Intercept'),
-            prior(normal(0, 1), class = 'sds'))
+            prior(student_t(3, 0, 1), class = 'sds'))
 
 # rescaled polster weights, mean of 1
 W <- all_polls_df$numeric_grade/mean(all_polls_df$numeric_grade)
@@ -186,23 +201,14 @@ fit2.2s <-
     control = list(adapt_delta = 0.99)
   )
 
-# Abramowitz "fundementals" model
-# regress june approval, q2gpd, and incumbency advantage on vote share
-# just use default flat priors here, prob ok
-# here, assuming a -18 june approval rating, 2.8 q2 gdp growth, and incumbency advantage
-
-#fit3 <- brm(incvote ~ juneapp + q2gdp + inc1, data = fund, chains = 4, cores =4)
-#fund_preds <- posterior_predict(fit3, newdata = data.frame(juneapp = -18, q2gdp = 2.8, inc1 = 1))
-#fund_preds_q <- apply(fund_preds, 2, quantile, probs = c(.025, .5, .975))
-
-
 # add predictions back to dataframe with weighted predictions
 # weight 1 = hlm, weight 2 = smoothing model
 # more weight on #2 = more smoothing
-# default is about 60% smoothing model
+# default is about 40% hlm, 60% smoothing
 weights = c(.4, .6)
 pred_dem <- cbind.data.frame(stack_extract_posterior_predictions_naive(fit2.1, fit2.1s, weights = weights), all_polls_df[dem,])
 pred_gop <- cbind.data.frame(stack_extract_posterior_predictions_naive(fit2.2, fit2.2s, weights = weights), all_polls_df[gop,])
+
 
 test <-
   rbind.data.frame(pred_dem, pred_gop)  %>%
@@ -249,11 +255,37 @@ plot1 +
 plot1 +
   geom_point(data = all_polls_df, aes(x = end, y = pct, color = party, fill = party, size = pop), alpha = .2) +
   geom_point(data = end_labels, aes(x = end, y = median, color = party), size = 2.5) +
-  geom_label(data = end_labels, aes(x = end, y = median, label = round(median,1), fill = party), color = 'white', fontface = 'bold', nudge_x = 1.5, size = 3.2)
+  geom_label(data = end_labels, aes(x = end, y = median, label = round(median,1), fill = party), color = 'white', fontface = 'bold', nudge_x = 5, nudge_y = c(.33,-.33), size = 3.2)
 
 # facet plots
 plot1 +
   geom_point(data = all_polls_df, aes(x = end, y = pct, color = party, fill = party, size = pop), alpha = .2) +
   geom_ribbon(aes(ymin = ymin, ymax = ymax, group = party, fill = party), color = 'white', alpha = .2)
 
+
+# difference on max data
+raw_dem <- stack_extract_posterior_predictions_naive(fit2.1, fit2.1s, weights = weights, return = "raw")
+raw_gop <- stack_extract_posterior_predictions_naive(fit2.2, fit2.2s, weights = weights, return = "raw")
+
+
+# compute dem margin based on most recent 10 days worth of polls
+dem_margin <- raw_dem / (raw_dem + raw_gop)
+
+max_date <- max(pred_dem$end)
+date_idx <- seq.Date(from = max_date,by = "-1 day",length.out = 10)
+T <- as.numeric(rownames(pred_dem[pred_dem$end %in% date_idx, ]))
+
+mean(apply(dem_margin[,T], 1, function(x) mean(x > .5)))
+
+# 95% CI and mean 
+# predicted share of 2-party vote
+mean(apply(dem_margin[,T], 1, quantile, probs = c(0.025)))
+mean(apply(dem_margin[,T], 1, mean))
+mean(apply(dem_margin[,T], 1, quantile, probs = c(0.975)))
+
+# predicted % times that dem candidate wins popular vote
+# NOT the same as winning the election !!!
+mean(dem_margin[,T] > .5)
+
+hist(dem_margin)
 

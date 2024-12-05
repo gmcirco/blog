@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/crime-guns/crime-guns.html",
       "/posts/hello-world/hello.html",
       "/posts/bayes-study-1/bayes-study-1.html",
       "/posts/duck-db/duckdb.html",
