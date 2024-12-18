@@ -107,9 +107,9 @@ For this post I rely on some data posted by [David Johnson](https://www.ucmo.edu
 
 > Going to have a new paper out soon that uses ATF gun trace data. Data is state level (2010-21) and has info on exported and imported crime guns ... for example, exported crime guns are, from the context of FL, guns from FL but recovered in GA. Imported crime guns are guns from GA but recovered in FL.
 
-The ATF data details the source of guns seized by the agency that were involved in crimes. This includes the state that the gun was originally registered in, the state that the gun was seized in, and the number of days from the date of registration to the gun's involvement in a crime (a statistic referred to as "[time to crime](https://pmc.ncbi.nlm.nih.gov/articles/PMC6814658/)"). With this data we can examine flows of crime guns from their registered states to where they were eventually used in a crime. 
+The ATF data details the source of guns seized by the agency that were involved in crimes. This includes the state that the gun was originally registered in, the state that the gun was seized in, and the number of days from the date of registration to the gun's involvement in a crime (a statistic referred to as "[time to crime](https://pmc.ncbi.nlm.nih.gov/articles/PMC6814658/)"). With this data we can examine flows of crime guns from their registered states to where they were eventually used in a crime.
 
-To do this, I take the raw ATF files from the osf repository and process them in a little bit of code (see below). This code loops through the files from 2019 to 2021, strips off some unnecessary values, and then stacks them in a single data frame. We also do some basic computations to get the number and proportion of crime guns in a given state that were originally registered in *another* state. 
+To do this, I take the raw ATF files from the osf repository and process them in a little bit of code (see below). This code loops through the files from 2019 to 2021, strips off some unnecessary values, and then stacks them in a single data frame. We also do some basic computations to get the number and proportion of crime guns in a given state that were originally registered in *another* state.
 
 ```{r}
 #| eval: false
@@ -165,7 +165,7 @@ state_recoveries_else <- state_recoveries %>%
 
 ```
 
-All of this code above gives us two long-form data frames that define the number of crime guns seized in each state, compared to the state that gun was registered in. As an example, we can print out some values below: 
+All of this code above gives us two long-form data frames that define the number of crime guns seized in each state, compared to the state that gun was registered in. As an example, we can print out some values below:
 
 ```{r}
 #| echo: false
@@ -194,13 +194,7 @@ Above we see that about 17% of crime guns seized in Alabama were registered outs
 
 ## Gun Control and Crime Guns
 
-The first thing we can do is visually assess which states have the greatest proportion
-of seized crime guns registered in other states. Visually, the map below has some fairly
-striking patterns. New England states like Massachusetts, Connecticut, New York, and
-New Jersey all have very high proportions of crime guns imported from other states. 
-In the Midwest we see Illinois is a bit of an outlier, wedged in between Wisconsin
-and Indiana. And out in the West we see California also has many crime guns imported
-from elsewhere.
+The first thing we can do is visually assess which states have the greatest proportion of seized crime guns registered in other states. Visually, the map below has some fairly striking patterns. New England states like Massachusetts, Connecticut, New York, and New Jersey all have very high proportions of crime guns imported from other states. In the Midwest we see Illinois is a bit of an outlier, wedged in between Wisconsin and Indiana. And out in the West we see California also has many crime guns imported from elsewhere.
 
 ```{r}
 #| echo: false
@@ -218,8 +212,7 @@ state_recoveries_else%>%
 
 ```
 
-If we compare this map above to a map showing the number of restrictive gun laws passed (that is, any legislation
-that limits gun ownership, or repeals a previously permissive gun law) we see a fairly close overlap. California is noteworthy for having the largest raw number of restrictive gun legislation passed since 1990. States like Illinois, New York, Connecticut, New Jersey, and Massachusetts also have much higher numbers of restrictive laws passed. 
+If we compare this map above to a map showing the number of restrictive gun laws passed (that is, any legislation that limits gun ownership, or repeals a previously permissive gun law) we see a fairly close overlap. California is noteworthy for having the largest raw number of restrictive gun legislation passed since 1990. States like Illinois, New York, Connecticut, New Jersey, and Massachusetts also have much higher numbers of restrictive laws passed.
 
 ```{r}
 #| echo: false
@@ -260,9 +253,9 @@ state_recoveries_else %>%
 
 ```
 
-In the bottom-left corner there are a lot of states with relatively permissive gun laws who also import very few crime guns from other states. On the upper-right quadrant we see states with much more restrictive gun laws who have a much higher proportion of guns imported from other states. To be clear, this isn't a huge revelation to many. There are a lot of studies showing how crime guns are imported through gun traffickers, out-of-state dealers, and straw purchasers [@cook2014some] which bypass the restrictive state laws. 
+In the bottom-left corner there are a lot of states with relatively permissive gun laws who also import very few crime guns from other states. On the upper-right quadrant we see states with much more restrictive gun laws who have a much higher proportion of guns imported from other states. To be clear, this isn't a huge revelation to many. There are a lot of studies showing how crime guns are imported through gun traffickers, out-of-state dealers, and straw purchasers [@cook2014some] which bypass the restrictive state laws.
 
-With this data we can also look at some state-by-state patterns to observe where these flows of guns originate from. Logically, we would expect to see guns purchased in more permissive states to flow to less permissive ones. Below we have some examples from Illinois, New York, and Massachusetts. 
+With this data we can also look at some state-by-state patterns to observe where these flows of guns originate from. Logically, we would expect to see guns purchased in more permissive states to flow to less permissive ones. Below we have some examples from Illinois, New York, and Massachusetts.
 
 ### Illinois
 
@@ -299,8 +292,7 @@ state_recoveries %>%
 
 ### New York
 
-In contrast to Illinois, many crime guns are imported from much farther away. The so called "iron pipeline" represents the interstate flow of guns from Southern states with relatively lax gun laws to the more restrictive states in New England [@braga2012interpreting]. In the map below it is quite clear that most of the out of state
-guns used in crimes come from Georgia, Virginia, and South Carolina. 
+In contrast to Illinois, many crime guns are imported from much farther away. The so called "iron pipeline" represents the interstate flow of guns from Southern states with relatively lax gun laws to the more restrictive states in New England [@braga2012interpreting]. In the map below it is quite clear that most of the out of state guns used in crimes come from Georgia, Virginia, and South Carolina.
 
 ```{r}
 #| echo: false
@@ -332,7 +324,7 @@ state_recoveries %>%
 
 ### Massachusetts
 
-Interestingly, while Massachusetts has similarly strict gun laws as New York, most of the crime guns actually flow from New Hampshire and Maine. While these states lie near the cluster of states with more restrictive laws, both New Hampshire and Maine are much more permissive with gun ownership. Here, their proximity is likely a larger factor in the proportion of imported guns relative to New York. 
+Interestingly, while Massachusetts has similarly strict gun laws as New York, most of the crime guns actually flow from New Hampshire and Maine. While these states lie near the cluster of states with more restrictive laws, both New Hampshire and Maine are much more permissive with gun ownership. Here, their proximity is likely a larger factor in the proportion of imported guns relative to New York.
 
 ```{r}
 #| echo: false
@@ -364,7 +356,7 @@ state_recoveries %>%
 
 ## What Does This Mean For Gun Control?
 
-I've done a lot of work on guns and gun violence in my [academic career](https://scholar.google.com/citations?user=6ja2D_cAAAAJ&hl=en). To be clear, I believe gun ownership is a right that many owners take quite seriously (indeed, I am a gun owner as well). However, it's also clear that the proliferation of guns in the United States is a serious public health problem [@bauchner2017death]. Laws restricting gun ownership in many cases makes sense - for example among perpetrators of intimate partner violence [@zeoli2016risks]. What is less clear is how we make this work in a country with a patchwork of laws and a highly politicized environment around gun ownership. While I think gun legislation is a key part of reducing the burden that gun violence plays in the US, I also think a more "holistic" approach is also needed to address other parts of the problem - like access to mental health and addressing concentrated disadvantage in many places. Given the environment we live in, simply passing more restrictive laws are unlikely to fix everything. 
+I've done a lot of work on guns and gun violence in my [academic career](https://scholar.google.com/citations?user=6ja2D_cAAAAJ&hl=en). To be clear, I believe gun ownership is a right that many owners take quite seriously (indeed, I am a gun owner as well). However, it's also clear that the proliferation of guns in the United States is a serious public health problem [@bauchner2017death]. Laws restricting gun ownership in many cases makes sense - for example among perpetrators of intimate partner violence [@zeoli2016risks]. What is less clear is how we make this work in a country with a patchwork of laws and a highly politicized environment around gun ownership. While I think gun legislation is a key part of reducing the burden that gun violence plays in the US, I also think a more "holistic" approach is also needed to address other parts of the problem - like access to mental health and addressing concentrated disadvantage in many places. Given the environment we live in, simply passing more restrictive laws are unlikely to fix everything.
 
 ## Comments {.unlisted}
 

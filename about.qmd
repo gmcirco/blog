@@ -1,12 +1,15 @@
 ---
 title: "About Me"
-image: profile.png
+image: profile.jpg
 about:
   template: broadside
   links:
     - icon: twitter
       text: Twitter
       href: https://twitter.com/GioCirco
+    - icon: bluesky
+      text: Bluesky
+      href: https://bsky.app/profile/giocirco.bsky.social
     - icon: linkedin
       text: LinkedIn
       href: https://www.linkedin.com/feed/
@@ -17,9 +20,13 @@ about:
 
 ## Who Am I?
 
-I'm Gio Circo, a Ph.D. in criminology and former assistant professor. I currently work at Gainwell technologies as a data scientist. My work primarily focuses on causal inference, Bayesian statistics, and anomaly detection.
+I'm Gio Circo, a Ph.D. in criminology and former assistant professor. I currently work at Gainwell Technologies as a data scientist. My work at Gainwell focuses primarily on models for payment integrity (fraud detection, and anomaly detection), synthetic data generation, and deep learning models for insurance subrogation.
 
-I'm big into food, wine, and spirits - especially cocktails.
+Outside of work I love running, cooking, making cocktails, and drinking wine.
+
+## Contact Me
+
+If you're interested in data science, Bayesian statistics, or criminology - please feel free to reach out to me directly, or hit up my [**Twitter/X**](https://twitter.com/GioCirco) or [**Bluesky**](https://bsky.app/profile/giocirco.bsky.social) socials!
 
 ## Education
 
