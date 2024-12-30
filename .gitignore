@@ -6,4 +6,8 @@
 *.csv
 /.quarto/
 /_site/
+__pycache__
 .Rproj.user
+
+# specific projects
+posts/modern-bert/models
