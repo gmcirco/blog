@@ -12,7 +12,7 @@ injury_codes = {
     52: "Concussions",
     53: "Contusions, Abrasions",
     54: "Crushing",
-    60: "Dental injury",
+    60: "Dental injury", 
     74: "Dermatitis, Conjunctivitis",
     55: "Dislocation",
     67: "Electric shock",
