@@ -1,22 +1,13 @@
 library(tidyverse)
 library(brms)
 
-polls <- read_csv("https://projects.fivethirtyeight.com/polls-page/data/president_polls.csv")
-
+polls <- read_csv("https://projects.fivethirtyeight.com/polls-page/data/president_polls_historical.csv")
 set.seed(8372)
 
 # set up data, consistent with some other data sources
 # this is just national polls
 max_size = 5000
 matchup = c("Harris", "Trump")
-
-# biden-trump matchups
-biden_trump <-
-  polls %>%
-  group_by(poll_id, question_id) %>%
-  summarise(all_reps = paste0(answer, collapse = ",") ) %>%
-  filter(all_reps %in% c("Biden,Trump","Biden,Harris")) %>%
-  pull(question_id)
 
 # get just harris-trump matchups
 harris_trump <-
@@ -42,6 +33,7 @@ polls %>%
   filter(question_id %in% harris_trump,
          is.na(state),
          !is.na(pollscore),
+         !is.na(numeric_grade),
          answer %in% matchup,
          end > as.Date("2024-06-01"),
          t >= begin & !is.na(t) & (vtype %in% c("lv","rv","a")),
@@ -145,7 +137,7 @@ sprior <- c(prior(normal(0, 0.5), class = 'Intercept'),
             prior(student_t(3, 0, 1), class = 'sds'))
 
 # rescaled polster weights, mean of 1
-W <- all_polls_df$numeric_grade/mean(all_polls_df$numeric_grade)
+W <- all_polls_df$numeric_grade/mean(all_polls_df$numeric_grade, na.rm = TRUE)
 W_dem = W[dem]
 W_gop = W[gop]
 
@@ -161,7 +153,8 @@ fit2.1 <-
     data2 = list(W_dem = W_dem),
     prior = bprior,
     chains = 4,
-    cores = 4
+    cores = 4,
+    file = "C:\\Users\\gioc4\\Documents\\blog\\data\\election_model\\fit2.1"
   )
 
 fit2.2 <-
@@ -175,7 +168,8 @@ fit2.2 <-
     data2 = list(W_gop = W_gop),
     prior = bprior,
     chains = 4,
-    cores = 4
+    cores = 4,
+    file = "C:\\Users\\gioc4\\Documents\\blog\\data\\election_model\\fit2.2"
   )
 
 # using a cubic regression spline for smoothing
@@ -187,7 +181,8 @@ fit2.1s <-
     prior = sprior,
     chains = 4,
     cores = 4,
-    control = list(adapt_delta = 0.99)
+    control = list(adapt_delta = 0.99),
+    file = "C:\\Users\\gioc4\\Documents\\blog\\data\\election_model\\fit2.1s"
   )
 
 fit2.2s <-
@@ -198,7 +193,8 @@ fit2.2s <-
     data2 = list(W_gop = W_gop),
     chains = 4,
     cores = 4,
-    control = list(adapt_delta = 0.99)
+    control = list(adapt_delta = 0.99),
+    file = "C:\\Users\\gioc4\\Documents\\blog\\data\\election_model\\fit2.2s"
   )
 
 # add predictions back to dataframe with weighted predictions
@@ -255,9 +251,9 @@ plot1 +
 plot1 +
   geom_point(data = all_polls_df, aes(x = end, y = pct, color = party, fill = party, size = pop), alpha = .2) +
   geom_point(data = end_labels, aes(x = end, y = median, color = party), size = 2.5) +
-  geom_label(data = end_labels, aes(x = end, y = median, label = round(median,1), fill = party), color = 'white', fontface = 'bold', nudge_x = 5, nudge_y = c(.33,-.33), size = 3.2)
+  geom_label(data = end_labels, aes(x = end, y = median, label = round(median,1), fill = party), color = 'white', fontface = 'bold', nudge_x = 5, nudge_y = c(-.75,.75), size = 3.2)
 
-# facet plots
+ # facet plots
 plot1 +
   geom_point(data = all_polls_df, aes(x = end, y = pct, color = party, fill = party, size = pop), alpha = .2) +
   geom_ribbon(aes(ymin = ymin, ymax = ymax, group = party, fill = party), color = 'white', alpha = .2)

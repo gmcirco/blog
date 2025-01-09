@@ -9,80 +9,84 @@
     <lastmod>2024-09-04T02:45:35.534Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
-    <lastmod>2024-09-04T02:46:29.006Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/presidential-polls-2024/election.html</loc>
+    <lastmod>2025-01-09T20:00:13.232Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
-    <lastmod>2024-09-04T02:47:30.861Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/mmm-bayesian/mmm.html</loc>
-    <lastmod>2024-12-05T15:02:38.557Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
-    <lastmod>2024-09-04T02:49:34.764Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
-    <lastmod>2024-09-04T02:49:54.583Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/duck-db/duckdb.html</loc>
-    <lastmod>2024-09-20T20:37:28.237Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/crime-guns/crime-guns.html</loc>
-    <lastmod>2024-12-05T15:09:51.591Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/chipotle-weight/youtube-food.html</loc>
-    <lastmod>2024-08-04T21:51:47.907Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</loc>
-    <lastmod>2024-09-04T02:51:25.331Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/about.html</loc>
-    <lastmod>2024-12-18T14:08:45.944Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/index.html</loc>
-    <lastmod>2023-04-27T21:33:26.672Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/bayes-study-1/bayes-study-1.html</loc>
-    <lastmod>2024-11-17T21:08:10.077Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/coffee/coffee.html</loc>
-    <lastmod>2024-09-04T02:50:51.802Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/distance-plotting/distance-plotting.html</loc>
-    <lastmod>2024-09-04T02:50:37.768Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/gmm/gmm.html</loc>
-    <lastmod>2024-09-04T02:50:08.758Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/hello-world/hello.html</loc>
-    <lastmod>2024-09-20T20:39:17.459Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/knn-anomaly/knn_anomaly.html</loc>
-    <lastmod>2024-09-04T12:35:17.536Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
+    <lastmod>2024-09-04T02:46:59.467Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/nlp-falls/nlp_falls.html</loc>
     <lastmod>2024-09-04T02:48:12.502Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
-    <lastmod>2024-09-04T02:46:59.467Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/knn-anomaly/knn_anomaly.html</loc>
+    <lastmod>2024-09-04T12:35:17.536Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/hello-world/hello.html</loc>
+    <lastmod>2024-09-20T20:39:17.459Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/gmm/gmm.html</loc>
+    <lastmod>2024-09-04T02:50:08.758Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/distance-plotting/distance-plotting.html</loc>
+    <lastmod>2024-09-04T02:50:37.768Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/coffee/coffee.html</loc>
+    <lastmod>2024-09-04T02:50:51.802Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/bayes-study-1/bayes-study-1.html</loc>
+    <lastmod>2024-11-17T21:08:10.077Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/index.html</loc>
+    <lastmod>2023-04-27T21:33:26.672Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/about.html</loc>
+    <lastmod>2024-12-18T14:08:45.944Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</loc>
+    <lastmod>2024-09-04T02:51:25.331Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/chipotle-weight/youtube-food.html</loc>
+    <lastmod>2024-08-04T21:51:47.907Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/crime-guns/crime-guns.html</loc>
+    <lastmod>2024-12-05T15:09:51.591Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/duck-db/duckdb.html</loc>
+    <lastmod>2024-09-20T20:37:28.237Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
+    <lastmod>2024-09-04T02:49:54.583Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
+    <lastmod>2024-09-04T02:49:34.764Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/mmm-bayesian/mmm.html</loc>
+    <lastmod>2024-12-05T15:02:38.557Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
+    <lastmod>2024-09-04T02:47:30.861Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
+    <lastmod>2024-09-04T02:46:29.006Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/rtm-spatial/rtm.html</loc>
