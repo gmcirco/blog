@@ -702,3 +702,8 @@ mean(dem_margin[,T] > .5)
 
 hist(dem_margin)
 ```
+
+## Comments {.unlisted}
+
+{{< bluesky-comments https://bsky.app/profile/giocirco.bsky.social/post/3lfdjxr56uk23 >}}
+
