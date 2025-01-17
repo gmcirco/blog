@@ -49,12 +49,11 @@ class RetrieveReranker:
 
     def query(self, query_string, number_ranks=100, number_results=1):
         "Find the top N results matching the input string"
-        N = number_ranks
-
+        
         # embed query in bi-enocder, then get cosine similarities w/ corpus
         query_embed = self.bi_encoder_model.encode(query_string)
         sims = self.bi_encoder_model.similarity(query_embed, self.corpus_embed)
-        idx = np.array(torch.topk(sims, N).indices)[0]
+        idx = np.array(torch.topk(sims, number_ranks).indices)[0]
 
         # create a list of paired strings
         ce_list = []
@@ -62,8 +61,8 @@ class RetrieveReranker:
         for i in idx:
             ce_list.append([query_string, self.corpus[i]])
 
-        # run cross-encoder
+        # run cross-encoder, get top `number_results` 
         scores = self.cross_encoder_model.predict(ce_list)
-        scores_idx = scores.argmax()
+        top_idx = np.argsort(scores)[-number_results:][::-1]
 
-        return ce_list[scores_idx][1]
+        return [ce_list[i][1] for i in top_idx]
