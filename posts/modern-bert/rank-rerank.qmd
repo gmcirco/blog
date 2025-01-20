@@ -1,0 +1,20 @@
+---
+title: "Using NLP To Classify Medical Falls"
+subtitle: "Or: An Old Dog Learning New Tricks"
+author: Gio Circo, Ph.D.
+date: 2025-1-24
+categories:
+  - Python
+  - Data Science Applications
+format: 
+    html:
+        self-contained: true
+        code-fold: false
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+theme: flatly
+image: words.jpg
+---
+

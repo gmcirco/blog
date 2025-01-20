@@ -48,8 +48,9 @@ class RetrieveReranker:
             return pickle.load(fIn)
 
     def query(self, query_string, number_ranks=100, number_results=1):
-        "Find the top N results matching the input string"
-        
+        """Find the top N results matching the input string and returning the
+        matched string and the index."""
+
         # embed query in bi-enocder, then get cosine similarities w/ corpus
         query_embed = self.bi_encoder_model.encode(query_string)
         sims = self.bi_encoder_model.similarity(query_embed, self.corpus_embed)
@@ -61,8 +62,8 @@ class RetrieveReranker:
         for i in idx:
             ce_list.append([query_string, self.corpus[i]])
 
-        # run cross-encoder, get top `number_results` 
+        # run cross-encoder, get top `number_results`
         scores = self.cross_encoder_model.predict(ce_list)
         top_idx = np.argsort(scores)[-number_results:][::-1]
 
-        return [ce_list[i][1] for i in top_idx]
+        return [(int(idx[i]), ce_list[i][1]) for i in top_idx]
