@@ -63,11 +63,14 @@ class RetrieveReranker:
             ce_list.append([query_string, self.corpus[i]])
 
         # run cross-encoder, get top `number_results`
+        # convert to probabilities using invlogit
         scores = self.cross_encoder_model.predict(ce_list)
+        probs = torch.sigmoid(torch.tensor(scores))
         top_idx = np.argsort(scores)[-number_results:][::-1]
             
         # Retrieve the results based on top indices
-        res_idx = [int(idx[i]) for i in top_idx]  # List of indices
-        res_str = [ce_list[i][1] for i in top_idx]  # List of matched strings
+        res_idx = [int(idx[i]) for i in top_idx] 
+        res_prb = torch.tensor([probs[i] for i in top_idx])
+        res_str = [ce_list[i][1] for i in top_idx] 
 
-        return res_idx, res_str
+        return res_idx, res_prb, res_str 
