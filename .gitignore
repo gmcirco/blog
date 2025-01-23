@@ -4,6 +4,7 @@
 *.Rdata
 *.Ruserdata
 *.csv
+*.ipynb
 /.quarto/
 /_site/
 __pycache__

@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/modern-bert/rank-rerank.html",
       "/posts/presidential-polls-2024/election.html",
       "/posts/crime-guns/crime-guns.html",
       "/posts/hello-world/hello.html",

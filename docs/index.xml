@@ -10,7 +10,961 @@
 <atom:link href="https://gmcirco.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-1.5.56</generator>
-<lastBuildDate>Mon, 13 Jan 2025 05:00:00 GMT</lastBuildDate>
+<lastBuildDate>Fri, 24 Jan 2025 05:00:00 GMT</lastBuildDate>
+<item>
+  <title>Information Retrieval Using the Retrieve and Rerank Method</title>
+  <dc:creator>Gio Circo, Ph.D.</dc:creator>
+  <link>https://gmcirco.github.io/blog/posts/modern-bert/rank-rerank.html</link>
+  <description><![CDATA[ 
+
+
+
+
+
+<section id="querying-records" class="level2">
+<h2 class="anchored" data-anchor-id="querying-records">Querying Records</h2>
+<section id="retrieve-and-rerank" class="level3">
+<h3 class="anchored" data-anchor-id="retrieve-and-rerank">Retrieve and rerank</h3>
+<p>The logic behind the “<a href="https://direct.mit.edu/tacl/article/doi/10.1162/tacl_a_00473/110994/Retrieve-Fast-Rerank-Smart-Cooperative-and-Joint">retrieve and rerank</a>” method is that we have two sets of tools that excel at one specific task. Specifically we want to use a combination of a bi-encoder and cross-encoder to retrieve data based on an initial input query. The trade-off we have to deal with is that cross-enocder models are very slow, while bi-encoder models have performance that often falls short for retreval purposes.</p>
+<p>The bi-encoder model (the “retrieve” part) creates seperate embeddings of the input query and corpus text and looks for the closest match based on the vector space. This is often done by finding the nearest cosine similarity. The retreval step is typically quite fast, with the trade-off that some information is lost because the query and search corpus are embedded seperately.</p>
+<p>On the flip side, a cross encoder embeds the search query and corpus together. The major advantage of this, is that the cross-encoder uses cross-attention to create the similarity score, which pools information about the both inputs directly. However, the major trade off is that this requires the search query to be embedded with every query-corpus pair. In a very large dataset, this might create millions of pairs and is can be potentially very slow.</p>
+<section id="bi-encoder" class="level4">
+<h4 class="anchored" data-anchor-id="bi-encoder">Bi-encoder</h4>
+<div class="cell" data-layout-align="default">
+<div class="cell-output-display">
+<div>
+<p></p><figure class="figure"><p></p>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+  A("Sentence A") ==&gt; BA ==&gt; SA ==&gt; C
+  B("Sentence B") ==&gt; BB ==&gt; SB ==&gt; C
+  BA["BERT"]
+  BB["BERT"]
+  SA["Sentence Embedding"]
+  SB["Sentence Embedding"]
+  C["Cosine Similarity"]
+</pre>
+</div>
+<p></p></figure><p></p>
+</div>
+</div>
+</div>
+</section>
+<section id="cross-encoder" class="level4">
+<h4 class="anchored" data-anchor-id="cross-encoder">Cross-encoder</h4>
+<div class="cell" data-layout-align="default">
+<div class="cell-output-display">
+<div>
+<p></p><figure class="figure"><p></p>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+  A("Sentence A") ==&gt; C
+  B("Sentence A") ==&gt; C
+  C["BERT"] ==&gt; D
+  D["Classifier"] ==&gt; E  
+  E["0...1"]
+</pre>
+</div>
+<p></p></figure><p></p>
+</div>
+</div>
+</div>
+<p>Therefore, it makes sense to use both of these methods in tandem. We can quickly retrieve the top 100 or so records using the bi-encoder, then re-rank the retrieved records using the bi-encoder. This way we limit the number of paired records we have to run through it.</p>
+<p>To do this in Python I create a <code>RetrieveReranker</code> class. The class is initialized with a bi-encoder and cross-encoder model, and a corpus of text to serve as the searchable data base. Most of the important work is handled by the <code>query</code> function, which takes an input query string, creates an embedding, then retrieves the 100 most similar documents based on cosine similarity. These 100 records are then passed to the bi-encoder which re-ranks them and returns the most similar ones.</p>
+<p>I should note, this is a pretty limited first attempt at “off-the-shelf” pre-trained models. I’m not doing any pre-training, nor am I doing any fine-tuning here. It’s quite clear that both would strongly improve performance, but this is too simple of an example to warrant the effort.</p>
+<div id="2341b1f1" class="cell" data-message="false" data-execution_count="1">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> torch</span>
+<span id="cb1-2"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> numpy <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> np</span>
+<span id="cb1-3"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> os</span>
+<span id="cb1-4"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> pickle</span>
+<span id="cb1-5"></span>
+<span id="cb1-6"></span>
+<span id="cb1-7"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">class</span> RetrieveReranker:</span>
+<span id="cb1-8">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">__init__</span>(</span>
+<span id="cb1-9">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>,</span>
+<span id="cb1-10">        corpus,</span>
+<span id="cb1-11">        bi_encoder_model,</span>
+<span id="cb1-12">        cross_encoder_model,</span>
+<span id="cb1-13">        save_corpus<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span>,</span>
+<span id="cb1-14">        corpus_path<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-15">    ):</span>
+<span id="cb1-16">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.bi_encoder_model <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> bi_encoder_model</span>
+<span id="cb1-17">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.cross_encoder_model <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cross_encoder_model</span>
+<span id="cb1-18">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.save_corpus <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> save_corpus</span>
+<span id="cb1-19">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.corpus_path <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> corpus_path</span>
+<span id="cb1-20"></span>
+<span id="cb1-21">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.corpus <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> corpus  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># raw text</span></span>
+<span id="cb1-22">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.corpus_embed <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>._embed_corpus()  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># embedded text</span></span>
+<span id="cb1-23"></span>
+<span id="cb1-24">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> _embed_corpus(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>):</span>
+<span id="cb1-25">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"Embed and save a corpus of searchable text, or load corpus if present"</span></span>
+<span id="cb1-26">        embedding <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span></span>
+<span id="cb1-27"></span>
+<span id="cb1-28">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">try</span>:</span>
+<span id="cb1-29">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> os.path.exists(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.corpus_path):</span>
+<span id="cb1-30">                embedding <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>._load_corpus()</span>
+<span id="cb1-31">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb1-32">                embedding <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.bi_encoder_model.encode(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.corpus)</span>
+<span id="cb1-33"></span>
+<span id="cb1-34">                <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.save_corpus:</span>
+<span id="cb1-35">                    <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>._save_corpus(embedding)</span>
+<span id="cb1-36"></span>
+<span id="cb1-37">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">except</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Exception</span> <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> e:</span>
+<span id="cb1-38">            <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"Error processing corpus: </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>e<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>)</span>
+<span id="cb1-39"></span>
+<span id="cb1-40">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> embedding</span>
+<span id="cb1-41"></span>
+<span id="cb1-42">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> _save_corpus(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>, embedding):</span>
+<span id="cb1-43">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">with</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">open</span>(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.corpus_path, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"wb"</span>) <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> fOut:</span>
+<span id="cb1-44">            pickle.dump(embedding, fOut)</span>
+<span id="cb1-45"></span>
+<span id="cb1-46">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> _load_corpus(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>):</span>
+<span id="cb1-47">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">with</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">open</span>(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.corpus_path, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"rb"</span>) <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> fIn:</span>
+<span id="cb1-48">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> pickle.load(fIn)</span>
+<span id="cb1-49"></span>
+<span id="cb1-50">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> query(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>, query_string, number_ranks<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">100</span>, number_results<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>):</span>
+<span id="cb1-51">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"""Find the top N results matching the input string and returning the</span></span>
+<span id="cb1-52"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        matched string and the index."""</span></span>
+<span id="cb1-53"></span>
+<span id="cb1-54">        ce_list <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> []</span>
+<span id="cb1-55"></span>
+<span id="cb1-56">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># embed query in bi-enocder, then get cosine similarities w/ corpus</span></span>
+<span id="cb1-57">        query_embed <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.bi_encoder_model.encode(query_string)</span>
+<span id="cb1-58">        sims <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.bi_encoder_model.similarity(query_embed, <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.corpus_embed)</span>
+<span id="cb1-59">        idx <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> np.array(torch.topk(sims, number_ranks).indices)[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>]</span>
+<span id="cb1-60"></span>
+<span id="cb1-61">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># create a list of paired strings</span></span>
+<span id="cb1-62">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> i <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> idx:</span>
+<span id="cb1-63">            ce_list.append([query_string, <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.corpus[i]])</span>
+<span id="cb1-64"></span>
+<span id="cb1-65">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># run cross-encoder, get top `number_results`</span></span>
+<span id="cb1-66">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># convert to probabilities using invlogit</span></span>
+<span id="cb1-67">        scores <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.cross_encoder_model.predict(ce_list)</span>
+<span id="cb1-68">        probs <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.sigmoid(torch.tensor(scores))</span>
+<span id="cb1-69">        top_idx <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> np.argsort(scores)[<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span>number_results:][::<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>]</span>
+<span id="cb1-70">            </span>
+<span id="cb1-71">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Retrieve the results based on top indices</span></span>
+<span id="cb1-72">        res_idx <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>(idx[i]) <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> i <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> top_idx] </span>
+<span id="cb1-73">        res_prb <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.tensor([probs[i] <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> i <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> top_idx])</span>
+<span id="cb1-74">        res_str <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [ce_list[i][<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>] <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> i <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> top_idx] </span>
+<span id="cb1-75"></span>
+<span id="cb1-76">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> res_idx, res_prb, res_str </span></code></pre></div>
+</details>
+</div>
+</section>
+</section>
+</section>
+<section id="creating-a-records-retrieval-model" class="level2">
+<h2 class="anchored" data-anchor-id="creating-a-records-retrieval-model">Creating A Records Retrieval Model</h2>
+<p>Now that we have our class defined, we can import it below and utilize it. In order for it to work we need to pass in both a bi-encoder and a cross-encoder model. Recall, the bi-encoder will do the first pass to get the <img src="https://latex.codecogs.com/png.latex?N"> most similar records, then pass these to the cross-encoder. Hence, the “retrieve and rerank” method. Below, we use <a href="https://huggingface.co/docs/transformers/main/en/model_doc/modernbert">ModernBERT</a> in tandem with a <a href="https://www.sbert.net/">SentenceTransformers</a> model to do the embedding and first pass as the bi-encoder, and a <a href="https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-12-v2">MS Macro</a> model as the cross encoder.</p>
+<p>Now, ideally we would fine-tune the cross-encoder model so that input queries would more closely match the medical narratives. This would have the added benefit of improvement performance for asymmeterical queries (e.g.&nbsp;providing a short query to retrieve a much longer text). But right now we can rely on out-of-the box performance as a demonstration.</p>
+<p>Our corpus is relatively small. We take a sample of 50,000 records from the <a href="https://www.cpsc.gov/cgibin/NEISSQuery/home.aspx">2022 NEISS</a> dataset and use some local functions to clean up the NEISS text entries a bit before we pass them into the model. From these narratives we pass them through a SentenceTransformer model using ModernBert to embed them as a 50000x768 dimension array. Essentially this a fancy method of data compression, where we extract and store semantic meaning from the narratives as a vector of numeric values.</p>
+<div id="4e98b3ee" class="cell" data-execution_count="2">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> sentence_transformers <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> SentenceTransformer</span>
+<span id="cb2-2"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> sentence_transformers.cross_encoder <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> CrossEncoder</span>
+<span id="cb2-3"></span>
+<span id="cb2-4"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> numpy <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> np</span>
+<span id="cb2-5"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> pandas <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> pd</span>
+<span id="cb2-6"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> re</span>
+<span id="cb2-7"></span>
+<span id="cb2-8"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> src.search_funcs <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> RetrieveReranker</span>
+<span id="cb2-9"></span>
+<span id="cb2-10"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># local vars</span></span>
+<span id="cb2-11">BI_ENCODER_MODEL <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"answerdotai/ModernBERT-base"</span></span>
+<span id="cb2-12">CROSS_ENCODER_MODEL <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"cross-encoder/ms-marco-MiniLM-L-12-v2"</span></span>
+<span id="cb2-13">CORPUS <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"C:/Users/gioc4/Documents/blog/data/falls/neis.csv"</span></span>
+<span id="cb2-14">CORPUS_SIZE <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">50000</span></span>
+<span id="cb2-15"></span>
+<span id="cb2-16"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># we want the observations to be agnostic to patient age, so we remove those</span></span>
+<span id="cb2-17"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># define remappings of abbreviations</span></span>
+<span id="cb2-18"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># and strings to remove from narratives</span></span>
+<span id="cb2-19"></span>
+<span id="cb2-20">remap <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> {</span>
+<span id="cb2-21">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"FX"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"FRACTURE"</span>,</span>
+<span id="cb2-22">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"INJ"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"INJURY"</span>,</span>
+<span id="cb2-23">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"LAC"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"LACERATION"</span>,</span>
+<span id="cb2-24">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"LOC"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"LOSS OF CONCIOUSNESS"</span>,</span>
+<span id="cb2-25">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"CONT"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"CONTUSION"</span>,</span>
+<span id="cb2-26">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"CHI"</span> : <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"CLOSED HEAD INJURY"</span>,</span>
+<span id="cb2-27">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"ETOH"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"ALCOHOL"</span>,</span>
+<span id="cb2-28">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"SDH"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"SUBDURAL HEMATOMA"</span>,</span>
+<span id="cb2-29">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"AFIB"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"ATRIAL FIBRILLATION"</span>,</span>
+<span id="cb2-30">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"NH"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"NURSING HOME"</span>,</span>
+<span id="cb2-31">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"LTCF"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"LONG TERM CARE FACILITY"</span>,</span>
+<span id="cb2-32">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"C/O"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"COMPLAINS OF"</span>,</span>
+<span id="cb2-33">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"H/O"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"HISTORY OF"</span>,</span>
+<span id="cb2-34">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"S/P"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"STATUS POST"</span>,</span>
+<span id="cb2-35">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"DX:"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"DIAGNOSIS"</span>,</span>
+<span id="cb2-36">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"YOM"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"YEAR OLD MALE"</span>,</span>
+<span id="cb2-37">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"YOF"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"YEAR OLD FEMALE"</span>,</span>
+<span id="cb2-38">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"MOM"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"MONTH OLD MALE"</span>,</span>
+<span id="cb2-39">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"MOF"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"MONTH OLD FEMALE"</span>,</span>
+<span id="cb2-40">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"PT"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"PATIENT"</span>,</span>
+<span id="cb2-41">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"LT"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"LEFT"</span>,</span>
+<span id="cb2-42">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"RT"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"RIGHT"</span>,</span>
+<span id="cb2-43">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"&amp;"</span> : <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">" AND "</span></span>
+<span id="cb2-44">}</span>
+<span id="cb2-45"></span>
+<span id="cb2-46"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> process_text(txt):</span>
+<span id="cb2-47"></span>
+<span id="cb2-48">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># remap leading age and sex info</span></span>
+<span id="cb2-49">    txt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> re.sub(<span class="vs" style="color: #20794D;
+background-color: null;
+font-style: inherit;">r"(\d+)(YOM|YOF|MOM|MOF)"</span>, <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">lambda</span> m: <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>m<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>group(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>)<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>remap[m.group(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span>)]<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>, txt)</span>
+<span id="cb2-50"></span>
+<span id="cb2-51">    words <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> txt.split()</span>
+<span id="cb2-52">    new_words <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [remap.get(word, word) <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> word <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> words]</span>
+<span id="cb2-53">    txt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">" "</span>.join(new_words)</span>
+<span id="cb2-54"></span>
+<span id="cb2-55">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> re.sub(<span class="vs" style="color: #20794D;
+background-color: null;
+font-style: inherit;">r"^\s+"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">""</span>, txt)</span></code></pre></div>
+</details>
+</div>
+<p>Now that we’re ready, we can encode the corpus using the pre-defined models by passing it all into our <code>RetrieveReranker</code> class. Passing the corpus_path argument allows us to save the embeddings as a pickle file and reload it when it exists so we don’t have to go through the very time consuming process of re-embedding the corpus each time we do this. Without using a GPU embedding 50,000 narratives takes around 30-40 minutes.</p>
+<div id="0162ab79" class="cell" data-message="false" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># strings to encode as searchable</span></span>
+<span id="cb3-2"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># load data</span></span>
+<span id="cb3-3">neis_data <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pd.read_csv(CORPUS).head(CORPUS_SIZE)</span>
+<span id="cb3-4">narrative_strings <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> neis_data[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Narrative_1'</span>].<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">apply</span>(process_text).tolist()</span>
+<span id="cb3-5"></span>
+<span id="cb3-6"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># define models and ranker</span></span>
+<span id="cb3-7">biencoder <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> SentenceTransformer(BI_ENCODER_MODEL)</span>
+<span id="cb3-8">crossencoder <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> CrossEncoder(CROSS_ENCODER_MODEL)</span>
+<span id="cb3-9"></span>
+<span id="cb3-10"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># set up a Retriveal-Ranker class</span></span>
+<span id="cb3-11">ranker <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> RetrieveReranker(</span>
+<span id="cb3-12">    corpus<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>narrative_strings,</span>
+<span id="cb3-13">    bi_encoder_model<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>biencoder,</span>
+<span id="cb3-14">    cross_encoder_model<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>crossencoder,</span>
+<span id="cb3-15">    save_corpus<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span>,</span>
+<span id="cb3-16">    corpus_path<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"C:/Users/gioc4/Documents/blog/data/corpus_large.pkl"</span></span>
+<span id="cb3-17">)</span></code></pre></div>
+</div>
+<section id="retreiving-similar-records" class="level3">
+<h3 class="anchored" data-anchor-id="retreiving-similar-records">Retreiving similar records</h3>
+<p>After that has processed we’re ready to query our corpus with an example text string. Let’s imagine we had a case involving an elderly fall at an elderly care facility (ECF) and we wanted to find 5 similar cases based on information provided in the narrative:</p>
+<blockquote class="blockquote">
+<p>“100 YOM RESIDENT AT ECF FELL BACKWARDS ON THE FLOOR. DX: CERVICAL STRAIN, LUMBAR STRAIN”</p>
+</blockquote>
+<p>We directly pass this query into our fitted <code>RetrieveReranker</code> and specify the number of results we want. We get indices and matching strings as output.</p>
+<div id="517b336e" class="cell" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">query <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"100 YOM RESIDENT AT ECF FELL BACKWARDS ON THE FLOOR. DX: CERVICAL STRAIN, LUMBAR STRAIN"</span></span>
+<span id="cb4-2"></span>
+<span id="cb4-3">idx, proba, output <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> ranker.query(process_text(query), number_results<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span>)</span></code></pre></div>
+</div>
+<p>Here are the matching queries:</p>
+<div id="8da94bcb" class="cell" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1">output</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>['93 YEAR OLD FEMALE RESIDENT AT ECF LOST BALANCE AND FELL BACKWARDS ONTO THE FLOOR. DIAGNOSIS C-5 FRACTURE.',
+ '87 YEAR OLD FEMALE RESIDENT AT ECF LOST BALANCE AND FELL BACKWARDS ON THE FLOOR. DIAGNOSIS SACRAL FRACTURE.',
+ '84 YEAR OLD MALE RESIDENT AT ECF FELL ON THE FLOOR. DIAGNOSIS SUBDURAL HEMATOMA.',
+ '71 YEAR OLD MALE RESIDENT AT ECF TRIPPED AND FELL ON THE FLOOR. DIAGNOSIS NASAL BONE FRACTURE.',
+ '95 YEAR OLD FEMALE RESIDENT AT ECF FELL ON THE FLOOR. DIAGNOSIS CLOSED HEAD INJURY, LUMBAR STRAIN.']</code></pre>
+</div>
+</div>
+<p>The probability scores:</p>
+<div id="7f80386e" class="cell" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">proba</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>tensor([0.9996, 0.9996, 0.9996, 0.9995, 0.9995])</code></pre>
+</div>
+</div>
+<p>And are the matching records in the data frame:</p>
+<div id="57c1686a" class="cell" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">neis_data.iloc[idx]</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">CPSC_Case_Number</th>
+<th data-quarto-table-cell-role="th">Treatment_Date</th>
+<th data-quarto-table-cell-role="th">Age</th>
+<th data-quarto-table-cell-role="th">Sex</th>
+<th data-quarto-table-cell-role="th">Race</th>
+<th data-quarto-table-cell-role="th">Other_Race</th>
+<th data-quarto-table-cell-role="th">Hispanic</th>
+<th data-quarto-table-cell-role="th">Body_Part</th>
+<th data-quarto-table-cell-role="th">Diagnosis</th>
+<th data-quarto-table-cell-role="th">Other_Diagnosis</th>
+<th data-quarto-table-cell-role="th">...</th>
+<th data-quarto-table-cell-role="th">Fire_Involvement</th>
+<th data-quarto-table-cell-role="th">Product_1</th>
+<th data-quarto-table-cell-role="th">Product_2</th>
+<th data-quarto-table-cell-role="th">Product_3</th>
+<th data-quarto-table-cell-role="th">Alcohol</th>
+<th data-quarto-table-cell-role="th">Drug</th>
+<th data-quarto-table-cell-role="th">Narrative_1</th>
+<th data-quarto-table-cell-role="th">Stratum</th>
+<th data-quarto-table-cell-role="th">PSU</th>
+<th data-quarto-table-cell-role="th">Weight</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">47104</td>
+<td>220505213</td>
+<td>2/24/2022</td>
+<td>93</td>
+<td>2</td>
+<td>1</td>
+<td>NaN</td>
+<td>2</td>
+<td>89</td>
+<td>57</td>
+<td>NaN</td>
+<td>...</td>
+<td>0</td>
+<td>1807</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>93 YOF RESIDENT AT ECF LOST BALANCE AND FELL B...</td>
+<td>V</td>
+<td>95</td>
+<td>17.2223</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">46029</td>
+<td>220410468</td>
+<td>2/6/2022</td>
+<td>87</td>
+<td>2</td>
+<td>1</td>
+<td>NaN</td>
+<td>2</td>
+<td>79</td>
+<td>57</td>
+<td>NaN</td>
+<td>...</td>
+<td>0</td>
+<td>1807</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>87 YOF RESIDENT AT ECF LOST BALANCE AND FELL B...</td>
+<td>V</td>
+<td>95</td>
+<td>17.2223</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">22886</td>
+<td>220371574</td>
+<td>1/28/2022</td>
+<td>84</td>
+<td>1</td>
+<td>1</td>
+<td>NaN</td>
+<td>2</td>
+<td>75</td>
+<td>62</td>
+<td>NaN</td>
+<td>...</td>
+<td>0</td>
+<td>1807</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>84 YOM RESIDENT AT ECF FELL ON THE FLOOR. DX: ...</td>
+<td>V</td>
+<td>95</td>
+<td>17.2223</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">47110</td>
+<td>220505221</td>
+<td>2/24/2022</td>
+<td>71</td>
+<td>1</td>
+<td>1</td>
+<td>NaN</td>
+<td>2</td>
+<td>76</td>
+<td>57</td>
+<td>NaN</td>
+<td>...</td>
+<td>0</td>
+<td>1807</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>71 YOM RESIDENT AT ECF TRIPPED AND FELL ON THE...</td>
+<td>V</td>
+<td>95</td>
+<td>17.2223</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">46661</td>
+<td>220432778</td>
+<td>2/12/2022</td>
+<td>95</td>
+<td>2</td>
+<td>1</td>
+<td>NaN</td>
+<td>2</td>
+<td>75</td>
+<td>62</td>
+<td>NaN</td>
+<td>...</td>
+<td>0</td>
+<td>1807</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>95 YOF RESIDENT AT ECF FELL ON THE FLOOR. DX: ...</td>
+<td>V</td>
+<td>95</td>
+<td>17.2223</td>
+</tr>
+</tbody>
+</table>
+
+<p>5 rows × 25 columns</p>
+</div>
+</div>
+</div>
+</section>
+<section id="asymmetrical-queries" class="level3">
+<h3 class="anchored" data-anchor-id="asymmetrical-queries">Asymmetrical queries</h3>
+<p>Given we have done zero fine tuning on either the embedding model or the cross encoder, the results are are pretty good. However, a notable weakness of this current approach is that the model is not robust for asymmetrical queries - that is, queries which are much shorter than the optimal one in the corpus. For example, let’s say we just wanted to find a case where an elderly person fell in a bathtub. Here I just type in a manual example:</p>
+<div id="35065ca7" class="cell" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">short_query <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"80YOM SLIPPED AND FELL IN BATHTUB"</span></span>
+<span id="cb10-2"></span>
+<span id="cb10-3">_, _, output <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> ranker.query(process_text(short_query ), number_results<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span>)</span>
+<span id="cb10-4"></span>
+<span id="cb10-5">output</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>['16 YEAR OLD MALE SLIPPED AND FELL GETTING OUT OF BATHTUB. DX CONCUSSION',
+ '30 YEAR OLD MALE FELL IN BATHTUB DX; BACK CONTUSION',
+ '62 YEAR OLD MALE SLIPPED AND FELL IN THE SHOWER. DX:CERVICAL STRAIN.',
+ '61 YEAR OLD MALE SLIPPED AND FELL GETTING OUT OF SHOWER DX; R ANKLE FRACTURE',
+ '71 YEAR OLD MALE FELL IN SHOWER DX NECK PAIN']</code></pre>
+</div>
+</div>
+<p>The results here are ok (they give us cases involving slip and falls in a bathtub) but we’ll note they are similarly short to the input query. For example, here is another narrative involving an elderly fall in the bathtub, but it is ranked much lower because its length and structure are asymmetrical to the input:</p>
+<blockquote class="blockquote">
+<p>“75YOM PT HAULING FIREWOOD 3 WKS AGO; DEVELOPED BACK PAIN. 2 NIGHTS AGO SLIPPED &amp; FELL IN BATHTUB, COULDLN’T GET UP UNTIL MORNING WITH NEIGHBOR’S HELP DX: LOW BACK PAIN, SHINGLES, ELEVATED LIVER FUNCTION TESTS #”</p>
+</blockquote>
+<p>This is because the retreveal model matches close to queries with similar lengths. In the case of a true querying model, we need to map questions to positive and negative inputs. Fine-tuning the cross-encoder could help improve this, although it is a time-consuming process. What I wanted to demonstrate here is not a “true” RAG search model, but more of a semantic search and retreval model. In the latter approach the model expects to see a more context-rich example to use for document retreval.</p>
+
+
+</section>
+</section>
+
+ ]]></description>
+  <category>Python</category>
+  <category>Data Science Applications</category>
+  <guid>https://gmcirco.github.io/blog/posts/modern-bert/rank-rerank.html</guid>
+  <pubDate>Fri, 24 Jan 2025 05:00:00 GMT</pubDate>
+  <media:content url="https://gmcirco.github.io/blog/posts/modern-bert/words2.png" medium="image" type="image/png" height="95" width="144"/>
+</item>
 <item>
   <title>I Made An Election Model</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>
@@ -16479,877 +17433,6 @@ font-style: inherit;">return</span>(anom)</span>
   <guid>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</guid>
   <pubDate>Fri, 07 Apr 2023 04:00:00 GMT</pubDate>
   <media:content url="https://gmcirco.github.io/blog/posts/pca-anomaly/hospital.png" medium="image" type="image/png" height="144" width="144"/>
-</item>
-<item>
-  <title>An Alternative to Buffers for Spatial Merging</title>
-  <dc:creator>Gio Circo, Ph.D.</dc:creator>
-  <link>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</link>
-  <description><![CDATA[ 
-
-
-
-
-
-<section id="the-problem-merging-points-to-points" class="level2">
-<h2 class="anchored" data-anchor-id="the-problem-merging-points-to-points">The Problem: Merging Points to Points</h2>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(tidyverse)</span>
-<span id="cb1-2"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(lubridate)</span>
-<span id="cb1-3"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(sf)</span>
-<span id="cb1-4"></span>
-<span id="cb1-5"></span>
-<span id="cb1-6"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># DATA SOURCES AND INFO</span></span>
-<span id="cb1-7"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># -----------------------------#</span></span>
-<span id="cb1-8"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># https://data.austintexas.gov</span></span>
-<span id="cb1-9"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">#   vehicle crashes: 'Transportation-and-Mobility/Vision-Zero-Crash-Report-Data-Crash-Level-Records'</span></span>
-<span id="cb1-10"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">#   traffic cameras: 'Transportation-and-Mobility/Traffic-Cameras/'</span></span>
-<span id="cb1-11"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">#   austin council map: 'dataset/Boundaries-City-of-Austin-Council-Districts'</span></span>
-<span id="cb1-12"></span>
-<span id="cb1-13"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># Select a specific Austin Council District and year</span></span>
-<span id="cb1-14"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># see: https://maps.austintexas.gov/GIS/CouncilDistrictMap/</span></span>
-<span id="cb1-15">cnl <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span></span>
-<span id="cb1-16">yr <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2022</span></span>
-<span id="cb1-17"></span>
-<span id="cb1-18"></span>
-<span id="cb1-19"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># DATA LOADING</span></span>
-<span id="cb1-20"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># -----------------------------#</span></span>
-<span id="cb1-21"></span>
-<span id="cb1-22"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># Get Austin shapefile, pull only the district we need</span></span>
-<span id="cb1-23">austin <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_read</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"C:/Users/gioc4/Documents/blog/data/austin_city.shp"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">quiet =</span> <span class="cn" style="color: #8f5902;
-background-color: null;
-font-style: inherit;">TRUE</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-24">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_transform</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">crs =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">32614</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-25">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">filter</span>(council_di <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%in%</span> cnl)</span>
-<span id="cb1-26"></span>
-<span id="cb1-27"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># Read traffic camera data &amp; vehicle crash data</span></span>
-<span id="cb1-28"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># Limit crashes to a specific year, conver to spatial</span></span>
-<span id="cb1-29">camera <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_read</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"C:/Users/gioc4/Documents/blog/data/traffic_camera.shp"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">quiet =</span> <span class="cn" style="color: #8f5902;
-background-color: null;
-font-style: inherit;">TRUE</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-30">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">filter</span>(camera_sta <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">==</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"TURNED_ON"</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-31">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">distinct</span>(geometry, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">.keep_all =</span> <span class="cn" style="color: #8f5902;
-background-color: null;
-font-style: inherit;">TRUE</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-32">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_transform</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">crs =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">32614</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-33">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mutate</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">camera_X =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_coordinates</span>(.)[,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>],</span>
-<span id="cb1-34">         <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">camera_Y =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_coordinates</span>(.)[,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>])</span>
-<span id="cb1-35"></span>
-<span id="cb1-36">crash <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">read_csv</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">unz</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"C:/Users/gioc4/Documents/blog/data/austin_crash.zip"</span>,<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"crash_data.csv"</span>)) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-37">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mutate</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">crash_date =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">strptime</span>(crash_date, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">format=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"%m/%d/%Y %H:%M"</span>)) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-38">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">filter</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">year</span>(crash_date) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">==</span> yr)</span>
-<span id="cb1-39"></span>
-<span id="cb1-40"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># Convert crash to sf, extract coordinates</span></span>
-<span id="cb1-41">crash_sf <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> crash <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-42">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">filter</span>(<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">!</span><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">is.na</span>(latitude), <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">!</span><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">is.na</span>(longitude)) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-43">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_as_sf</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">coords =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">c</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'longitude'</span>, <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'latitude'</span>)) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-44">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_set_crs</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">4326</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-45">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_transform</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">crs =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_crs</span>(camera)) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-46">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mutate</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">crash_X =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_coordinates</span>(.)[,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>], </span>
-<span id="cb1-47">         <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">crash_Y =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_coordinates</span>(.)[,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>]) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-48">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">select</span>(crash_id, crash_date, crash_X,crash_Y)</span>
-<span id="cb1-49"></span>
-<span id="cb1-50"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># Clip to region</span></span>
-<span id="cb1-51">camera <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> camera[austin,]</span>
-<span id="cb1-52">crash_sf <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> crash_sf[austin,]</span></code></pre></div>
-</details>
-</div>
-<p>This is a bit of a mini-blog post based on a workflow that I have used based on some of my own work. A common issue in spatial analysis - and especially in criminology - is the need to analyze points that are merged to another point.</p>
-<p>In criminology we might say that assaults occurring right outside of a bar are within it’s “spatial influence”. Typically what is done is we define a “buffer” around each of the points <img src="https://latex.codecogs.com/png.latex?j"> (like bars, or gas stations) of interest and merge all of the crime incidents <img src="https://latex.codecogs.com/png.latex?i"> that are within each of the <img src="https://latex.codecogs.com/png.latex?j"> points’ buffer area. This is something I’ve done before looking at the effect of <a href="https://link.springer.com/article/10.1007/s11292-019-09404-y">CCTV cameras on crime at businesses in Detroit</a>. This is pretty common across a lot of criminology research (e.g.&nbsp;finding all crime that occurs within a 1-block radius of bars and liquor stores).</p>
-<p>While I used to use the “buffer” method, I think there is a more efficient way of doing this via <a href="https://en.wikipedia.org/wiki/Voronoi_diagram">Voronai polygons</a> which accomplishes the same goal, and allows for more flexibility in analysis. Let’s illustrate this using some data from the <a href="https://data.austintexas.gov/">city of Austin</a>. In this example we are going to look at the incidence of car crashes <img src="https://latex.codecogs.com/png.latex?i"> around traffic cameras <img src="https://latex.codecogs.com/png.latex?j">. Our goal will be to merge car crashes to the nearest traffic camera within a defined spatial range.</p>
-<p>Here’s the study area - one of the <a href="https://maps.austintexas.gov/GIS/CouncilDistrictMap/">Austin city council districts</a>, showing the traffic cameras in blue, and the location of crashes in red. In the picture below there are 58 cameras and about 1,700 car accidents. For this example we’re restricting our analysis to only accidents that occurred in 2022 and using cameras that were active (<code>TURNED_ON</code>) at the time. We can see that there are a lot of accidents, many of them quite far from a traffic camera. Let’s say we want to define a study area around each traffic camera of about 300 meters - or about 980 feet.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">ggplot</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb2-2">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_sf</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> austin, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">fill =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"#88CCEE"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">alpha =</span> .<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb2-3">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_sf</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> crash_sf, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">color =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#BB5566'</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">size =</span> .<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">alpha =</span> .<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">7</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb2-4">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_sf</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> camera, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">color =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#004488'</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">shape =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">size =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">stroke =</span> <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1.5</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb2-5">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">theme_void</span>()</span></code></pre></div>
-</details>
-<div class="cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://gmcirco.github.io/blog/posts/austin-vehicle/data:image/png;base64,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" class="img-fluid figure-img" width="672"></p>
-<figcaption>Location of car crahes (red) and traffic cameras (blue).</figcaption>
-</figure>
-</div>
-</div>
-</div>
-</section>
-<section id="spatial-merging-using-voronoi-polygons" class="level2">
-<h2 class="anchored" data-anchor-id="spatial-merging-using-voronoi-polygons">Spatial Merging using Voronoi Polygons</h2>
-<section id="voronoi-polygons" class="level3">
-<h3 class="anchored" data-anchor-id="voronoi-polygons">Voronoi Polygons</h3>
-<p><a href="https://en.wikipedia.org/wiki/Voronoi_diagram">Voronoi polygons</a>(or tessellations) are useful for a number of purposes. Given a set of points <img src="https://latex.codecogs.com/png.latex?j_n"> we define a set of <img src="https://latex.codecogs.com/png.latex?n"> regions where all spaces within each region has a single nearest neighbor of the initial point <img src="https://latex.codecogs.com/png.latex?i">. Practically speaking, this just means we sub-divide a study area into smaller areas corresponding to the proximity to a point. This has many useful properties, such as determining nearest-neighbor distances from points to points. Let’s see how we can do this in R.</p>
-<p>To start, we’ll first use a helper function to convert the Voronoi tessellation to an <code>sf</code> object that is suitable for merging. We’ll then merge the camera data to the polygon we just created (using <code>st_intersection</code>) and pull a few of the variables we’ll want for this example.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># Helper function to simplify tessellation</span></span>
-<span id="cb3-2"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># borrowed from: </span></span>
-<span id="cb3-3"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># https://gis.stackexchange.com/questions/362134</span></span>
-<span id="cb3-4">st_voronoi_point <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">function</span>(points){</span>
-<span id="cb3-5">  <span class="do" style="color: #5E5E5E;
-background-color: null;
-font-style: italic;">## points must be POINT geometry</span></span>
-<span id="cb3-6">  <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># check for point geometry and execute if true</span></span>
-<span id="cb3-7">  <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">if</span>(<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">!</span><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">all</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_geometry_type</span>(points) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">==</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"POINT"</span>)){</span>
-<span id="cb3-8">    <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">stop</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Input not  POINT geometries"</span>)</span>
-<span id="cb3-9">  }</span>
-<span id="cb3-10">  g <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_combine</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_geometry</span>(points)) <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># make multipoint</span></span>
-<span id="cb3-11">  v <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_voronoi</span>(g)</span>
-<span id="cb3-12">  v <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_collection_extract</span>(v)</span>
-<span id="cb3-13">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">return</span>(v[<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">unlist</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_intersects</span>(points, v))])</span>
-<span id="cb3-14">}</span>
-<span id="cb3-15"></span>
-<span id="cb3-16"></span>
-<span id="cb3-17"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># create Voronoi tessellation over cameras</span></span>
-<span id="cb3-18">camera_poly <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_voronoi_point</span>(camera) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb3-19">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_intersection</span>(austin) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb3-20">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_as_sf</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb3-21">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mutate</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">camera_id =</span> camera<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>camera_id,</span>
-<span id="cb3-22">         <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">camera_X =</span> camera<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>camera_X,</span>
-<span id="cb3-23">         <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">camera_Y =</span> camera<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>camera_Y)</span></code></pre></div>
-</details>
-</div>
-<p>Now we can plot the result. Below we see we now have a defined set of regions corresponding to the areas nearest to each camera. Therefore, any crashes that occur in one of the Voronoi polygons is also its nearest camera. This saves us the step of determining which point is its nearest neighbor.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">ggplot</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb4-2">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_sf</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> camera_poly, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">fill =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"#88CCEE"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">alpha =</span> .<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb4-3">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_sf</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> camera, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">color =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#004488'</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">shape =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">size =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">stroke =</span> <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1.5</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb4-4">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">theme_void</span>()</span></code></pre></div>
-</details>
-<div class="cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://gmcirco.github.io/blog/posts/austin-vehicle/data:image/png;base64,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" class="img-fluid figure-img" width="672"></p>
-<figcaption>All spaces within each Voronoi polygon are a nearest neighbor to a camera.</figcaption>
-</figure>
-</div>
-</div>
-</div>
-</section>
-<section id="spatial-merging" class="level3">
-<h3 class="anchored" data-anchor-id="spatial-merging">Spatial Merging</h3>
-<p>After we’ve created the Voronoi regions, all we need to do is merge each point to the region it falls within (which implies the camera there is its nearest neighbor) and then compute the euclidean distance from the crash to the camera. The code below uses a for-loop to get the pairwise distances after spatial joining and then limits the output to only crashes that are within 300 feet of the nearest camera.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># JOIN AND MERGE</span></span>
-<span id="cb5-2"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># ----------------------- #</span></span>
-<span id="cb5-3"></span>
-<span id="cb5-4"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># compute euclidean distance</span></span>
-<span id="cb5-5">edist <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">function</span>(a,b){</span>
-<span id="cb5-6">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">sqrt</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">sum</span>((a <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span> b) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">^</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>))</span>
-<span id="cb5-7">}</span>
-<span id="cb5-8"></span>
-<span id="cb5-9"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># get x-y coords for crashes and cameras</span></span>
-<span id="cb5-10"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># convert to matrix</span></span>
-<span id="cb5-11">camera_crash <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span>  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_join</span>(crash_sf,camera_poly) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb5-12">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">tibble</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb5-13">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">select</span>(camera_id, </span>
-<span id="cb5-14">         crash_id, </span>
-<span id="cb5-15">         camera_X, </span>
-<span id="cb5-16">         camera_Y, </span>
-<span id="cb5-17">         crash_X, </span>
-<span id="cb5-18">         crash_Y)</span>
-<span id="cb5-19"></span>
-<span id="cb5-20">dmat <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">matrix</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">c</span>(camera_crash<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>camera_X, </span>
-<span id="cb5-21">                 camera_crash<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>camera_Y, </span>
-<span id="cb5-22">                 camera_crash<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>crash_X, </span>
-<span id="cb5-23">                 camera_crash<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>crash_Y),</span>
-<span id="cb5-24">               <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">ncol =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">4</span>)</span>
-<span id="cb5-25"></span>
-<span id="cb5-26"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># compute pairwise distances</span></span>
-<span id="cb5-27">dlist <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">list</span>()</span>
-<span id="cb5-28"><span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">for</span>(i <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">in</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">nrow</span>(dmat)){</span>
-<span id="cb5-29">  dlist[[i]] <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">edist</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">c</span>(dmat[i,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>], dmat[i,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>]), <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">c</span>(dmat[i,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>], dmat[i,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">4</span>]))</span>
-<span id="cb5-30">}</span>
-<span id="cb5-31"></span>
-<span id="cb5-32">camera_crash<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>dist <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">unlist</span>(dlist)</span>
-<span id="cb5-33"></span>
-<span id="cb5-34"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># get ids of within 300 meters</span></span>
-<span id="cb5-35">dist_ids <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> camera_crash<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>dist <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">&lt;=</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">300</span></span></code></pre></div>
-</details>
-</div>
-<p>Now we can plot the results. As we see below we now only have crashes that are within 300 feet or less of the nearest camera. One advantage of this approach is that we can make any adjustments to the spatial region we’re interested in by just adjusting the filter above - or we can use the full range of distances in our analysis and look at decay effects (for example, <a href="https://scholar.google.com/citations?view_op=view_citation&amp;hl=en&amp;user=iNNqtgwAAAAJ&amp;sortby=pubdate&amp;citation_for_view=iNNqtgwAAAAJ:u9iWguZQMMsC">the effect of CCTV cameras on crime clearance</a>).</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">ggplot</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb6-2">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_sf</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> austin, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">fill =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"#88CCEE"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">alpha =</span> .<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb6-3">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_sf</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> crash_sf[dist_ids,], <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">color =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#BB5566'</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">size =</span> .<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">alpha =</span> .<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">7</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb6-4">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_sf</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> camera, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">color =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#004488'</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">shape =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">size =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">stroke =</span> <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1.5</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb6-5">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">theme_void</span>()</span></code></pre></div>
-</details>
-<div class="cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://gmcirco.github.io/blog/posts/austin-vehicle/data:image/png;base64,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" class="img-fluid figure-img" width="672"></p>
-<figcaption>Car crashes within 300 meters of a traffic camera.</figcaption>
-</figure>
-</div>
-</div>
-</div>
-<p>With this done, we can do any kind of further investigation. For example, which camera observed the greatest number of crashes? Here, the <a href="https://www.google.com/maps/@30.2223206,-97.7642414,3a,75y,38.43h,90.9t/data=!3m7!1e1!3m5!1sPdg-JEd0YMaRskJc47n1gw!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fpanoid%3DPdg-JEd0YMaRskJc47n1gw%26cb_client%3Dmaps_sv.tactile.gps%26w%3D203%26h%3D100%26yaw%3D29.381115%26pitch%3D0%26thumbfov%3D100!7i16384!8i8192">top-ranked camera</a> is at a 4-way intersection leading to the highway. Also, due to its proximity to the highway, it’s very likely that our distance size (300 meters, or about 900 feet) is picking up accidents that are occurring on the highway below. Of course, this is just a demonstration of method of spatial merging, <em>not</em> an investigation into traffic accidents in Austin!</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1">camera_crash <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb7-2">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">filter</span>(crash_id <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%in%</span> crash_sf[dist_ids,]<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>crash_id) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb7-3">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">count</span>(camera_id) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb7-4">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">arrange</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">desc</span>(n)) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb7-5">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">slice</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>)</span></code></pre></div>
-</details>
-<div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 5 × 2
-  camera_id     n
-  &lt;chr&gt;     &lt;int&gt;
-1 919          72
-2 674          59
-3 948          46
-4 155          44
-5 962          35</code></pre>
-</div>
-</div>
-</section>
-</section>
-<section id="summary" class="level2">
-<h2 class="anchored" data-anchor-id="summary">Summary</h2>
-<p>This little mini-blog highlighted some approaches that can be taken to perform a relatively common spatial procedure. Using Voronoi polygons we looked at how we can use them to easily calculate nearest-neighbor distances. These types of spatial approaches aren’t necessarily the sexiest topics, but I find they often help considerably with modelling pipelines down the road. Sometimes have a good foundation can help with further analysis later.</p>
-<section id="an-aside-an-even-easier-method" class="level3">
-<h3 class="anchored" data-anchor-id="an-aside-an-even-easier-method">An Aside: An even (easier) method?</h3>
-<p>Of course, another method is to simply use the a convenient function embedded in the <code>sf</code> library aptly named <code>st_nearest_feature()</code>. This takes two <code>sf</code> objects and returns the indexes of <img src="https://latex.codecogs.com/png.latex?y"> that are nearest to <img src="https://latex.codecogs.com/png.latex?x">. While the solution here is equivalent to the one above, it might not necessarily be available in your given software package. Also, while I have no testing to support this, I expect that this would likely be slow in case of many pairwise distances. The presence of the polygons helps avoid the unnecessary computation of distances between points that are not nearest neighbors.</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># get index of cameras nearest to each point</span></span>
-<span id="cb9-2">idx <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_nearest_feature</span>(crash_sf, camera)</span>
-<span id="cb9-3">id_dist <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">st_distance</span>(camera[idx,], crash_sf, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">by_element =</span> <span class="cn" style="color: #8f5902;
-background-color: null;
-font-style: inherit;">TRUE</span>)</span>
-<span id="cb9-4"></span>
-<span id="cb9-5">id_dist[<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>]</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Units: [m]
-         1          2          3          4          5 
-  49.88593 1202.17589  784.61324 1412.67832  282.73844 </code></pre>
-</div>
-</div>
-
-
-</section>
-</section>
-
- ]]></description>
-  <category>R</category>
-  <category>Spatial Statistics</category>
-  <guid>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</guid>
-  <pubDate>Mon, 20 Mar 2023 04:00:00 GMT</pubDate>
-  <media:content url="https://gmcirco.github.io/blog/posts/austin-vehicle/car.png" medium="image" type="image/png" height="144" width="144"/>
 </item>
 </channel>
 </rss>
