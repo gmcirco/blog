@@ -28,7 +28,7 @@ The logic behind the "[retrieve and rerank](https://direct.mit.edu/tacl/article/
 
 The bi-encoder model (the "retrieve" part) creates seperate embeddings of the input query and corpus text and looks for the closest match based on the vector space. This is often done by finding the nearest cosine similarity. The retreval step is typically quite fast, with the trade-off that some information is lost because the query and search corpus are embedded seperately.
 
-On the flip side, a cross encoder embeds the search query and corpus together. The major advantage of this, is that the cross-encoder uses cross-attention to create the similarity score, which pools information about the both inputs directly. However, the major trade off is that this requires the search query to be embedded with every query-corpus pair. In a very large dataset, this might create millions of pairs and is can be potentially very slow.
+On the flip side, a cross encoder embeds the search query and corpus together. The major advantage of this, is that the cross-encoder uses cross-attention to create the similarity score, which pools information about the both inputs directly. However, the major trade off is that this requires the search query to be embedded with every query-corpus pair. In a very large dataset with potentially millions of pairs this will scale very poorly time-wise.
 
 #### Bi-encoder
 
@@ -54,7 +54,7 @@ flowchart LR
   E["0...1"]
 ```
 
-Therefore, it makes sense to use both of these methods in tandem. We can quickly retrieve the top 100 or so records using the bi-encoder, then re-rank the retrieved records using the bi-encoder. This way we limit the number of paired records we have to run through it. 
+Therefore, it makes sense to use both of these methods in tandem, relying on their individual strengths. We can quickly retrieve the top 100 or so records using the bi-encoder, then re-rank the retrieved records using the bi-encoder. This way we limit the number of paired records we have to run through the cross-encoder. 
 
 To do this in Python I create a `RetrieveReranker` class. The class is initialized with a bi-encoder and cross-encoder model, and a corpus of text to serve as the searchable data base. Most of the important work is handled by the `query` function, which takes an input query string, creates an embedding, then retrieves the 100 most similar documents based on cosine similarity. These 100 records are then passed to the bi-encoder which re-ranks them and returns the most similar ones.
 
@@ -147,11 +147,11 @@ class RetrieveReranker:
 
 ## Creating A Records Retrieval Model
 
-Now that we have our class defined, we can import it below and utilize it. In order for it to work we need to pass in both a bi-encoder and a cross-encoder model. Recall, the bi-encoder will do the first pass to get the $N$ most similar records, then pass these to the cross-encoder. Hence, the "retrieve and rerank" method. Below, we use [ModernBERT](https://huggingface.co/docs/transformers/main/en/model_doc/modernbert) in tandem with a [SentenceTransformers](https://www.sbert.net/) model to do the embedding and first pass as the bi-encoder, and a [MS Macro](https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-12-v2) model as the cross encoder. 
+Now that we have our class defined, we can import it below and utilize it. In order for it to work we need to pass in both a bi-encoder and a cross-encoder model. Recall, the bi-encoder will do the first pass to get the $N$ most similar records, then pass these to the cross-encoder - hence, "retrieve and rerank". Below, we use [ModernBERT](https://huggingface.co/docs/transformers/main/en/model_doc/modernbert) in tandem with a [SentenceTransformers](https://www.sbert.net/) model to do the embedding and first pass as the bi-encoder, and a [MS Macro](https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-12-v2) model as the cross-encoder. 
 
-Now, ideally we would fine-tune the cross-encoder model so that input queries would more closely match the medical narratives. This would have the added benefit of improvement performance for asymmeterical queries (e.g. providing a short query to retrieve a much longer text). But right now we can rely on out-of-the box performance as a demonstration.
+Now, ideally we would fine-tune the cross-encoder model so that input queries would more closely match the medical narratives. This would have the added benefit of improving performance for asymmeterical queries (e.g. providing a short query to retrieve a much longer text). But right now we can rely on out-of-the box performance as a demonstration.
 
-Our corpus is relatively small. We take a sample of 50,000 records from the [2022 NEISS](https://www.cpsc.gov/cgibin/NEISSQuery/home.aspx) dataset and use some local functions to clean up the NEISS text entries a bit before we pass them into the model. From these narratives we pass them through a SentenceTransformer model using ModernBert to embed them as a 50000x768 dimension array. Essentially this a fancy method of data compression, where we extract and store semantic meaning from the narratives as a vector of numeric values.
+Our corpus is relatively small. We take a sample of 50,000 records from the [2022 NEISS](https://www.cpsc.gov/cgibin/NEISSQuery/home.aspx) dataset and use some local functions to clean up the NEISS text entries a bit before we pass them into the model. From these narratives we pass them through a SentenceTransformer model using ModernBERT to create a 50000x768 embedding. Essentially this a fancy method of data compression, where we extract and store semantic meaning from the narratives as a vector of numeric values.
 
 ```{python}
 #| code-fold: true
@@ -213,7 +213,7 @@ def process_text(txt):
     return re.sub(r"^\s+", "", txt)
 ```
 
-Now that we're ready, we can encode the corpus using the pre-defined models by passing it all into our `RetrieveReranker` class. Passing the corpus_path argument allows us to save the embeddings as a pickle file and reload it when it exists so we don't have to go through the very time consuming process of re-embedding the corpus each time we do this. Without using a GPU embedding 50,000 narratives takes around 30-40 minutes.
+Now that we're ready, we can encode the corpus using the pre-defined models by passing it all into our `RetrieveReranker` class. Passing the `corpus_path` argument allows us to save the embeddings as a pickle file and reload it when it exists. This is so we don't have to go through the very time consuming process of re-embedding the corpus each time we do this. Without using a GPU embedding 50,000 narratives takes around 30-40 minutes.
 
 ```{python}
 #| message: false
@@ -240,11 +240,11 @@ ranker = RetrieveReranker(
 
 ### Retreiving similar records
 
-After that has processed we're ready to query our corpus with an example text string. Let's imagine we had a case involving an elderly fall at an elderly care facility (ECF) and we wanted to find 5 similar cases based on information provided in the narrative:
+After that has processed we're ready to query our corpus with an example text string. Let's imagine we had a case involving a fall at an elderly care facility (ECF) and we wanted to find 5 similar cases based on information provided in the narrative:
 
 > "100 YOM RESIDENT AT ECF FELL BACKWARDS ON THE FLOOR. DX: CERVICAL STRAIN, LUMBAR STRAIN"
 
-We directly pass this query into our fitted `RetrieveReranker` and specify the number of results we want. We get indices and matching strings as output.
+We directly pass this query into our fitted `RetrieveReranker` and specify the number of results we want. We get indices, match probability scores, and matching strings as output.
 
 ```{python}
 query = "100 YOM RESIDENT AT ECF FELL BACKWARDS ON THE FLOOR. DX: CERVICAL STRAIN, LUMBAR STRAIN"
@@ -264,7 +264,7 @@ The probability scores:
 proba
 ```
 
-And are the matching records in the data frame:
+And the matching records in the data frame:
 
 ```{python}
 neis_data.iloc[idx]
