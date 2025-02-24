@@ -1,0 +1,257 @@
+---
+title: "An A/B Testing Approach to Prompt Refinement"
+subtitle: ""
+author: Gio Circo, Ph.D.
+date: 2025-2-24
+categories:
+  - Python
+  - Data Science Applications
+format: 
+    html:
+        self-contained: true
+        code-fold: false
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+        mermaid:
+            theme: neutral
+theme: flatly
+image: words2.png
+---
+
+```{r}
+#| include: false
+
+library(tidyverse)
+library(knitr)
+results <- read_csv("results.csv")
+
+```
+
+## What's up with Prompts?
+
+I am still a relative novice to the use of LLMs for complex real-world tasks and not simple things like asking ChatGPT to summarize or write an email. Then again, given how new LLMs are, I am not sure how many people who claim to be "experts" are true bona-fide experts. Regardless, in my work I've been increasingly asked to use LLMs to automate the processing of large volumes of free-form text and extract structured output. Luckily, this is one task that LLMs are actually well-suited for (unlike many of the very silly attempts to plug it in where it is not very useful).
+
+In my testing and ongoing work, I have learned is that LLMs are often *very* sensitive to the prompt they are given. It can be a matter of wording, structure, or even where the prompt is [placed relative to the input](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips). Anthropic even has some interesting suggestions, like structuring long documents with XML tagging to block off important sections. Outside of some of these more esoteric suggestions, common good practice for creating LLM prompts generally follows these rules:
+
+1.  Be *extremely* specific
+2.  Spell out tasks using bullets or numbered points
+3.  Provide examples
+
+This could be as simple as the difference between:
+
+> "Summarize this legal document"
+
+or
+
+> "Summarize this housing contract in 3 to 5 sentences. Include a section with numbered bullet points for the costs."
+
+One gives much more latitude to the LLM to do whatever it thinks is right, compared to the other which has structure and key instructions. Generally you will get better results the less you let the LLM fill in the blanks on its own.
+
+## Setting up a testing framework
+
+With that in mind, let's talk a bit about how I think about prompting.
+
+### My "mental model"
+
+When I think of a prompt, I tend to conceptualize it as containing a few key pieces:
+
+1.  A **role** which defines the key tasks of the LLM and provides it some structure to its intended job.
+2.  A **header** which contains some initial instructions guiding the next steps in the prompt.
+3.  A **body** which has the bulk of the instructions, text, and other materials that make up the primary tasks of the prompt.
+4.  An **example** of what the intended output is supposed to look like. In a structured text extraction task, this would be the format of the JSON or other file I want created.
+5.  An optional **footer** that contains some final instructions. Often times I have found these useful to provide a list of things I definitively do NOT want the LLM to do.
+
+These can be swapped around and have pieces added or removed - but its a mental model I find useful
+
+### A python framework
+
+Using python I set up a class to help test prompts in a somewhat quicker fashion. My goal here is to have the ability to test many different prompts, in different configurations, without having to manually copy-and-paste these examples and store them. To accomplish this, I first built out a small prompt creation class:
+
+```{python}
+#| eval: false
+#| code-fold: true
+
+from itertools import product
+
+class Prompt:
+    def __init__(self):
+        pass
+
+    def prompt_concat(self, text_list):
+        """Concat a list of text, dropping None values"""
+        output_text = "\n"  .join(filter(None, text_list))
+        output_text += "\n"
+
+        return output_text
+
+    def standard_prompt(
+        self,
+        header: str | list = None,
+        narrative: str | list = None,
+        body: str | list = None,
+        example_output: str | list = None,
+        footer: str | list = None,
+        **kwargs
+    ) -> list:
+        """Create multiple standard prompts based on all combinations of list elements."""
+        
+        # Ensure all inputs are lists for consistent iteration
+        params = [header, narrative, body, example_output, footer]
+        param_lists = [[item] if not isinstance(item, list) else item for item in params]
+        
+        # unpack params, then pass to concat
+        prompt_combinations = product(*param_lists)
+        prompts = [self.prompt_concat(combination) for combination in prompt_combinations]
+        
+        return prompts
+    
+    def standard_prompt_caching(self,
+        header: str | list = None,
+        narrative: str | list = None,
+        body: str | list = None,
+        example_output: str | list = None,
+        footer: str | list = None,
+        **kwargs
+    ) -> list:
+        """Create multiple standard prompts based on all combinations of list elements.
+        This puts the narrative at the end to support OpenAI prompt caching.
+        """
+        
+        # Ensure all inputs are lists for consistent iteration
+        params = [body, example_output, footer, header, narrative]
+        param_lists = [[item] if not isinstance(item, list) else item for item in params]
+        
+        # unpack params, then pass to concat
+        prompt_combinations = product(*param_lists)
+        prompts = [self.prompt_concat(combination) for combination in prompt_combinations]
+        
+        return prompts
+    
+    def unstructured_prompt(self, prompt_text_list: list[str])-> str:
+        """Create an unstructured prompt, given a list of text"""
+        return self.prompt_concat([prompt_text_list])
+```
+
+All this class really does is take text strings and pastes them together using my mental framework. The trick here is that you can pass in a list for any of the parameters, and then we use `itertools.product()` to create all the possible combinations. For example, passing in 2 versions of a header, body, and example would give you $2^3=8$ different combinations of the prompts. Also, here I add a "narrative" field which will serve as the input text for each text narrative we will be extracting data from.
+
+## Classifying Youth Suicide Narratives
+
+The example problem here is based on a competition that was hosted by the CDC last year on [DrivenData](https://www.drivendata.org/competitions/295/cdc-automated-abstraction/). The stated goal of the contest was to create structured information from free-text narratives derived from police and medical examiner reports. The free text reports look something like this simulated example below:
+
+*[Simulated Example]*
+
+> V was a YYYY. V was discovered deceased at home from a self-inflicted gunshot wound to the head. No medical history was documented in the report. According to V's close friend and coworker, V had struggled with periods of severe anxiety but had never spoken about self-harm. V's friend mentioned that several years ago, V had driven recklessly after a personal loss, but it was unclear whether it was an intentional act. On the night of the incident, V had been drinking and sent a message to a relative expressing regret and affection for them and other family members. Toxicology results confirmed the presence of alcohol. No additional details regarding the event were available.
+
+The contest required taking the short narratives and extracting 24 different variables based on definitions from the [national violent death reporting system](https://www.cdc.gov/nvdrs/resources/nvdrscodingmanual.pdf?CDC_AAref_Val=https://www.cdc.gov/violenceprevention/pdf/nvdrs/nvdrsCodingManual.pdf). Most of these are [binary indicators](https://www.drivendata.org/competitions/295/cdc-automated-abstraction/page/917/) about specific behaviors observed in the narrative. Therefore, we need to create a prompt that will instruct our LLM to read the narratives, extract features based on the rules for each of the 24 features, then return the output back to us in a format that we can use for scoring.
+
+
+### Prompt creation
+
+### Running through ChatGPT
+
+To complete this, I take a sample of 200 cases from the 4000 original narratives, and oversample from rare categories to ensure I have at least a few examples for each category. Using these 200 cases, I want to test the 4 different prompt types by running them through ChatGPT. Most of the work is handled using the code below, where I take each sample narrative, construct 4 prompts, then append them to a json request. All 200 examples are put into a jsonlist object, then bulk run in a batch using the OpenAI API. I use one of the cheaper models here, `4.0 mini`, which is probably fine for testing. I should also note that tokens are *cheap*. In a batch run with 1.7 million tokens, I paid 13 cents for the input tokens and 6 cents for the output tokens. 
+
+One important note - I specify the output must come in the form of a json object by adding `"response_format": { "type": "json_object" }`. This is ChatGPT's "json mode", which is quite handy for this. Oftentimes the LLM might hallucinate an output that is not a json object.
+
+```{python}
+#| code-fold: false
+#| eval: false
+
+for row in narratives.iterrows():
+
+    # grab the unique id and text
+    single_narrative = row[1]
+    id = single_narrative["uid"]
+    txt = single_narrative["NarrativeLE"]
+
+    prompt_input = {
+        "header": HEADER1,
+        "narrative": txt,
+        "body": [BODY1, BODY2],
+        "example_output": [EXAMPLE_OUTPUT1, EXAMPLE_OUTPUT2],
+        "footer": None,
+    }
+
+    # create a prompt, pass in the text narrative
+    prompt_versions = prompt_creator.standard_prompt_caching(**prompt_input)
+
+    version_num = 0
+    for prompt in prompt_versions:
+        # now append to list
+        json_list.append(
+            {
+                "custom_id": f"{id}_{version_num}",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {"role": "system", "content": ROLE},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "max_tokens": 500,
+                    "response_format": { "type": "json_object" },
+                },
+            }
+        )
+        version_num += 1
+```
+
+It takes about an hour to run using the cheapest batch service. We can then download the output jsons and parse our results!
+
+## Results
+
+Looking at the results, we see that relative to the baseline prompt (model 0) adding descriptions and adding examples had a positive impact on both the f1 score and accuracy in the aggregate. The model with the highest score was the one with both detailed variable descriptions and 3 scored examples. Overall, all of the models did pretty well given how little tweaking I did. The more interesting question is looking at how much quality really was impacted by different prompting styles.
+
+| Prompt Version                         | F1 Score | Accuracy |
+|----------------------------------------|---------:|---------:|
+| 0: Baseline                            | 0.763    | 0.824    |
+| 1: Add 3 few-shot examples             | 0.775    | 0.832    |
+| 2: Add more descriptions to features   | 0.778    | 0.837    |
+| 3: Add few-shot and more descriptions  | 0.781    | 0.839    |
+
+Remember analysis of variance from your stats 101 course? We can actually use it here to see if there if there is non-zero variation in f1 score attributble to a change in prompts, relative to the variation in question type. Looking below, we see unsurprisingly almost all the variation is explainable by the question type (meaning that differences in f1 scores are mostly based on the question type).
+
+```{r}
+#| code-fold: true
+res <- with(results, aov(f1score ~ as.factor(model_ver) + as.factor(feature)))
+broom::tidy(res) %>% kable(digits=3)
+```
+
+If we break this down by question type and plot them out, the results are a bit clearer. Below I have the questions ordered based on their variance in f1 scores, so that questions that changed more often based on the prompt are nearer the top. Interestingly, a few questions see a large improvement from the baseline prompt to the more advanced one. `DepressedMood` has an f1 score of .5 on the original prompt, which increases to about .67 on the final prompt. We see similar results with `SchoolProblem`, `FamilyRelationship`, and `Argument` as well. Questions that were already doing quite good see virtually no change - like `WeaponType1`. The LLM has a very easy time identifying the weapon, because it is almost always clearly disclosed in the narrative (and is very often a firearm).
+
+```{r}
+#| code-fold: true
+#| echo: false
+#| warning: false
+
+
+# get variance for each set of questions
+tbl_change <- results %>%
+  group_by(feature) %>%
+  summarise(var = var(f1score))
+
+# plot
+results %>%
+  left_join(tbl_change) %>%
+  mutate(`Model Version` = as.factor(model_ver),
+         feature = fct_reorder(feature, var)) %>%
+  ggplot() +
+  geom_point(aes(
+    x = feature,
+    y = f1score,
+    shape = `Model Version`,
+    color = `Model Version`
+  ),
+  size = 2.5) +
+  labs(y = "Weighted F1 Score") +
+  scale_color_manual(values = c('#EE7733', '#0077BB', '#33BBEE', '#EE3377')) +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.direction = "horizontal",
+        axis.title.y = element_blank(),
+        axis.text = element_text(size = 10, color = 'black'))
+```
