@@ -17,7 +17,7 @@ format:
         mermaid:
             theme: neutral
 theme: flatly
-image: words2.png
+image: prompt-testing.png
 ---
 
 ```{r}
@@ -29,11 +29,13 @@ results <- read_csv("results.csv")
 
 ```
 
+*There are synthesized depictions of self-harm and suicide in this blog post.*
+
 ## What's up with Prompts?
 
-I am still a relative novice to the use of LLMs for complex real-world tasks and not simple things like asking ChatGPT to summarize or write an email. Then again, given how new LLMs are, I am not sure how many people who claim to be "experts" are true bona-fide experts. Regardless, in my work I've been increasingly asked to use LLMs to automate the processing of large volumes of free-form text and extract structured output. Luckily, this is one task that LLMs are actually well-suited for (unlike many of the very silly attempts to plug it in where it is not very useful).
+I am still a relative novice to large-language models (LLMs) when it comes to non-trivial tasks (like asking ChatGPT to summarize an email). Applying these models for complex real-world tasks is not nearly as simple. In fact, I think applying LLMs to solve business-problems is still new enough that I am not sure how many people can claim bonda-fide expertise here. Regardless, in my work I've been increasingly asked to use LLMs to automate the processing of large volumes of free-form text and extract structured output. Luckily, this is one task that LLMs are actually well-suited for, unlike many of the very silly attempts to plug it in where it is clearly *not* useful.
 
-In my testing and ongoing work, I have learned is that LLMs are often *very* sensitive to the prompt they are given. It can be a matter of wording, structure, or even where the prompt is [placed relative to the input](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips). Anthropic even has some interesting suggestions, like structuring long documents with XML tagging to block off important sections. Outside of some of these more esoteric suggestions, common good practice for creating LLM prompts generally follows these rules:
+In my ongoing work, I have learned a few things. One of the biggest is that LLMs are *very* sensitive to the prompt they are given. Often, it can be a matter of wording, question structure, or even where the prompt is [placed relative to the input](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips). A few of the LLM companies, like Anthropic, even have some interesting suggestions: like structuring long documents with XML tagging to block off important sections. Outside of some of these more esoteric suggestions, I've found that common good practice for creating LLM prompts generally follows these rules:
 
 1.  Be *extremely* specific
 2.  Spell out tasks using bullets or numbered points
@@ -53,21 +55,19 @@ One gives much more latitude to the LLM to do whatever it thinks is right, compa
 
 With that in mind, let's talk a bit about how I think about prompting.
 
-### My "mental model"
+### My "mental model" of prompting
 
 When I think of a prompt, I tend to conceptualize it as containing a few key pieces:
 
 1.  A **role** which defines the key tasks of the LLM and provides it some structure to its intended job.
 2.  A **header** which contains some initial instructions guiding the next steps in the prompt.
 3.  A **body** which has the bulk of the instructions, text, and other materials that make up the primary tasks of the prompt.
-4.  An **example** of what the intended output is supposed to look like. In a structured text extraction task, this would be the format of the JSON or other file I want created.
+4.  An **example** of what the intended output is supposed to look like. In a structured text extraction task, this would be the format of the json or other file I want created.
 5.  An optional **footer** that contains some final instructions. Often times I have found these useful to provide a list of things I definitively do NOT want the LLM to do.
-
-These can be swapped around and have pieces added or removed - but its a mental model I find useful
 
 ### A python framework
 
-Using python I set up a class to help test prompts in a somewhat quicker fashion. My goal here is to have the ability to test many different prompts, in different configurations, without having to manually copy-and-paste these examples and store them. To accomplish this, I first built out a small prompt creation class:
+Applying this to an automated workflow in python can be pretty easily actually. Since we're just working with text prompts, all I need to do is create a system that concats all the necessary pieces together in a way that creates a full prompt. Below I set up a class to help test multiple prompt versions in a somewhat quicker fashion than creating each one individually. My goal here is to have the ability to test many different prompts, in different configurations, without having to manually copy-and-paste these examples and store them. To accomplish this, I first built out a small prompt creation class:
 
 ```{python}
 #| eval: false
@@ -138,7 +138,7 @@ All this class really does is take text strings and pastes them together using m
 
 ## Classifying Youth Suicide Narratives
 
-The example problem here is based on a competition that was hosted by the CDC last year on [DrivenData](https://www.drivendata.org/competitions/295/cdc-automated-abstraction/). The stated goal of the contest was to create structured information from free-text narratives derived from police and medical examiner reports. The free text reports look something like this simulated example below:
+The example problem here is based on a competition that was hosted by the CDC last year on [DrivenData](https://www.drivendata.org/competitions/295/cdc-automated-abstraction/). The stated goal of the contest was to extract structured information from free-text narratives derived from police and medical examiner reports. The free text reports look something like this simulated example below:
 
 *[Simulated Example]*
 
@@ -149,11 +149,162 @@ The contest required taking the short narratives and extracting 24 different var
 
 ### Prompt creation
 
+As a demonstration of what this testing can look like, my idea is to run 4 different prompt versions using a sample of narratives and evaluate whether we can observe any improvement in performance based solely on the prompt. As a default the body and example output of my primary prompt looks like this:
+
+```{python}
+#| eval: false
+
+BODY1 = """
+INSTRUCTIONS:
+    Closely follow these instructions:
+        - For each variable below return a 0 for 'no' and a 1 for 'yes' unless otherwise stated.
+        - If more than two answers are available, return ONE of the numbered values.
+        - Rely ONLY on information available in the narrative. Do NOT extrapolate.
+        - Return a properly formatted json object where the keys are the variables and the values are the numeric labels.
+        - Do NOT return anything other than the label. Do NOT include any discussion or commentary.
+
+VARIABLES:   
+    DepressedMood: The person was perceived to be depressed at the time
+    MentalIllnessTreatmentCurrnt: Currently in treatment for a mental health or substance abuse problem
+    HistoryMentalIllnessTreatmnt: History of ever being treated for a mental health or substance abuse problem
+    SuicideAttemptHistory: History of attempting suicide previously
+    SuicideThoughtHistory: History of suicidal thoughts or plans
+    SubstanceAbuseProblem: The person struggled with a substance abuse problem. This combines AlcoholProblem and SubstanceAbuseOther from the coding manual
+    MentalHealthProblem: The person had a mental health condition at the time
+    DiagnosisAnxiety: The person had a medical diagnosis of anxiety
+    DiagnosisDepressionDysthymia: The person had a medical diagnosis of depression
+    DiagnosisBipolar: The person had a medical diagnosis of bipolar
+    DiagnosisAdhd: The person had a medical diagnosis of ADHD
+    IntimatePartnerProblem: Problems with a current or former intimate partner appear to have contributed
+    FamilyRelationship: Relationship problems with a family member (other than an intimate partner) appear to have contributed
+    Argument: An argument or conflict appears to have contributed
+    SchoolProblem: Problems at or related to school appear to have contributed
+    RecentCriminalLegalProblem: Criminal legal problem(s) appear to have contributed
+    SuicideNote: The person left a suicide note
+    SuicideIntentDisclosed: The person disclosed their thoughts and/or plans to die by suicide to someone else within the last month
+    DisclosedToIntimatePartner: Intent was disclosed to a previous or current intimate partner
+    DisclosedToOtherFamilyMember: Intent was disclosed to another family member
+    DisclosedToFriend: Intent was disclosed to a friend
+    InjuryLocationType: The type of place where the suicide took place.
+        - 1: House, apartment
+        - 2: Motor vehicle (excluding school bus and public transportation)
+        - 3: Natural area (e.g., field, river, beaches, woods)
+        - 4: Park, playground, public use area
+        - 5: Street/road, sidewalk, alley
+        - 6: Other
+    WeaponType1: Type of weapon used 
+        - 1: Blunt instrument
+        - 2: Drowning
+        - 3: Fall
+        - 4: Fire or burns
+        - 5: Firearm
+        - 6: Hanging, strangulation, suffocation
+        - 7: Motor vehicle including buses, motorcycles
+        - 8: Other transport vehicle, eg, trains, planes, boats
+        - 9: Poisoning
+        - 10: Sharp instrument
+        - 11: Other (e.g. taser, electrocution, nail gun)
+        - 12: Unknown
+"""
+
+EXAMPLE_OUTPUT1 = """
+EXAMPLE OUTPUT:
+{
+    "DepressedMood": 1,
+    "MentalIllnessTreatmentCurrnt": 0,
+    "HistoryMentalIllnessTreatmnt": 0,
+    "SuicideAttemptHistory": 0,
+    "SuicideThoughtHistory": 0,
+    "SubstanceAbuseProblem": 1,
+    "MentalHealthProblem": 0,
+    "DiagnosisAnxiety": 0,
+    "DiagnosisDepressionDysthymia": 0,
+    "DiagnosisBipolar": 0,
+    "DiagnosisAdhd": 1,
+    "IntimatePartnerProblem": 0,
+    "FamilyRelationship": 0,
+    "Argument": 1,
+    "SchoolProblem": 1,
+    "RecentCriminalLegalProblem": 0,
+    "SuicideNote": 1,
+    "SuicideIntentDisclosed": 0,
+    "DisclosedToIntimatePartner": 0,
+    "DisclosedToOtherFamilyMember": 0,
+    "DisclosedToFriend": 0,
+    "InjuryLocationType": 1,
+    "WeaponType1": 5
+}
+"""
+
+```
+
+This prompt is basically a copy-paste from the instructions in the contest, with an example json object to ensure the LLM knows what to output. This is probably the absolute minimum you would need to get some useful output. That being said, there are at least two areas I think we can improve this baseline prompt:
+
+1. Add detailed descriptions to each feature
+2. Add "few shot" examples 
+
+The first one will have us spell out a bit more closely what we actually mean for each variable. For example we might turn this:
+
+> DepressedMood: The person was perceived to be depressed at the time
+
+into this:
+
+> DepressedMood: The person was perceived to be depressed at the time
+    - 1: Specific signs of depression were noted in the narrative (e.g., sad, withdrawn, hopeless)
+    - 0: No mention of depressive symptoms
+
+The first one is vague, and gives the LLM a lot of freedom to guess what "perceived to be depressed" means. In contrast, the second one asks only to mark it if there were specific mentions of depresion noted in the narrative.
+
+We can also add "few shot" examples to the prompt. This just means we provide the LLM with a few examples of a narrative and output to give it a better idea of what we want. Here is a synthesized example of what this might look like using a simulated narrative:
+
+*[Simulated Example]*
+
+```{python}
+#| eval: false
+#| code-fold: true
+EXAMPLE_OUTPUT2 = """
+Here is an example narrative and expected output:
+
+EXAMPLE NARRATIVE 1:
+Officers responded at 0745 hours to a report of a self-inflicted gunshot wound. The V was found in a bedroom with two acquaintances present, a gunshot wound to the left temple, and no exit wound. The V’s girlfriend stated he had been struggling with anxiety and depression, especially with the anniversary of his cousin’s suicide approaching. Before pulling the trigger, the V said, “You won’t believe me until I do it.” A .380 caliber firearm, a handwritten note, alcohol, and unidentified substances were found at the scene.
+
+EXAMPLE OUTPUT 1:
+{
+    "DepressedMood": 1,
+    "MentalIllnessTreatmentCurrnt": 0,
+    "HistoryMentalIllnessTreatmnt": 1,
+    "SuicideAttemptHistory": 0,
+    "SuicideThoughtHistory": 1,
+    "SubstanceAbuseProblem": 1,
+    "MentalHealthProblem": 1,
+    "DiagnosisAnxiety": 1,
+    "DiagnosisDepressionDysthymia": 1,
+    "DiagnosisBipolar": 0,
+    "DiagnosisAdhd": 0,
+    "IntimatePartnerProblem": 0,
+    "FamilyRelationship": 0,
+    "Argument": 0,
+    "SchoolProblem": 0,
+    "RecentCriminalLegalProblem": 0,
+    "SuicideNote": 1,
+    "SuicideIntentDisclosed": 1,
+    "DisclosedToIntimatePartner": 1,
+    "DisclosedToOtherFamilyMember": 0,
+    "DisclosedToFriend": 0,
+    "InjuryLocationType": 1,
+    "WeaponType1": 6
+}
+"""
+
+```
+
+If you want to see all of the propmpt versions, you can look at the script under `src.prompts.py` in the git repo for this post.
+
 ### Running through ChatGPT
 
-To complete this, I take a sample of 200 cases from the 4000 original narratives, and oversample from rare categories to ensure I have at least a few examples for each category. Using these 200 cases, I want to test the 4 different prompt types by running them through ChatGPT. Most of the work is handled using the code below, where I take each sample narrative, construct 4 prompts, then append them to a json request. All 200 examples are put into a jsonlist object, then bulk run in a batch using the OpenAI API. I use one of the cheaper models here, `4.0 mini`, which is probably fine for testing. I should also note that tokens are *cheap*. In a batch run with 1.7 million tokens, I paid 13 cents for the input tokens and 6 cents for the output tokens. 
+To test all variants of these prompts, I took a sample of 200 cases from the 4000 original narratives, and oversampled from rare categories to ensure I had at least a few examples for each variable (if you are curious, you can look at my `uid_weighting.R` script for how I did this). Using these 200 cases, I wanted to test the 4 different prompt types by running them through a ChatGPT LLM. Most of the work is handled using the code below, where I take each sample narrative, construct 4 prompts, then append them to a json request template. All of these 200 examples are appended into a jsonlist object, then bulk run in a batch using the OpenAI API. I use one of the cheaper models here, `4.0 mini`, which is probably fine for testing purposes. I should also note that tokens are *cheap*. In a batch run with 1.7 million tokens, I paid 13 cents for the input tokens and 6 cents for the output tokens. I actually messed up the prompt caching for this test, but if I did it correctly it would be 50% cheaper.
 
-One important note - I specify the output must come in the form of a json object by adding `"response_format": { "type": "json_object" }`. This is ChatGPT's "json mode", which is quite handy for this. Oftentimes the LLM might hallucinate an output that is not a json object.
+One important note - I specify the output must come in the form of a json object by adding `"response_format": { "type": "json_object" }`. This is ChatGPT's "json mode", which is quite handy for this. Oftentimes the LLM might hallucinate an output that is not a valid json and break the workflow. 
 
 ```{python}
 #| code-fold: false
@@ -199,11 +350,13 @@ for row in narratives.iterrows():
         version_num += 1
 ```
 
-It takes about an hour to run using the cheapest batch service. We can then download the output jsons and parse our results!
+After passing the jsonlist it takes about an hour to run using the cheapest batch service. We can then download the output jsons and parse our results!
 
 ## Results
 
-Looking at the results, we see that relative to the baseline prompt (model 0) adding descriptions and adding examples had a positive impact on both the f1 score and accuracy in the aggregate. The model with the highest score was the one with both detailed variable descriptions and 3 scored examples. Overall, all of the models did pretty well given how little tweaking I did. The more interesting question is looking at how much quality really was impacted by different prompting styles.
+To evaluate the results we use the same [metrics provided by the contest](https://github.com/drivendataorg/youth-mental-health-runtime/blob/main/src/scoring.py): a macro-weighted f1 score for the binary variables, and a micro-weighted f1 score for the multi-class categorical variables. 
+
+Below we see that relative to the baseline prompt (model 0) adding descriptions and adding examples had a positive impact on both the f1 score and accuracy in the aggregate. The model with the highest score was the one with both detailed variable descriptions and 3 scored examples. Overall, all of the models did pretty well given how little tweaking I did. The more interesting question is looking at how much quality really was impacted by different prompting styles relative to the general randomness we typically expect out of an LLM. 
 
 | Prompt Version                         | F1 Score | Accuracy |
 |----------------------------------------|---------:|---------:|
@@ -212,7 +365,7 @@ Looking at the results, we see that relative to the baseline prompt (model 0) ad
 | 2: Add more descriptions to features   | 0.778    | 0.837    |
 | 3: Add few-shot and more descriptions  | 0.781    | 0.839    |
 
-Remember analysis of variance from your stats 101 course? We can actually use it here to see if there if there is non-zero variation in f1 score attributble to a change in prompts, relative to the variation in question type. Looking below, we see unsurprisingly almost all the variation is explainable by the question type (meaning that differences in f1 scores are mostly based on the question type).
+A solution: remember analysis of variance from your stats 101 course? We can actually use it here to see if there if there is non-zero variation in f1 score attributable to a change in prompts, relative to the variation in question type. Looking below we see, unsurprisingly, almost all the variation is explainable by the question type (meaning that differences in f1 scores are mostly based on the question type). 
 
 ```{r}
 #| code-fold: true
@@ -220,7 +373,7 @@ res <- with(results, aov(f1score ~ as.factor(model_ver) + as.factor(feature)))
 broom::tidy(res) %>% kable(digits=3)
 ```
 
-If we break this down by question type and plot them out, the results are a bit clearer. Below I have the questions ordered based on their variance in f1 scores, so that questions that changed more often based on the prompt are nearer the top. Interestingly, a few questions see a large improvement from the baseline prompt to the more advanced one. `DepressedMood` has an f1 score of .5 on the original prompt, which increases to about .67 on the final prompt. We see similar results with `SchoolProblem`, `FamilyRelationship`, and `Argument` as well. Questions that were already doing quite good see virtually no change - like `WeaponType1`. The LLM has a very easy time identifying the weapon, because it is almost always clearly disclosed in the narrative (and is very often a firearm).
+If we break this down by question type and plot them out, the results are a bit clearer. Below I have the questions ordered based on their variance in f1 scores, so that questions that changed more often based on the prompt are nearer the top. Interestingly, a few questions see a large improvement from the baseline prompt to the more advanced one. `DepressedMood` has an f1 score of .5 on the original prompt, which increases to about .65 on the final prompt. We see similar results with `SchoolProblem`, `FamilyRelationship`, and `Argument` as well. Questions that were already doing quite good see virtually no change - like `WeaponType1`. The LLM has a very easy time identifying the weapon, because it is almost always clearly disclosed in the narrative (and is very often a firearm).
 
 ```{r}
 #| code-fold: true
@@ -255,3 +408,14 @@ results %>%
         axis.title.y = element_blank(),
         axis.text = element_text(size = 10, color = 'black'))
 ```
+
+## Summary
+
+To wrap up this very long blog post, I have a few things to note:
+
+1. Writing good prompts isn't hard - but requires structuring questions in a way to ensure you get what you expect to see.
+2. Setting up a testing environment can help automate comparisons of many different prompts.
+3. Principled testing can help reduce manual prompt testing down the road.
+
+We're still in uncharted waters, comparatively speaking. Things on the LLM front are moving fast! 
+
