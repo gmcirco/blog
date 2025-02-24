@@ -1,6 +1,6 @@
 ---
 title: "An A/B Testing Approach to Prompt Refinement"
-subtitle: ""
+subtitle: "Testing a text extraction model using ChatGPT"
 author: Gio Circo, Ph.D.
 date: 2025-2-24
 categories:
