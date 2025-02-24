@@ -1,6 +1,5 @@
 import pandas as pd
 import json
-from pydantic import BaseModel
 from datetime import datetime
 
 from openai import OpenAI

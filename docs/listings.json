@@ -2,6 +2,9 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/prompt-testing/notebooks/prompt_testing_2.html",
+      "/posts/prompt-testing/notebooks/testing.html",
+      "/posts/prompt-testing/prompt_testing.html",
       "/posts/modern-bert/rank-rerank.html",
       "/posts/presidential-polls-2024/election.html",
       "/posts/crime-guns/crime-guns.html",

@@ -140,12 +140,11 @@ All this class really does is take text strings and pastes them together using m
 
 The example problem here is based on a competition that was hosted by the CDC last year on [DrivenData](https://www.drivendata.org/competitions/295/cdc-automated-abstraction/). The stated goal of the contest was to extract structured information from free-text narratives derived from police and medical examiner reports. The free text reports look something like this simulated example below:
 
-*[Simulated Example]*
+*\[Simulated Example\]*
 
 > V was a YYYY. V was discovered deceased at home from a self-inflicted gunshot wound to the head. No medical history was documented in the report. According to V's close friend and coworker, V had struggled with periods of severe anxiety but had never spoken about self-harm. V's friend mentioned that several years ago, V had driven recklessly after a personal loss, but it was unclear whether it was an intentional act. On the night of the incident, V had been drinking and sent a message to a relative expressing regret and affection for them and other family members. Toxicology results confirmed the presence of alcohol. No additional details regarding the event were available.
 
 The contest required taking the short narratives and extracting 24 different variables based on definitions from the [national violent death reporting system](https://www.cdc.gov/nvdrs/resources/nvdrscodingmanual.pdf?CDC_AAref_Val=https://www.cdc.gov/violenceprevention/pdf/nvdrs/nvdrsCodingManual.pdf). Most of these are [binary indicators](https://www.drivendata.org/competitions/295/cdc-automated-abstraction/page/917/) about specific behaviors observed in the narrative. Therefore, we need to create a prompt that will instruct our LLM to read the narratives, extract features based on the rules for each of the 24 features, then return the output back to us in a format that we can use for scoring.
-
 
 ### Prompt creation
 
@@ -240,8 +239,8 @@ EXAMPLE OUTPUT:
 
 This prompt is basically a copy-paste from the instructions in the contest, with an example json object to ensure the LLM knows what to output. This is probably the absolute minimum you would need to get some useful output. That being said, there are at least two areas I think we can improve this baseline prompt:
 
-1. Add detailed descriptions to each feature
-2. Add "few shot" examples 
+1.  Add detailed descriptions to each feature
+2.  Add "few shot" examples
 
 The first one will have us spell out a bit more closely what we actually mean for each variable. For example we might turn this:
 
@@ -249,15 +248,13 @@ The first one will have us spell out a bit more closely what we actually mean fo
 
 into this:
 
-> DepressedMood: The person was perceived to be depressed at the time
-    - 1: Specific signs of depression were noted in the narrative (e.g., sad, withdrawn, hopeless)
-    - 0: No mention of depressive symptoms
+> DepressedMood: The person was perceived to be depressed at the time - 1: Specific signs of depression were noted in the narrative (e.g., sad, withdrawn, hopeless) - 0: No mention of depressive symptoms
 
 The first one is vague, and gives the LLM a lot of freedom to guess what "perceived to be depressed" means. In contrast, the second one asks only to mark it if there were specific mentions of depresion noted in the narrative.
 
 We can also add "few shot" examples to the prompt. This just means we provide the LLM with a few examples of a narrative and output to give it a better idea of what we want. Here is a synthesized example of what this might look like using a simulated narrative:
 
-*[Simulated Example]*
+*\[Simulated Example\]*
 
 ```{python}
 #| eval: false
@@ -304,7 +301,7 @@ If you want to see all of the propmpt versions, you can look at the script under
 
 To test all variants of these prompts, I took a sample of 200 cases from the 4000 original narratives, and oversampled from rare categories to ensure I had at least a few examples for each variable (if you are curious, you can look at my `uid_weighting.R` script for how I did this). Using these 200 cases, I wanted to test the 4 different prompt types by running them through a ChatGPT LLM. Most of the work is handled using the code below, where I take each sample narrative, construct 4 prompts, then append them to a json request template. All of these 200 examples are appended into a jsonlist object, then bulk run in a batch using the OpenAI API. I use one of the cheaper models here, `4.0 mini`, which is probably fine for testing purposes. I should also note that tokens are *cheap*. In a batch run with 1.7 million tokens, I paid 13 cents for the input tokens and 6 cents for the output tokens. I actually messed up the prompt caching for this test, but if I did it correctly it would be 50% cheaper.
 
-One important note - I specify the output must come in the form of a json object by adding `"response_format": { "type": "json_object" }`. This is ChatGPT's "json mode", which is quite handy for this. Oftentimes the LLM might hallucinate an output that is not a valid json and break the workflow. 
+One important note - I specify the output must come in the form of a json object by adding `"response_format": { "type": "json_object" }`. This is ChatGPT's "json mode", which is quite handy for this. Oftentimes the LLM might hallucinate an output that is not a valid json and break the workflow.
 
 ```{python}
 #| code-fold: false
@@ -354,18 +351,18 @@ After passing the jsonlist it takes about an hour to run using the cheapest batc
 
 ## Results
 
-To evaluate the results we use the same [metrics provided by the contest](https://github.com/drivendataorg/youth-mental-health-runtime/blob/main/src/scoring.py): a macro-weighted f1 score for the binary variables, and a micro-weighted f1 score for the multi-class categorical variables. 
+To evaluate the results we use the same [metrics provided by the contest](https://github.com/drivendataorg/youth-mental-health-runtime/blob/main/src/scoring.py): a macro-weighted f1 score for the binary variables, and a micro-weighted f1 score for the multi-class categorical variables.
 
-Below we see that relative to the baseline prompt (model 0) adding descriptions and adding examples had a positive impact on both the f1 score and accuracy in the aggregate. The model with the highest score was the one with both detailed variable descriptions and 3 scored examples. Overall, all of the models did pretty well given how little tweaking I did. The more interesting question is looking at how much quality really was impacted by different prompting styles relative to the general randomness we typically expect out of an LLM. 
+Below we see that relative to the baseline prompt (model 0) adding descriptions and adding examples had a positive impact on both the f1 score and accuracy in the aggregate. The model with the highest score was the one with both detailed variable descriptions and 3 scored examples. Overall, all of the models did pretty well given how little tweaking I did. The more interesting question is looking at how much quality really was impacted by different prompting styles relative to the general randomness we typically expect out of an LLM.
 
-| Prompt Version                         | F1 Score | Accuracy |
-|----------------------------------------|---------:|---------:|
-| 0: Baseline                            | 0.763    | 0.824    |
-| 1: Add 3 few-shot examples             | 0.775    | 0.832    |
-| 2: Add more descriptions to features   | 0.778    | 0.837    |
-| 3: Add few-shot and more descriptions  | 0.781    | 0.839    |
+| Prompt Version                        | F1 Score | Accuracy |
+|---------------------------------------|---------:|---------:|
+| 0: Baseline                           |    0.763 |    0.824 |
+| 1: Add 3 few-shot examples            |    0.775 |    0.832 |
+| 2: Add more descriptions to features  |    0.778 |    0.837 |
+| 3: Add few-shot and more descriptions |    0.781 |    0.839 |
 
-A solution: remember analysis of variance from your stats 101 course? We can actually use it here to see if there if there is non-zero variation in f1 score attributable to a change in prompts, relative to the variation in question type. Looking below we see, unsurprisingly, almost all the variation is explainable by the question type (meaning that differences in f1 scores are mostly based on the question type). 
+A solution: remember analysis of variance from your stats 101 course? We can actually use it here to see if there if there is non-zero variation in f1 score attributable to a change in prompts, relative to the variation in question type. Looking below we see, unsurprisingly, almost all the variation is explainable by the question type (meaning that differences in f1 scores are mostly based on the question type).
 
 ```{r}
 #| code-fold: true
@@ -413,9 +410,8 @@ results %>%
 
 To wrap up this very long blog post, I have a few things to note:
 
-1. Writing good prompts isn't hard - but requires structuring questions in a way to ensure you get what you expect to see.
-2. Setting up a testing environment can help automate comparisons of many different prompts.
-3. Principled testing can help reduce manual prompt testing down the road.
+1.  Writing good prompts isn't hard - but requires structuring questions in a way to ensure you get what you expect to see.
+2.  Setting up a testing environment can help automate comparisons of many different prompts.
+3.  Principled testing can help reduce manual prompt testing down the road.
 
-We're still in uncharted waters, comparatively speaking. Things on the LLM front are moving fast! 
-
+We're still in uncharted waters, comparatively speaking. Things on the LLM front are moving fast!

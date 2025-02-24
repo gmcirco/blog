@@ -12,3 +12,5 @@ __pycache__
 
 # specific projects
 posts/modern-bert/models
+posts/prompt-testing/json
+posts/prompt-testing/notebooks

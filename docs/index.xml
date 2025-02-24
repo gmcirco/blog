@@ -10,7 +10,1083 @@
 <atom:link href="https://gmcirco.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-1.5.56</generator>
-<lastBuildDate>Fri, 24 Jan 2025 05:00:00 GMT</lastBuildDate>
+<lastBuildDate>Mon, 24 Feb 2025 05:00:00 GMT</lastBuildDate>
+<item>
+  <title>An A/B Testing Approach to Prompt Refinement</title>
+  <dc:creator>Gio Circo, Ph.D.</dc:creator>
+  <link>https://gmcirco.github.io/blog/posts/prompt-testing/prompt_testing.html</link>
+  <description><![CDATA[ 
+
+
+
+
+
+<p><em>There are synthesized depictions of self-harm and suicide in this blog post.</em></p>
+<section id="whats-up-with-prompts" class="level2">
+<h2 class="anchored" data-anchor-id="whats-up-with-prompts">What’s up with Prompts?</h2>
+<p>I am still a relative novice to large-language models (LLMs) when it comes to non-trivial tasks (like asking ChatGPT to summarize an email). Applying these models for complex real-world tasks is not nearly as simple. In fact, I think applying LLMs to solve business-problems is still new enough that I am not sure how many people can claim bonda-fide expertise here. Regardless, in my work I’ve been increasingly asked to use LLMs to automate the processing of large volumes of free-form text and extract structured output. Luckily, this is one task that LLMs are actually well-suited for, unlike many of the very silly attempts to plug it in where it is clearly <em>not</em> useful.</p>
+<p>In my ongoing work, I have learned a few things. One of the biggest is that LLMs are <em>very</em> sensitive to the prompt they are given. Often, it can be a matter of wording, question structure, or even where the prompt is <a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips">placed relative to the input</a>. A few of the LLM companies, like Anthropic, even have some interesting suggestions: like structuring long documents with XML tagging to block off important sections. Outside of some of these more esoteric suggestions, I’ve found that common good practice for creating LLM prompts generally follows these rules:</p>
+<ol type="1">
+<li>Be <em>extremely</em> specific</li>
+<li>Spell out tasks using bullets or numbered points</li>
+<li>Provide examples</li>
+</ol>
+<p>This could be as simple as the difference between:</p>
+<blockquote class="blockquote">
+<p>“Summarize this legal document”</p>
+</blockquote>
+<p>or</p>
+<blockquote class="blockquote">
+<p>“Summarize this housing contract in 3 to 5 sentences. Include a section with numbered bullet points for the costs.”</p>
+</blockquote>
+<p>One gives much more latitude to the LLM to do whatever it thinks is right, compared to the other which has structure and key instructions. Generally you will get better results the less you let the LLM fill in the blanks on its own.</p>
+</section>
+<section id="setting-up-a-testing-framework" class="level2">
+<h2 class="anchored" data-anchor-id="setting-up-a-testing-framework">Setting up a testing framework</h2>
+<p>With that in mind, let’s talk a bit about how I think about prompting.</p>
+<section id="my-mental-model-of-prompting" class="level3">
+<h3 class="anchored" data-anchor-id="my-mental-model-of-prompting">My “mental model” of prompting</h3>
+<p>When I think of a prompt, I tend to conceptualize it as containing a few key pieces:</p>
+<ol type="1">
+<li>A <strong>role</strong> which defines the key tasks of the LLM and provides it some structure to its intended job.</li>
+<li>A <strong>header</strong> which contains some initial instructions guiding the next steps in the prompt.</li>
+<li>A <strong>body</strong> which has the bulk of the instructions, text, and other materials that make up the primary tasks of the prompt.</li>
+<li>An <strong>example</strong> of what the intended output is supposed to look like. In a structured text extraction task, this would be the format of the json or other file I want created.</li>
+<li>An optional <strong>footer</strong> that contains some final instructions. Often times I have found these useful to provide a list of things I definitively do NOT want the LLM to do.</li>
+</ol>
+</section>
+<section id="a-python-framework" class="level3">
+<h3 class="anchored" data-anchor-id="a-python-framework">A python framework</h3>
+<p>Applying this to an automated workflow in python can be pretty easily actually. Since we’re just working with text prompts, all I need to do is create a system that concats all the necessary pieces together in a way that creates a full prompt. Below I set up a class to help test multiple prompt versions in a somewhat quicker fashion than creating each one individually. My goal here is to have the ability to test many different prompts, in different configurations, without having to manually copy-and-paste these examples and store them. To accomplish this, I first built out a small prompt creation class:</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> itertools <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> product</span>
+<span id="cb1-2"></span>
+<span id="cb1-3"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">class</span> Prompt:</span>
+<span id="cb1-4">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">__init__</span>(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>):</span>
+<span id="cb1-5">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">pass</span></span>
+<span id="cb1-6"></span>
+<span id="cb1-7">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> prompt_concat(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>, text_list):</span>
+<span id="cb1-8">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"""Concat a list of text, dropping None values"""</span></span>
+<span id="cb1-9">        output_text <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">\n</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>  .join(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">filter</span>(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>, text_list))</span>
+<span id="cb1-10">        output_text <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">\n</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span></span>
+<span id="cb1-11"></span>
+<span id="cb1-12">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> output_text</span>
+<span id="cb1-13"></span>
+<span id="cb1-14">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> standard_prompt(</span>
+<span id="cb1-15">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>,</span>
+<span id="cb1-16">        header: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-17">        narrative: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-18">        body: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-19">        example_output: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-20">        footer: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-21">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">**</span>kwargs</span>
+<span id="cb1-22">    ) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span>:</span>
+<span id="cb1-23">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"""Create multiple standard prompts based on all combinations of list elements."""</span></span>
+<span id="cb1-24">        </span>
+<span id="cb1-25">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Ensure all inputs are lists for consistent iteration</span></span>
+<span id="cb1-26">        params <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [header, narrative, body, example_output, footer]</span>
+<span id="cb1-27">        param_lists <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [[item] <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">not</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">isinstance</span>(item, <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span>) <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> item <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> item <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> params]</span>
+<span id="cb1-28">        </span>
+<span id="cb1-29">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># unpack params, then pass to concat</span></span>
+<span id="cb1-30">        prompt_combinations <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> product(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>param_lists)</span>
+<span id="cb1-31">        prompts <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.prompt_concat(combination) <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> combination <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> prompt_combinations]</span>
+<span id="cb1-32">        </span>
+<span id="cb1-33">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> prompts</span>
+<span id="cb1-34">    </span>
+<span id="cb1-35">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> standard_prompt_caching(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>,</span>
+<span id="cb1-36">        header: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-37">        narrative: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-38">        body: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-39">        example_output: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-40">        footer: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb1-41">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">**</span>kwargs</span>
+<span id="cb1-42">    ) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span>:</span>
+<span id="cb1-43">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"""Create multiple standard prompts based on all combinations of list elements.</span></span>
+<span id="cb1-44"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        This puts the narrative at the end to support OpenAI prompt caching.</span></span>
+<span id="cb1-45"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        """</span></span>
+<span id="cb1-46">        </span>
+<span id="cb1-47">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Ensure all inputs are lists for consistent iteration</span></span>
+<span id="cb1-48">        params <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [body, example_output, footer, header, narrative]</span>
+<span id="cb1-49">        param_lists <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [[item] <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">not</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">isinstance</span>(item, <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span>) <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> item <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> item <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> params]</span>
+<span id="cb1-50">        </span>
+<span id="cb1-51">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># unpack params, then pass to concat</span></span>
+<span id="cb1-52">        prompt_combinations <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> product(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>param_lists)</span>
+<span id="cb1-53">        prompts <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.prompt_concat(combination) <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> combination <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> prompt_combinations]</span>
+<span id="cb1-54">        </span>
+<span id="cb1-55">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> prompts</span>
+<span id="cb1-56">    </span>
+<span id="cb1-57">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> unstructured_prompt(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>, prompt_text_list: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span>[<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>])<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>:</span>
+<span id="cb1-58">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"""Create an unstructured prompt, given a list of text"""</span></span>
+<span id="cb1-59">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.prompt_concat([prompt_text_list])</span></code></pre></div>
+</details>
+</div>
+<p>All this class really does is take text strings and pastes them together using my mental framework. The trick here is that you can pass in a list for any of the parameters, and then we use <code>itertools.product()</code> to create all the possible combinations. For example, passing in 2 versions of a header, body, and example would give you <img src="https://latex.codecogs.com/png.latex?2%5E3=8"> different combinations of the prompts. Also, here I add a “narrative” field which will serve as the input text for each text narrative we will be extracting data from.</p>
+</section>
+</section>
+<section id="classifying-youth-suicide-narratives" class="level2">
+<h2 class="anchored" data-anchor-id="classifying-youth-suicide-narratives">Classifying Youth Suicide Narratives</h2>
+<p>The example problem here is based on a competition that was hosted by the CDC last year on <a href="https://www.drivendata.org/competitions/295/cdc-automated-abstraction/">DrivenData</a>. The stated goal of the contest was to extract structured information from free-text narratives derived from police and medical examiner reports. The free text reports look something like this simulated example below:</p>
+<p><em>[Simulated Example]</em></p>
+<blockquote class="blockquote">
+<p>V was a YYYY. V was discovered deceased at home from a self-inflicted gunshot wound to the head. No medical history was documented in the report. According to V’s close friend and coworker, V had struggled with periods of severe anxiety but had never spoken about self-harm. V’s friend mentioned that several years ago, V had driven recklessly after a personal loss, but it was unclear whether it was an intentional act. On the night of the incident, V had been drinking and sent a message to a relative expressing regret and affection for them and other family members. Toxicology results confirmed the presence of alcohol. No additional details regarding the event were available.</p>
+</blockquote>
+<p>The contest required taking the short narratives and extracting 24 different variables based on definitions from the <a href="https://www.cdc.gov/nvdrs/resources/nvdrscodingmanual.pdf?CDC_AAref_Val=https://www.cdc.gov/violenceprevention/pdf/nvdrs/nvdrsCodingManual.pdf">national violent death reporting system</a>. Most of these are <a href="https://www.drivendata.org/competitions/295/cdc-automated-abstraction/page/917/">binary indicators</a> about specific behaviors observed in the narrative. Therefore, we need to create a prompt that will instruct our LLM to read the narratives, extract features based on the rules for each of the 24 features, then return the output back to us in a format that we can use for scoring.</p>
+<section id="prompt-creation" class="level3">
+<h3 class="anchored" data-anchor-id="prompt-creation">Prompt creation</h3>
+<p>As a demonstration of what this testing can look like, my idea is to run 4 different prompt versions using a sample of narratives and evaluate whether we can observe any improvement in performance based solely on the prompt. As a default the body and example output of my primary prompt looks like this:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">BODY1 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb2-2"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">INSTRUCTIONS:</span></span>
+<span id="cb2-3"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    Closely follow these instructions:</span></span>
+<span id="cb2-4"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - For each variable below return a 0 for 'no' and a 1 for 'yes' unless otherwise stated.</span></span>
+<span id="cb2-5"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - If more than two answers are available, return ONE of the numbered values.</span></span>
+<span id="cb2-6"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - Rely ONLY on information available in the narrative. Do NOT extrapolate.</span></span>
+<span id="cb2-7"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - Return a properly formatted json object where the keys are the variables and the values are the numeric labels.</span></span>
+<span id="cb2-8"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - Do NOT return anything other than the label. Do NOT include any discussion or commentary.</span></span>
+<span id="cb2-9"></span>
+<span id="cb2-10"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">VARIABLES:   </span></span>
+<span id="cb2-11"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    DepressedMood: The person was perceived to be depressed at the time</span></span>
+<span id="cb2-12"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    MentalIllnessTreatmentCurrnt: Currently in treatment for a mental health or substance abuse problem</span></span>
+<span id="cb2-13"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    HistoryMentalIllnessTreatmnt: History of ever being treated for a mental health or substance abuse problem</span></span>
+<span id="cb2-14"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    SuicideAttemptHistory: History of attempting suicide previously</span></span>
+<span id="cb2-15"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    SuicideThoughtHistory: History of suicidal thoughts or plans</span></span>
+<span id="cb2-16"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    SubstanceAbuseProblem: The person struggled with a substance abuse problem. This combines AlcoholProblem and SubstanceAbuseOther from the coding manual</span></span>
+<span id="cb2-17"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    MentalHealthProblem: The person had a mental health condition at the time</span></span>
+<span id="cb2-18"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    DiagnosisAnxiety: The person had a medical diagnosis of anxiety</span></span>
+<span id="cb2-19"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    DiagnosisDepressionDysthymia: The person had a medical diagnosis of depression</span></span>
+<span id="cb2-20"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    DiagnosisBipolar: The person had a medical diagnosis of bipolar</span></span>
+<span id="cb2-21"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    DiagnosisAdhd: The person had a medical diagnosis of ADHD</span></span>
+<span id="cb2-22"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    IntimatePartnerProblem: Problems with a current or former intimate partner appear to have contributed</span></span>
+<span id="cb2-23"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    FamilyRelationship: Relationship problems with a family member (other than an intimate partner) appear to have contributed</span></span>
+<span id="cb2-24"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    Argument: An argument or conflict appears to have contributed</span></span>
+<span id="cb2-25"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    SchoolProblem: Problems at or related to school appear to have contributed</span></span>
+<span id="cb2-26"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    RecentCriminalLegalProblem: Criminal legal problem(s) appear to have contributed</span></span>
+<span id="cb2-27"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    SuicideNote: The person left a suicide note</span></span>
+<span id="cb2-28"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    SuicideIntentDisclosed: The person disclosed their thoughts and/or plans to die by suicide to someone else within the last month</span></span>
+<span id="cb2-29"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    DisclosedToIntimatePartner: Intent was disclosed to a previous or current intimate partner</span></span>
+<span id="cb2-30"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    DisclosedToOtherFamilyMember: Intent was disclosed to another family member</span></span>
+<span id="cb2-31"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    DisclosedToFriend: Intent was disclosed to a friend</span></span>
+<span id="cb2-32"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    InjuryLocationType: The type of place where the suicide took place.</span></span>
+<span id="cb2-33"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 1: House, apartment</span></span>
+<span id="cb2-34"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 2: Motor vehicle (excluding school bus and public transportation)</span></span>
+<span id="cb2-35"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 3: Natural area (e.g., field, river, beaches, woods)</span></span>
+<span id="cb2-36"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 4: Park, playground, public use area</span></span>
+<span id="cb2-37"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 5: Street/road, sidewalk, alley</span></span>
+<span id="cb2-38"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 6: Other</span></span>
+<span id="cb2-39"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    WeaponType1: Type of weapon used </span></span>
+<span id="cb2-40"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 1: Blunt instrument</span></span>
+<span id="cb2-41"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 2: Drowning</span></span>
+<span id="cb2-42"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 3: Fall</span></span>
+<span id="cb2-43"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 4: Fire or burns</span></span>
+<span id="cb2-44"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 5: Firearm</span></span>
+<span id="cb2-45"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 6: Hanging, strangulation, suffocation</span></span>
+<span id="cb2-46"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 7: Motor vehicle including buses, motorcycles</span></span>
+<span id="cb2-47"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 8: Other transport vehicle, eg, trains, planes, boats</span></span>
+<span id="cb2-48"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 9: Poisoning</span></span>
+<span id="cb2-49"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 10: Sharp instrument</span></span>
+<span id="cb2-50"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 11: Other (e.g. taser, electrocution, nail gun)</span></span>
+<span id="cb2-51"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        - 12: Unknown</span></span>
+<span id="cb2-52"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb2-53"></span>
+<span id="cb2-54">EXAMPLE_OUTPUT1 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb2-55"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">EXAMPLE OUTPUT:</span></span>
+<span id="cb2-56"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb2-57"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DepressedMood": 1,</span></span>
+<span id="cb2-58"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "MentalIllnessTreatmentCurrnt": 0,</span></span>
+<span id="cb2-59"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "HistoryMentalIllnessTreatmnt": 0,</span></span>
+<span id="cb2-60"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SuicideAttemptHistory": 0,</span></span>
+<span id="cb2-61"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SuicideThoughtHistory": 0,</span></span>
+<span id="cb2-62"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SubstanceAbuseProblem": 1,</span></span>
+<span id="cb2-63"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "MentalHealthProblem": 0,</span></span>
+<span id="cb2-64"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DiagnosisAnxiety": 0,</span></span>
+<span id="cb2-65"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DiagnosisDepressionDysthymia": 0,</span></span>
+<span id="cb2-66"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DiagnosisBipolar": 0,</span></span>
+<span id="cb2-67"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DiagnosisAdhd": 1,</span></span>
+<span id="cb2-68"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "IntimatePartnerProblem": 0,</span></span>
+<span id="cb2-69"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "FamilyRelationship": 0,</span></span>
+<span id="cb2-70"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "Argument": 1,</span></span>
+<span id="cb2-71"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SchoolProblem": 1,</span></span>
+<span id="cb2-72"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "RecentCriminalLegalProblem": 0,</span></span>
+<span id="cb2-73"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SuicideNote": 1,</span></span>
+<span id="cb2-74"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SuicideIntentDisclosed": 0,</span></span>
+<span id="cb2-75"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DisclosedToIntimatePartner": 0,</span></span>
+<span id="cb2-76"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DisclosedToOtherFamilyMember": 0,</span></span>
+<span id="cb2-77"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DisclosedToFriend": 0,</span></span>
+<span id="cb2-78"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "InjuryLocationType": 1,</span></span>
+<span id="cb2-79"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "WeaponType1": 5</span></span>
+<span id="cb2-80"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb2-81"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span></code></pre></div>
+</div>
+<p>This prompt is basically a copy-paste from the instructions in the contest, with an example json object to ensure the LLM knows what to output. This is probably the absolute minimum you would need to get some useful output. That being said, there are at least two areas I think we can improve this baseline prompt:</p>
+<ol type="1">
+<li>Add detailed descriptions to each feature</li>
+<li>Add “few shot” examples</li>
+</ol>
+<p>The first one will have us spell out a bit more closely what we actually mean for each variable. For example we might turn this:</p>
+<blockquote class="blockquote">
+<p>DepressedMood: The person was perceived to be depressed at the time</p>
+</blockquote>
+<p>into this:</p>
+<blockquote class="blockquote">
+<p>DepressedMood: The person was perceived to be depressed at the time - 1: Specific signs of depression were noted in the narrative (e.g., sad, withdrawn, hopeless) - 0: No mention of depressive symptoms</p>
+</blockquote>
+<p>The first one is vague, and gives the LLM a lot of freedom to guess what “perceived to be depressed” means. In contrast, the second one asks only to mark it if there were specific mentions of depresion noted in the narrative.</p>
+<p>We can also add “few shot” examples to the prompt. This just means we provide the LLM with a few examples of a narrative and output to give it a better idea of what we want. Here is a synthesized example of what this might look like using a simulated narrative:</p>
+<p><em>[Simulated Example]</em></p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">EXAMPLE_OUTPUT2 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb3-2"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">Here is an example narrative and expected output:</span></span>
+<span id="cb3-3"></span>
+<span id="cb3-4"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">EXAMPLE NARRATIVE 1:</span></span>
+<span id="cb3-5"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">Officers responded at 0745 hours to a report of a self-inflicted gunshot wound. The V was found in a bedroom with two acquaintances present, a gunshot wound to the left temple, and no exit wound. The V’s girlfriend stated he had been struggling with anxiety and depression, especially with the anniversary of his cousin’s suicide approaching. Before pulling the trigger, the V said, “You won’t believe me until I do it.” A .380 caliber firearm, a handwritten note, alcohol, and unidentified substances were found at the scene.</span></span>
+<span id="cb3-6"></span>
+<span id="cb3-7"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">EXAMPLE OUTPUT 1:</span></span>
+<span id="cb3-8"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb3-9"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DepressedMood": 1,</span></span>
+<span id="cb3-10"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "MentalIllnessTreatmentCurrnt": 0,</span></span>
+<span id="cb3-11"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "HistoryMentalIllnessTreatmnt": 1,</span></span>
+<span id="cb3-12"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SuicideAttemptHistory": 0,</span></span>
+<span id="cb3-13"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SuicideThoughtHistory": 1,</span></span>
+<span id="cb3-14"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SubstanceAbuseProblem": 1,</span></span>
+<span id="cb3-15"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "MentalHealthProblem": 1,</span></span>
+<span id="cb3-16"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DiagnosisAnxiety": 1,</span></span>
+<span id="cb3-17"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DiagnosisDepressionDysthymia": 1,</span></span>
+<span id="cb3-18"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DiagnosisBipolar": 0,</span></span>
+<span id="cb3-19"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DiagnosisAdhd": 0,</span></span>
+<span id="cb3-20"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "IntimatePartnerProblem": 0,</span></span>
+<span id="cb3-21"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "FamilyRelationship": 0,</span></span>
+<span id="cb3-22"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "Argument": 0,</span></span>
+<span id="cb3-23"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SchoolProblem": 0,</span></span>
+<span id="cb3-24"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "RecentCriminalLegalProblem": 0,</span></span>
+<span id="cb3-25"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SuicideNote": 1,</span></span>
+<span id="cb3-26"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "SuicideIntentDisclosed": 1,</span></span>
+<span id="cb3-27"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DisclosedToIntimatePartner": 1,</span></span>
+<span id="cb3-28"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DisclosedToOtherFamilyMember": 0,</span></span>
+<span id="cb3-29"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "DisclosedToFriend": 0,</span></span>
+<span id="cb3-30"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "InjuryLocationType": 1,</span></span>
+<span id="cb3-31"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">    "WeaponType1": 6</span></span>
+<span id="cb3-32"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-33"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span></code></pre></div>
+</details>
+</div>
+<p>If you want to see all of the propmpt versions, you can look at the script under <code>src.prompts.py</code> in the git repo for this post.</p>
+</section>
+<section id="running-through-chatgpt" class="level3">
+<h3 class="anchored" data-anchor-id="running-through-chatgpt">Running through ChatGPT</h3>
+<p>To test all variants of these prompts, I took a sample of 200 cases from the 4000 original narratives, and oversampled from rare categories to ensure I had at least a few examples for each variable (if you are curious, you can look at my <code>uid_weighting.R</code> script for how I did this). Using these 200 cases, I wanted to test the 4 different prompt types by running them through a ChatGPT LLM. Most of the work is handled using the code below, where I take each sample narrative, construct 4 prompts, then append them to a json request template. All of these 200 examples are appended into a jsonlist object, then bulk run in a batch using the OpenAI API. I use one of the cheaper models here, <code>4.0 mini</code>, which is probably fine for testing purposes. I should also note that tokens are <em>cheap</em>. In a batch run with 1.7 million tokens, I paid 13 cents for the input tokens and 6 cents for the output tokens. I actually messed up the prompt caching for this test, but if I did it correctly it would be 50% cheaper.</p>
+<p>One important note - I specify the output must come in the form of a json object by adding <code>"response_format": { "type": "json_object" }</code>. This is ChatGPT’s “json mode”, which is quite handy for this. Oftentimes the LLM might hallucinate an output that is not a valid json and break the workflow.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> row <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> narratives.iterrows():</span>
+<span id="cb4-2"></span>
+<span id="cb4-3">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># grab the unique id and text</span></span>
+<span id="cb4-4">    single_narrative <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> row[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>]</span>
+<span id="cb4-5">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">id</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> single_narrative[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"uid"</span>]</span>
+<span id="cb4-6">    txt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> single_narrative[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"NarrativeLE"</span>]</span>
+<span id="cb4-7"></span>
+<span id="cb4-8">    prompt_input <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> {</span>
+<span id="cb4-9">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"header"</span>: HEADER1,</span>
+<span id="cb4-10">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"narrative"</span>: txt,</span>
+<span id="cb4-11">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"body"</span>: [BODY1, BODY2],</span>
+<span id="cb4-12">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"example_output"</span>: [EXAMPLE_OUTPUT1, EXAMPLE_OUTPUT2],</span>
+<span id="cb4-13">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"footer"</span>: <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb4-14">    }</span>
+<span id="cb4-15"></span>
+<span id="cb4-16">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># create a prompt, pass in the text narrative</span></span>
+<span id="cb4-17">    prompt_versions <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> prompt_creator.standard_prompt_caching(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">**</span>prompt_input)</span>
+<span id="cb4-18"></span>
+<span id="cb4-19">    version_num <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span></span>
+<span id="cb4-20">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> prompt <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> prompt_versions:</span>
+<span id="cb4-21">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># now append to list</span></span>
+<span id="cb4-22">        json_list.append(</span>
+<span id="cb4-23">            {</span>
+<span id="cb4-24">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"custom_id"</span>: <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">id</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>version_num<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>,</span>
+<span id="cb4-25">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"method"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"POST"</span>,</span>
+<span id="cb4-26">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"url"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/v1/chat/completions"</span>,</span>
+<span id="cb4-27">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"body"</span>: {</span>
+<span id="cb4-28">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"model"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"gpt-4o-mini"</span>,</span>
+<span id="cb4-29">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"messages"</span>: [</span>
+<span id="cb4-30">                        {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"role"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"system"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"content"</span>: ROLE},</span>
+<span id="cb4-31">                        {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"role"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"user"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"content"</span>: prompt},</span>
+<span id="cb4-32">                    ],</span>
+<span id="cb4-33">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"max_tokens"</span>: <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">500</span>,</span>
+<span id="cb4-34">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"response_format"</span>: { <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"type"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"json_object"</span> },</span>
+<span id="cb4-35">                },</span>
+<span id="cb4-36">            }</span>
+<span id="cb4-37">        )</span>
+<span id="cb4-38">        version_num <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span></span></code></pre></div>
+</div>
+<p>After passing the jsonlist it takes about an hour to run using the cheapest batch service. We can then download the output jsons and parse our results!</p>
+</section>
+</section>
+<section id="results" class="level2">
+<h2 class="anchored" data-anchor-id="results">Results</h2>
+<p>To evaluate the results we use the same <a href="https://github.com/drivendataorg/youth-mental-health-runtime/blob/main/src/scoring.py">metrics provided by the contest</a>: a macro-weighted f1 score for the binary variables, and a micro-weighted f1 score for the multi-class categorical variables.</p>
+<p>Below we see that relative to the baseline prompt (model 0) adding descriptions and adding examples had a positive impact on both the f1 score and accuracy in the aggregate. The model with the highest score was the one with both detailed variable descriptions and 3 scored examples. Overall, all of the models did pretty well given how little tweaking I did. The more interesting question is looking at how much quality really was impacted by different prompting styles relative to the general randomness we typically expect out of an LLM.</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Prompt Version</th>
+<th style="text-align: right;">F1 Score</th>
+<th style="text-align: right;">Accuracy</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0: Baseline</td>
+<td style="text-align: right;">0.763</td>
+<td style="text-align: right;">0.824</td>
+</tr>
+<tr class="even">
+<td>1: Add 3 few-shot examples</td>
+<td style="text-align: right;">0.775</td>
+<td style="text-align: right;">0.832</td>
+</tr>
+<tr class="odd">
+<td>2: Add more descriptions to features</td>
+<td style="text-align: right;">0.778</td>
+<td style="text-align: right;">0.837</td>
+</tr>
+<tr class="even">
+<td>3: Add few-shot and more descriptions</td>
+<td style="text-align: right;">0.781</td>
+<td style="text-align: right;">0.839</td>
+</tr>
+</tbody>
+</table>
+<p>A solution: remember analysis of variance from your stats 101 course? We can actually use it here to see if there if there is non-zero variation in f1 score attributable to a change in prompts, relative to the variation in question type. Looking below we see, unsurprisingly, almost all the variation is explainable by the question type (meaning that differences in f1 scores are mostly based on the question type).</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1">res <span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">with</span>(results, <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">aov</span>(f1score <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">~</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">as.factor</span>(model_ver) <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">as.factor</span>(feature)))</span>
+<span id="cb5-2">broom<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">::</span><span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">tidy</span>(res) <span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">%&gt;%</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">kable</span>(<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">digits=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span>)</span></code></pre></div>
+</details>
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th style="text-align: left;">term</th>
+<th style="text-align: right;">df</th>
+<th style="text-align: right;">sumsq</th>
+<th style="text-align: right;">meansq</th>
+<th style="text-align: right;">statistic</th>
+<th style="text-align: right;">p.value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">as.factor(model_ver)</td>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">0.004</td>
+<td style="text-align: right;">0.001</td>
+<td style="text-align: right;">4.054</td>
+<td style="text-align: right;">0.01</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">as.factor(feature)</td>
+<td style="text-align: right;">22</td>
+<td style="text-align: right;">0.584</td>
+<td style="text-align: right;">0.027</td>
+<td style="text-align: right;">76.276</td>
+<td style="text-align: right;">0.00</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Residuals</td>
+<td style="text-align: right;">66</td>
+<td style="text-align: right;">0.023</td>
+<td style="text-align: right;">0.000</td>
+<td style="text-align: right;">NA</td>
+<td style="text-align: right;">NA</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>If we break this down by question type and plot them out, the results are a bit clearer. Below I have the questions ordered based on their variance in f1 scores, so that questions that changed more often based on the prompt are nearer the top. Interestingly, a few questions see a large improvement from the baseline prompt to the more advanced one. <code>DepressedMood</code> has an f1 score of .5 on the original prompt, which increases to about .65 on the final prompt. We see similar results with <code>SchoolProblem</code>, <code>FamilyRelationship</code>, and <code>Argument</code> as well. Questions that were already doing quite good see virtually no change - like <code>WeaponType1</code>. The LLM has a very easy time identifying the weapon, because it is almost always clearly disclosed in the narrative (and is very often a firearm).</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="https://gmcirco.github.io/blog/posts/prompt-testing/data:image/png;base64,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" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="summary" class="level2">
+<h2 class="anchored" data-anchor-id="summary">Summary</h2>
+<p>To wrap up this very long blog post, I have a few things to note:</p>
+<ol type="1">
+<li>Writing good prompts isn’t hard - but requires structuring questions in a way to ensure you get what you expect to see.</li>
+<li>Setting up a testing environment can help automate comparisons of many different prompts.</li>
+<li>Principled testing can help reduce manual prompt testing down the road.</li>
+</ol>
+<p>We’re still in uncharted waters, comparatively speaking. Things on the LLM front are moving fast!</p>
+
+
+</section>
+
+ ]]></description>
+  <category>Python</category>
+  <category>Data Science Applications</category>
+  <guid>https://gmcirco.github.io/blog/posts/prompt-testing/prompt_testing.html</guid>
+  <pubDate>Mon, 24 Feb 2025 05:00:00 GMT</pubDate>
+  <media:content url="https://gmcirco.github.io/blog/posts/prompt-testing/prompt-testing.png" medium="image" type="image/png" height="98" width="144"/>
+</item>
 <item>
   <title>Information Retrieval Using the Retrieve and Rerank Method</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>
@@ -16618,821 +17694,6 @@ font-style: inherit;">"bold"</span>))</span></code></pre></div>
   <guid>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</guid>
   <pubDate>Mon, 24 Apr 2023 04:00:00 GMT</pubDate>
   <media:content url="https://gmcirco.github.io/blog/posts/pca-timeseries/power.png" medium="image" type="image/png" height="144" width="144"/>
-</item>
-<item>
-  <title>Building an Outlier Ensemble from ‘Scratch’</title>
-  <dc:creator>Gio Circo, Ph.D.</dc:creator>
-  <link>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</link>
-  <description><![CDATA[ 
-
-
-
-
-
-<section id="the-problem" class="level2">
-<h2 class="anchored" data-anchor-id="the-problem">The Problem</h2>
-<p>I strongly believe in “learning by doing”. One of the things I have been working on quite a bit lately is unsupervised anomaly detection. As with many machine-learning tools, ensembles are incredibly powerful and useful for a variety of circumstances.</p>
-<p>Anomaly detection ensembles are <a href="https://kdd.org/exploration_files/V15-01-02-Zimek.pdf">no exception to that rule</a>. To better understand how each of the individual pieces of a anomaly detection ensemble works, I’ve decided two build one myself “from scratch”. I put that in giant quotes here because I’ll still rely on some existing frameworks in R to help built the underlying tools.</p>
-<p>My idea is to create an ensemble of several heterogeneous anomaly detection methods in a way that maximizes their individual benefits. Following some of the guidance proposed by <a href="https://link.springer.com/book/10.1007/978-3-319-54765-7">Aggarwal &amp; Sathe</a> I will use:</p>
-<ol type="1">
-<li><strong>“Soft” principal components anomaly detector</strong></li>
-<li>K-nearest neighbors anomaly detector</li>
-<li>Isolation forest or histogram-based anomaly detector</li>
-</ol>
-<section id="setting-up-the-data" class="level3">
-<h3 class="anchored" data-anchor-id="setting-up-the-data">Setting up the Data</h3>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(tidyverse)</span>
-<span id="cb1-2"></span>
-<span id="cb1-3">hosp <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">read_csv</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Hospital_Inpatient_Discharges__SPARCS_De-Identified___2021.csv"</span>)</span></code></pre></div>
-</details>
-</div>
-<p>The data for this post comes from the state of <a href="https://health.data.ny.gov/Health/Hospital-Inpatient-Discharges-SPARCS-De-Identified/tg3i-cinn">New York’s Hospital Inpatient Discharges (SPARCS) data for 2021</a>. This data contains about 2.1 million records on hospital discharges, including some de-identified patient information, procedure types, and costs. From an anomaly detection standpoint, it might make sense to see if we can identify hospitals with anomalous costs relative to other New York Hospitals. Like the <a href="https://www.nytimes.com/2019/09/01/opinion/hospital-spending.html">New York Times reported</a>, hospitals make up a very substantial portion of what we spent on healthcare.</p>
-<p>We’ll create a quick feature set based on a few key payment variables. Here I aggregate over each of the hospitals by calculating their (1) average stay length, (2) average charges, (3) average costs, (4) their average cost-per-stay, (5) the ratio between costs to total charges and (6) the average procedure pay difference.</p>
-<p>This last feature is a bit more complex, but what I am essentially doing is finding the median cost per-procedure by case severity (assuming more severe cases cost more) and then finding out how much each hospital diverges, on average, from the global cost. It’s a indirect way of measuring how much more or less a given procedure costs at each hospital. This is a easy measure to utilize because a <code>0</code> indicates that the hospital bills that procedure at near the global median, a 1 means they bill 100% more than the median and -.5 means they bill 50% less than the median.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># compute and aggregate feature set</span></span>
-<span id="cb2-2">df <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span></span>
-<span id="cb2-3">  hosp <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb2-4">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">group_by</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">CCSR Procedure Code</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span>, <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">APR Severity of Illness Code</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb2-5">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mutate</span>(</span>
-<span id="cb2-6">    <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">proc_charge =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">median</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Total Costs</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span>),</span>
-<span id="cb2-7">    <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">charge_diff =</span> (<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Total Costs</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span> <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span> proc_charge)<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">/</span>proc_charge,</span>
-<span id="cb2-8">    <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Length of Stay</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span> <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.numeric</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">ifelse</span>(</span>
-<span id="cb2-9">      <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Length of Stay</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span> <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">==</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'120+'</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">120</span>, <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Length of Stay</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span></span>
-<span id="cb2-10">    ))</span>
-<span id="cb2-11">  ) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb2-12">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">group_by</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">id =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Permanent Facility Id</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb2-13">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">summarise</span>(</span>
-<span id="cb2-14">    <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">stay_len =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Length of Stay</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">na.rm =</span> T),</span>
-<span id="cb2-15">    <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">charges =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Total Charges</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span>),</span>
-<span id="cb2-16">    <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">costs =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Total Costs</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span>),</span>
-<span id="cb2-17">    <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">diff =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(charge_diff),</span>
-<span id="cb2-18">    <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">cost_ratio =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Total Costs</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">/</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span><span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">Total Charges</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">`</span>),</span>
-<span id="cb2-19">    <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">cost_per_stay =</span> costs <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">/</span> stay_len</span>
-<span id="cb2-20">  )</span></code></pre></div>
-</details>
-</div>
-</section>
-</section>
-<section id="creating-a-pca-anomaly-detector" class="level2">
-<h2 class="anchored" data-anchor-id="creating-a-pca-anomaly-detector">Creating a PCA Anomaly Detector</h2>
-<p>Let’s now get into the nuts and bolts of actually creating a PCA-based anomaly detector. Now, there are a few ways we can go about this, but I’m going to rely on the approach suggested by Charu Aggarwal in his book <a href="https://link.springer.com/book/10.1007/978-3-319-47578-3">Outlier Analysis</a>. What he essentially proposes is a “soft” version of principal components where the eigenvectors are weighted by their variance instead of choosing only the eigenvectors that explain the highest proportion of the overall variance. This “soft” approach has some overlap with the mahalanobis distance. This is the same approach taken by the PCA anomaly detector in the Python <a href="https://pyod.readthedocs.io/en/latest/_modules/pyod/models/pca.html">pyod</a> package if weighting is specified.</p>
-<section id="performing-the-soft-pca" class="level3">
-<h3 class="anchored" data-anchor-id="performing-the-soft-pca">Performing the “soft” PCA</h3>
-<p>Translating this approach from the formula to code is actually pretty straightforward. <a href="https://link.springer.com/chapter/10.1007/978-3-319-47578-3_3">Agarwal</a> gives us the following:</p>
-<p><img src="https://latex.codecogs.com/png.latex?Score(%5Cbar%7BX%7D)%20=%20%5Csum%5Ed_%7Bj=1%7D%20%5Cfrac%7B%7C(%5Cbar%7BX%7D%20-%20%5Cbar%7B%5Cmu%7D)%20*%5Cbar%7Be_j%7D%7C%5E2%7D%7B%5Clambda_j%7D"> Which we can code into the following below. Before we add our data to the PCA we scale it to have mean 0 and standard deviation 1 so that the input features are scale-invariant. We then work through the process of extracting the eigenvectors, computing the variance for each, and then performing the “soft” PCA approach.</p>
-<div class="callout callout-style-default callout-note callout-titled">
-<div class="callout-header d-flex align-content-center">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-Note
-</div>
-</div>
-<div class="callout-body-container callout-body">
-<p>A few notes - strictly speaking the the part <img src="https://latex.codecogs.com/png.latex?%5Cbar%7BX%7D%20-%20%5Cbar%7B%5Cmu%7D"> isn’t totally necessary in most cases because the eigenvectors are already scaled to have a mean of zero (you can also ensure this by specifying <code>cor=TRUE</code> in the <code>princomp()</code> function). This does help in unusual cases where <img src="https://latex.codecogs.com/png.latex?%5Cbar%7B%5Cmu%7D"> is not zero.</p>
-</div>
-</div>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># "Soft" PCA</span></span>
-<span id="cb3-2"></span>
-<span id="cb3-3"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># scale input attributes</span></span>
-<span id="cb3-4">X <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> df[, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">7</span>]</span>
-<span id="cb3-5">X <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">scale</span>(X)</span>
-<span id="cb3-6"></span>
-<span id="cb3-7"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># pca anomaly detection</span></span>
-<span id="cb3-8"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># extract eigenvectors &amp; variance</span></span>
-<span id="cb3-9">pca <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">princomp</span>(X, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">cor =</span> <span class="cn" style="color: #8f5902;
-background-color: null;
-font-style: inherit;">TRUE</span>)</span>
-<span id="cb3-10">e <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> pca<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>scores</span>
-<span id="cb3-11">ev <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">diag</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">var</span>(e))</span>
-<span id="cb3-12">mu <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">apply</span>(e, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>, mean)</span>
-<span id="cb3-13">n <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">ncol</span>(e)</span>
-<span id="cb3-14"></span>
-<span id="cb3-15"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># compute anomaly scores</span></span>
-<span id="cb3-16">alist <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">vector</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">mode =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"list"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">length =</span> n)</span>
-<span id="cb3-17"><span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">for</span>(i <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">in</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span>n){</span>
-<span id="cb3-18">  alist[[i]] <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">abs</span>( (e[, i] <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span> mu[i])<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">^</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span> <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">/</span> ev[i])</span>
-<span id="cb3-19">}</span>
-<span id="cb3-20"></span>
-<span id="cb3-21"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># extract values &amp; export</span></span>
-<span id="cb3-22">Xscore <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.matrix</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">do.call</span>(cbind, alist))</span>
-<span id="cb3-23">anom <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">apply</span>(Xscore, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>, sum)</span></code></pre></div>
-</div>
-<p>This “soft” PCA is in contrast to so-called “hard” PCA where a specific number of principal components are chosen and the remainder are discarded. The “hard” PCA primarily focuses on reconstruction error along the components with the most variance, while the “soft” approach weights outliers on the lower variance components higher. This is useful because the data vary much less on these components, so outliers are often more obvious along these dimensions.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1">pca<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>scores <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb4-2">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">data.frame</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb4-3">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">pivot_longer</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">cols =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">starts_with</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Comp"</span>)) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb4-4">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">ggplot</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb4-5">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_histogram</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">aes</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">x =</span> value), <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">bins =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">30</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">fill =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#004488'</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb4-6">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">facet_wrap</span>(<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">~</span>name, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">scales =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"free_x"</span>)<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb4-7">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">theme_minimal</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb4-8">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">theme</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">axis.text =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">element_text</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">size =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">10</span>),</span>
-<span id="cb4-9">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">axis.title =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">element_text</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">face =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"bold"</span>),</span>
-<span id="cb4-10">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">panel.grid.minor =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">element_blank</span>())</span></code></pre></div>
-</details>
-<div class="cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly_files/figure-html/unnamed-chunk-5-1.png" class="img-fluid figure-img" width="672"></p>
-<figcaption>Outliers are often more visable along components with lower variance.</figcaption>
-</figure>
-</div>
-</div>
-</div>
-<p>The code below implements the PCA anomaly detector. Most of the work involves taking the scores, putting them into a matrix, and then re-weighting them by their variance. The final score is just the row-wise sum across the re-weighted columns. The output is just a vector of anomaly scores <code>anom</code>.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">ggplot</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">tibble</span>(anom)) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb5-2">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_histogram</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">aes</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">x =</span> anom), <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">bins =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">25</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">color =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'white'</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">fill =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#004488'</span>)<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb5-3">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">labs</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">x =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Anomaly Score"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">y =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Observations"</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb5-4">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">theme_minimal</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb5-5">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">theme</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">axis.text =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">element_text</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">size =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">12</span>),</span>
-<span id="cb5-6">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">axis.title =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">element_text</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">face =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"bold"</span>))</span></code></pre></div>
-</details>
-<div class="cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid figure-img" width="672"></p>
-<figcaption>Distribution of outlier scores. More anomalous observations have higher scores</figcaption>
-</figure>
-</div>
-</div>
-</div>
-</section>
-<section id="flagging-outliers" class="level3">
-<h3 class="anchored" data-anchor-id="flagging-outliers">Flagging Outliers</h3>
-<p>For flagging outliers we can rely on the <img src="https://latex.codecogs.com/png.latex?%5Cchi%5E2"> distribution. This is handy because the <img src="https://latex.codecogs.com/png.latex?%5Cchi%5E2"> distribution is formed as the <a href="https://en.wikipedia.org/wiki/Chi-squared_distribution">sum of the squares</a> of <img src="https://latex.codecogs.com/png.latex?d"> independent standard normal random variables. For the purposes of this example we might just choose 1% as our threshold for anomalies. After flagging we can plot the data along different 2d distributions to see where they lie. For example, the 8 anomalous hospitals generally have both longer stay lengths and charge more for comparable procedures relative to other hospitals.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># compute a p-value for anomalies and</span></span>
-<span id="cb6-2"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># append anomaly score and p-values to new dataframe</span></span>
-<span id="cb6-3">p <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">sapply</span>(anom, pchisq, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">df=</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">ncp =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(anom), <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">lower.tail=</span>F)</span>
-<span id="cb6-4"></span>
-<span id="cb6-5">scored_data <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">data.frame</span>(df, anom, p)</span>
-<span id="cb6-6"></span>
-<span id="cb6-7">flag <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> scored_data<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>p <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">&lt;=</span> <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.01</span></span>
-<span id="cb6-8"></span>
-<span id="cb6-9"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">ggplot</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb6-10">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_point</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> scored_data, <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">aes</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">x =</span> stay_len, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">y =</span> diff), <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">color =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#004488'</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">size =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">alpha =</span> .<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">25</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb6-11">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">geom_point</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> scored_data[flag,], <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">aes</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">x =</span> stay_len, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">y =</span> diff), <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">color =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#BB5566'</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">size =</span> <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2.5</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb6-12">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">labs</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">x =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Stay Length"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">y =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Avg. Payment Difference"</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb6-13">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">theme_minimal</span>() <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+</span></span>
-<span id="cb6-14">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">theme</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">axis.text =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">element_text</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">size =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">12</span>),</span>
-<span id="cb6-15">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">axis.title =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">element_text</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">face =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"bold"</span>))</span></code></pre></div>
-</details>
-<div class="cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid figure-img" width="672"></p>
-<figcaption>Plotting inliers (blue) and outliers (red) in 2D space.</figcaption>
-</figure>
-</div>
-</div>
-</div>
-</section>
-<section id="pca-anaomaly-detector-example-function" class="level3">
-<h3 class="anchored" data-anchor-id="pca-anaomaly-detector-example-function">PCA Anaomaly Detector: Example Function</h3>
-<p>Here’s a minimal working example of the procedure above. As we build our ensemble, we’ll come back to this function later.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># Run a principal components anomaly detector</span></span>
-<span id="cb7-2">adPCA <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">function</span>(X){</span>
-<span id="cb7-3">  </span>
-<span id="cb7-4">  <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># pca anomaly detection</span></span>
-<span id="cb7-5">  <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># extract eigenvectors &amp; variance</span></span>
-<span id="cb7-6">  pca <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">princomp</span>(X, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">cor =</span> <span class="cn" style="color: #8f5902;
-background-color: null;
-font-style: inherit;">TRUE</span>)</span>
-<span id="cb7-7">  e <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> pca<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>scores</span>
-<span id="cb7-8">  ev <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">diag</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">var</span>(e))</span>
-<span id="cb7-9">  mu <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">apply</span>(e, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>, mean)</span>
-<span id="cb7-10">  n <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">ncol</span>(e)</span>
-<span id="cb7-11">  </span>
-<span id="cb7-12">  <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># compute anomaly scores</span></span>
-<span id="cb7-13">  alist <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">vector</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">mode =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"list"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">length =</span> n)</span>
-<span id="cb7-14">  <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">for</span>(i <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">in</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span>n){</span>
-<span id="cb7-15">    alist[[i]] <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">abs</span>( (e[, i] <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span> mu[i])<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">^</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span> <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">/</span> ev[i])</span>
-<span id="cb7-16">  }</span>
-<span id="cb7-17">  </span>
-<span id="cb7-18">  <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># extract values &amp; export</span></span>
-<span id="cb7-19">  Xscore <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.matrix</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">do.call</span>(cbind, alist))</span>
-<span id="cb7-20">  anom <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">apply</span>(Xscore, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>, sum)</span>
-<span id="cb7-21">  </span>
-<span id="cb7-22">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">return</span>(anom)</span>
-<span id="cb7-23">}</span></code></pre></div>
-</details>
-</div>
-
-
-</section>
-</section>
-
- ]]></description>
-  <category>R</category>
-  <category>Anomaly Detection</category>
-  <category>Machine Learning &amp; Prediction</category>
-  <guid>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</guid>
-  <pubDate>Fri, 07 Apr 2023 04:00:00 GMT</pubDate>
-  <media:content url="https://gmcirco.github.io/blog/posts/pca-anomaly/hospital.png" medium="image" type="image/png" height="144" width="144"/>
 </item>
 </channel>
 </rss>
