@@ -109,7 +109,9 @@ With this in mind, I believe in sharing my work. Here's the [full conversation](
 
 ## Testing the RAG Process
 
-So what did all that get us? Well, with the help of Claude we got a set of four functions that^[If you are curious about the full code, you can look at my prompt-testing repo under my blog posts that contains the full set]:
+So what did all that get us? Well, with the help of Claude we got a set of four functions that[^1]:
+
+[^1]: If you are curious about the full code, you can look at my prompt-testing repo under my blog posts that contains the full set
 
 1.  Extract the relevant pages from the coding manual.
 2.  Chunk up the pages into subsections based on headers.
@@ -118,8 +120,8 @@ So what did all that get us? Well, with the help of Claude we got a set of four 
 
 as well as two others:
 
-5. A function to query and retrieve results from the vector database.
-6. A function to append the results into a prompt-friendly text object.
+5.  A function to query and retrieve results from the vector database.
+6.  A function to append the results into a prompt-friendly text object.
 
 I took the code and made very slight adjustments (maybe 10% or less) and put them into their own .py file. I then created a separate file to perform all the steps and locally store the vector database in a cache folder:
 
@@ -206,4 +208,4 @@ def standard_prompt_caching(
         ]
 ```
 
-Here's the crazy thing. It *works*. It works better than I expected. It looked like plausible code to me, but I had no idea if it would actually do what I envisioned. The code to do the chunking, embedding, and indexing took maybe under 30 minutes for me to read through, edit slightly, and execute.
+Here's the crazy thing. It *works*. It works better than I expected. It looked like plausible code to me, but I had no idea if it would actually do what I envisioned. The code to do the chunking, embedding, and indexing took maybe under 30 minutes for me to read through, edit slightly, and execute. Adding these functions into my existing workflow took under and hour - so maybe 90 minutes total from prompt to working RAG proof-of-concept. To be honest, totally wild.
