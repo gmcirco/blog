@@ -79,7 +79,8 @@ ul.task-list li input[type="checkbox"] {
 
     const options = {
       valueNames: ['listing-date','listing-title','listing-author','listing-subtitle','listing-image','listing-description','listing-categories',{ data: ['index'] },{ data: ['categories'] },{ data: ['listing-date-sort'] },{ data: ['listing-file-modified-sort'] }],
-      
+      page: 25,
+    pagination: { item: "<li class='page-item'><a class='page page-link' href='#'></a></li>" },
       searchColumns: ["listing-date","listing-title","listing-author","listing-subtitle","listing-image","listing-description","listing-categories"],
     };
 
@@ -196,7 +197,7 @@ window.Quarto = {
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
         
-    <h5 class="quarto-listing-category-title">Categories</h5><div class="quarto-listing-category category-default"><div class="category" data-category="">All <span class="quarto-category-count">(24)</span></div><div class="category" data-category="Anomaly Detection">Anomaly Detection <span class="quarto-category-count">(5)</span></div><div class="category" data-category="Bayesian Statistics">Bayesian Statistics <span class="quarto-category-count">(6)</span></div><div class="category" data-category="Causal Inference">Causal Inference <span class="quarto-category-count">(1)</span></div><div class="category" data-category="Data Science Applications">Data Science Applications <span class="quarto-category-count">(4)</span></div><div class="category" data-category="Machine Learning &amp; Prediction">Machine Learning &amp; Prediction <span class="quarto-category-count">(7)</span></div><div class="category" data-category="Miscellaneous">Miscellaneous <span class="quarto-category-count">(3)</span></div><div class="category" data-category="Python">Python <span class="quarto-category-count">(5)</span></div><div class="category" data-category="R">R <span class="quarto-category-count">(19)</span></div><div class="category" data-category="SQL">SQL <span class="quarto-category-count">(1)</span></div><div class="category" data-category="Spatial Statistics">Spatial Statistics <span class="quarto-category-count">(4)</span></div></div></div>
+    <h5 class="quarto-listing-category-title">Categories</h5><div class="quarto-listing-category category-default"><div class="category" data-category="">All <span class="quarto-category-count">(29)</span></div><div class="category" data-category="Anomaly Detection">Anomaly Detection <span class="quarto-category-count">(6)</span></div><div class="category" data-category="Bayesian Statistics">Bayesian Statistics <span class="quarto-category-count">(6)</span></div><div class="category" data-category="Causal Inference">Causal Inference <span class="quarto-category-count">(1)</span></div><div class="category" data-category="Data Science Applications">Data Science Applications <span class="quarto-category-count">(5)</span></div><div class="category" data-category="Machine Learning &amp; Prediction">Machine Learning &amp; Prediction <span class="quarto-category-count">(7)</span></div><div class="category" data-category="Miscellaneous">Miscellaneous <span class="quarto-category-count">(3)</span></div><div class="category" data-category="Python">Python <span class="quarto-category-count">(6)</span></div><div class="category" data-category="R">R <span class="quarto-category-count">(20)</span></div><div class="category" data-category="SQL">SQL <span class="quarto-category-count">(1)</span></div><div class="category" data-category="Spatial Statistics">Spatial Statistics <span class="quarto-category-count">(4)</span></div></div></div>
 <!-- main -->
 <main class="content quarto-banner-title-block column-page-left" id="quarto-document-content">
 
@@ -210,7 +211,158 @@ window.Quarto = {
 
 <div class="quarto-listing quarto-listing-container-default" id="listing-listing">
 <div class="list quarto-listing-default">
-<div class="quarto-post image-right" data-index="0" data-categories="Python,Data Science Applications" data-listing-date-sort="1740373200000" data-listing-file-modified-sort="1740408828496" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="21" data-listing-word-count-sort="4198">
+<div class="quarto-post image-right" data-index="0" data-listing-file-modified-sort="1740328974099">
+<div class="thumbnail">
+<p><a href="./posts/prompt-testing/notebooks/prompt_testing_2.html" class="no-external"></a></p><a href="./posts/prompt-testing/notebooks/prompt_testing_2.html" class="no-external">
+<div class="listing-item-img-placeholder card-img-top" >&nbsp;</div>
+</a><p><a href="./posts/prompt-testing/notebooks/prompt_testing_2.html" class="no-external"></a></p>
+</div>
+<div class="body">
+<h3 class="no-anchor listing-title">
+<a href="./posts/prompt-testing/notebooks/prompt_testing_2.html" class="no-external"></a>
+</h3>
+<div class="listing-subtitle">
+<a href="./posts/prompt-testing/notebooks/prompt_testing_2.html" class="no-external"></a>
+</div>
+<div class="listing-description">
+<a href="./posts/prompt-testing/notebooks/prompt_testing_2.html" class="no-external">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-2"><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb1-3"></span>
+<span id="cb1-4"><span class="im">from</span> openai <span class="im">import</span> OpenAI</span>
+<span id="cb1-5"><span class="im">from</span> src.prompts <span class="im">import</span> HEADER1, BODY1, BODY2, EXAMPLE_OUTPUT1, EXAMPLE_OUTPUT2</span>
+<span id="cb1-6"><span class="im">from</span> src.prompt_creation <span class="im">im…</span></span><span id="cb1-7"></span><span id="cb1-8"><span class="op"></span></span><span id="cb1-9"></span><span id="cb1-10"><span class="co"></span></span><span id="cb1-11"><span class="op"></span></span><span id="cb1-12"></span><span id="cb1-13"><span class="co"></span></span><span id="cb1-14"><span class="op"></span><span class="st"></span></span><span id="cb1-15"><span class="st"></span></span><span id="cb1-16"><span class="st"></span></span><span id="cb1-17"><span class="st"></span></span><span id="cb1-18"><span class="op"></span><span class="st"></span></span><span id="cb1-19"><span class="op"></span><span class="st"></span></span><span id="cb1-20"></span><span id="cb1-21"><span class="op"></span></span><span id="cb1-22"><span class="op"></span></span><span id="cb1-23"></span><span id="cb1-24"><span class="co"></span></span><span id="cb1-25"><span class="co"></span></span><span id="cb1-26"><span class="cf"></span><span class="kw"></span></span><span id="cb1-27"></span><span id="cb1-28"><span class="co"></span></span><span id="cb1-29"><span class="op"></span><span class="dv"></span></span><span id="cb1-30"><span class="bu"></span><span class="op"></span><span class="st"></span></span><span id="cb1-31"><span class="op"></span><span class="st"></span></span><span id="cb1-32"></span><span id="cb1-33"><span class="op"></span></span><span id="cb1-34"><span class="st"></span></span><span id="cb1-35"><span class="st"></span></span><span id="cb1-36"><span class="st"></span></span><span id="cb1-37"><span class="st"></span></span><span id="cb1-38"><span class="st"></span><span class="va"></span></span><span id="cb1-39"></span><span id="cb1-40"></span><span id="cb1-41"><span class="co"></span></span><span id="cb1-42"><span class="op"></span><span class="op"></span></span><span id="cb1-43"></span><span id="cb1-44"><span class="op"></span><span class="dv"></span></span><span id="cb1-45"><span class="cf"></span><span class="kw"></span></span><span id="cb1-46"></span><span id="cb1-47"><span class="co"></span></span><span id="cb1-48"></span><span id="cb1-49"></span><span id="cb1-50"><span class="st"></span><span class="ss"></span><span class="sc"></span><span class="bu"></span><span class="sc"></span><span class="ss"></span><span class="sc"></span><span class="sc"></span><span class="ss"></span></span><span id="cb1-51"><span class="st"></span><span class="st"></span></span><span id="cb1-52"><span class="st"></span><span class="st"></span></span><span id="cb1-53"><span class="st"></span></span><span id="cb1-54"><span class="st"></span><span class="st"></span></span><span id="cb1-55"><span class="st"></span></span><span id="cb1-56"><span class="st"></span><span class="st"></span><span class="st"></span></span><span id="cb1-57"><span class="st"></span><span class="st"></span><span class="st"></span></span><span id="cb1-58"></span><span id="cb1-59"><span class="st"></span><span class="dv"></span></span><span id="cb1-60"></span><span id="cb1-61"></span><span id="cb1-62"></span><span id="cb1-63"><span class="op"></span><span class="dv"></span></span></code></pre></div></a>
+</div>
+</div>
+<div class="metadata">
+<p><a href="./posts/prompt-testing/notebooks/prompt_testing_2.html" class="no-external"></a></p><a href="./posts/prompt-testing/notebooks/prompt_testing_2.html" class="no-external">
+</a>
+</div>
+</div>
+<div class="quarto-post image-right" data-index="1" data-listing-file-modified-sort="1740402726824">
+<div class="thumbnail">
+<p><a href="./posts/prompt-testing/notebooks/testing.html" class="no-external"></a></p><a href="./posts/prompt-testing/notebooks/testing.html" class="no-external">
+<div class="listing-item-img-placeholder card-img-top" >&nbsp;</div>
+</a><p><a href="./posts/prompt-testing/notebooks/testing.html" class="no-external"></a></p>
+</div>
+<div class="body">
+<h3 class="no-anchor listing-title">
+<a href="./posts/prompt-testing/notebooks/testing.html" class="no-external"></a>
+</h3>
+<div class="listing-subtitle">
+<a href="./posts/prompt-testing/notebooks/testing.html" class="no-external"></a>
+</div>
+<div class="listing-description">
+<a href="./posts/prompt-testing/notebooks/testing.html" class="no-external">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb1-2"><span class="im">from</span> sklearn.metrics <span class="im">import</span> f1_score, accuracy_score</span>
+<span id="cb1-3"><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-4"><span class="im">import</span> json</span>
+<span id="cb1-5"></span>
+<span id="cb1-6"><span class="co"># load suicide narratives and labels</span></span>
+<span id="cb1-7">narratives <span class="op">=</span> pd.read_csv(<span class="st">"data…</span></span><span id="cb1-8"><span class="op"></span><span class="st"></span></span><span id="cb1-9"></span><span id="cb1-10"><span class="co"></span></span><span id="cb1-11"><span class="cf"></span><span class="bu"></span><span class="st"></span><span class="im"></span></span><span id="cb1-12"><span class="op"></span><span class="cf"></span><span class="kw"></span></span></code></pre></div></a>
+</div>
+</div>
+<div class="metadata">
+<p><a href="./posts/prompt-testing/notebooks/testing.html" class="no-external"></a></p><a href="./posts/prompt-testing/notebooks/testing.html" class="no-external">
+</a>
+</div>
+</div>
+<div class="quarto-post image-right" data-index="2" data-listing-file-modified-sort="1741624996795">
+<div class="thumbnail">
+<p><a href="./posts/prompt-testing/notebooks/vibe-coding.html" class="no-external"></a></p><a href="./posts/prompt-testing/notebooks/vibe-coding.html" class="no-external">
+<div class="listing-item-img-placeholder card-img-top" >&nbsp;</div>
+</a><p><a href="./posts/prompt-testing/notebooks/vibe-coding.html" class="no-external"></a></p>
+</div>
+<div class="body">
+<h3 class="no-anchor listing-title">
+<a href="./posts/prompt-testing/notebooks/vibe-coding.html" class="no-external"></a>
+</h3>
+<div class="listing-subtitle">
+<a href="./posts/prompt-testing/notebooks/vibe-coding.html" class="no-external"></a>
+</div>
+<div class="listing-description">
+<a href="./posts/prompt-testing/notebooks/vibe-coding.html" class="no-external">10 rows × 24 columns</a>
+</div>
+</div>
+<div class="metadata">
+<p><a href="./posts/prompt-testing/notebooks/vibe-coding.html" class="no-external"></a></p><a href="./posts/prompt-testing/notebooks/vibe-coding.html" class="no-external">
+</a>
+</div>
+</div>
+<div class="quarto-post image-right" data-index="3" data-categories="Python,Data Science Applications" data-listing-date-sort="1741579200000" data-listing-file-modified-sort="1741662792984" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="11" data-listing-word-count-sort="2037">
+<div class="thumbnail">
+<p><a href="./posts/vibe-coding/vibe-coding.html" class="no-external"></a></p><a href="./posts/vibe-coding/vibe-coding.html" class="no-external">
+<p><img loading="lazy" src="./posts/vibe-coding/prompt-testing.png" class="thumbnail-image"></p>
+</a><p><a href="./posts/vibe-coding/vibe-coding.html" class="no-external"></a></p>
+</div>
+<div class="body">
+<h3 class="no-anchor listing-title">
+<a href="./posts/vibe-coding/vibe-coding.html" class="no-external">‘Vibe Coding’ my way into a RAG pipeline</a>
+</h3>
+<div class="listing-subtitle">
+<a href="./posts/vibe-coding/vibe-coding.html" class="no-external">Retrieval-augmented generation with a little help from a friend.</a>
+</div>
+<div class="listing-categories">
+<div class="listing-category" onclick="window.quartoListingCategory('Python'); return false;">
+Python
+</div>
+<div class="listing-category" onclick="window.quartoListingCategory('Data Science Applications'); return false;">
+Data Science Applications
+</div>
+</div>
+<div class="listing-description">
+<a href="./posts/vibe-coding/vibe-coding.html" class="no-external"><em>There are synthesized depictions of self-harm and suicide in this blog post.</em></a>
+</div>
+</div>
+<div class="metadata">
+<a href="./posts/vibe-coding/vibe-coding.html" class="no-external">
+<div class="listing-date">
+Mar 10, 2025
+</div>
+<div class="listing-author">
+Gio Circo, Ph.D.
+</div>
+</a>
+</div>
+</div>
+<div class="quarto-post image-right" data-index="4" data-categories="R,Anomaly Detection" data-listing-date-sort="1741323600000" data-listing-file-modified-sort="1741627954280" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="9" data-listing-word-count-sort="1705">
+<div class="thumbnail">
+<p><a href="./posts/fake-tickets/fake-tickets.html" class="no-external"></a></p><a href="./posts/fake-tickets/fake-tickets.html" class="no-external">
+<p><img loading="lazy" src="./posts/fake-tickets/ecdf.png" class="thumbnail-image"></p>
+</a><p><a href="./posts/fake-tickets/fake-tickets.html" class="no-external"></a></p>
+</div>
+<div class="body">
+<h3 class="no-anchor listing-title">
+<a href="./posts/fake-tickets/fake-tickets.html" class="no-external">Finding Fake Traffic Tickets in CT State Police Data</a>
+</h3>
+<div class="listing-subtitle">
+<a href="./posts/fake-tickets/fake-tickets.html" class="no-external">A decidedly old-school approach</a>
+</div>
+<div class="listing-categories">
+<div class="listing-category" onclick="window.quartoListingCategory('R'); return false;">
+R
+</div>
+<div class="listing-category" onclick="window.quartoListingCategory('Anomaly Detection'); return false;">
+Anomaly Detection
+</div>
+</div>
+<div class="listing-description">
+<a href="./posts/fake-tickets/fake-tickets.html" class="no-external">In 2022 news broke that Connecticut State Police officers had been likely submitting tens of thousands of fake traffic tickets. What started from a report by CT Insider about…</a>
+</div>
+</div>
+<div class="metadata">
+<a href="./posts/fake-tickets/fake-tickets.html" class="no-external">
+<div class="listing-date">
+Mar 7, 2025
+</div>
+<div class="listing-author">
+Gio Circo, Ph.D.
+</div>
+</a>
+</div>
+</div>
+<div class="quarto-post image-right" data-index="5" data-categories="Python,Data Science Applications" data-listing-date-sort="1740373200000" data-listing-file-modified-sort="1741449417224" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="21" data-listing-word-count-sort="4198">
 <div class="thumbnail">
 <p><a href="./posts/prompt-testing/prompt_testing.html" class="no-external"></a></p><a href="./posts/prompt-testing/prompt_testing.html" class="no-external">
 <p><img loading="lazy" src="./posts/prompt-testing/prompt-testing.png" class="thumbnail-image"></p>
@@ -246,7 +398,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="1" data-categories="Python,Data Science Applications" data-listing-date-sort="1737694800000" data-listing-file-modified-sort="1737725545727" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="11" data-listing-word-count-sort="2095">
+<div class="quarto-post image-right" data-index="6" data-categories="Python,Data Science Applications" data-listing-date-sort="1737694800000" data-listing-file-modified-sort="1737725545727" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="11" data-listing-word-count-sort="2095">
 <div class="thumbnail">
 <p><a href="./posts/modern-bert/rank-rerank.html" class="no-external"></a></p><a href="./posts/modern-bert/rank-rerank.html" class="no-external">
 <p><img loading="lazy" src="./posts/modern-bert/words2.png" class="thumbnail-image"></p>
@@ -282,7 +434,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="2" data-categories="R,Bayesian Statistics" data-listing-date-sort="1736744400000" data-listing-file-modified-sort="1736455282208" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="24" data-listing-word-count-sort="4653">
+<div class="quarto-post image-right" data-index="7" data-categories="R,Bayesian Statistics" data-listing-date-sort="1736744400000" data-listing-file-modified-sort="1736455282208" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="24" data-listing-word-count-sort="4653">
 <div class="thumbnail">
 <p><a href="./posts/presidential-polls-2024/election.html" class="no-external"></a></p><a href="./posts/presidential-polls-2024/election.html" class="no-external">
 <p><img loading="lazy" src="./posts/presidential-polls-2024/election.png" class="thumbnail-image"></p>
@@ -318,7 +470,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="3" data-categories="R" data-listing-date-sort="1733374800000" data-listing-file-modified-sort="1733411391591" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="12" data-listing-word-count-sort="2336">
+<div class="quarto-post image-right" data-index="8" data-categories="R" data-listing-date-sort="1733374800000" data-listing-file-modified-sort="1733411391591" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="12" data-listing-word-count-sort="2336">
 <div class="thumbnail">
 <p><a href="./posts/crime-guns/crime-guns.html" class="no-external"></a></p><a href="./posts/crime-guns/crime-guns.html" class="no-external">
 <p><img loading="lazy" src="./posts/crime-guns/plot_main.png" class="thumbnail-image"></p>
@@ -351,7 +503,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="4" data-categories="Python,Data Science Applications" data-listing-date-sort="1726804800000" data-listing-file-modified-sort="1726864757459" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="4" data-listing-word-count-sort="680">
+<div class="quarto-post image-right" data-index="9" data-categories="Python,Data Science Applications" data-listing-date-sort="1726804800000" data-listing-file-modified-sort="1726864757459" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="4" data-listing-word-count-sort="680">
 <div class="thumbnail">
 <p><a href="./posts/hello-world/hello.html" class="no-external"></a></p><a href="./posts/hello-world/hello.html" class="no-external">
 <p><img loading="lazy" src="./posts/hello-world/icon.png" class="thumbnail-image"></p>
@@ -387,7 +539,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="5" data-categories="R,Bayesian Statistics" data-listing-date-sort="1724472000000" data-listing-file-modified-sort="1731877690077" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="10" data-listing-word-count-sort="1982">
+<div class="quarto-post image-right" data-index="10" data-categories="R,Bayesian Statistics" data-listing-date-sort="1724472000000" data-listing-file-modified-sort="1731877690077" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="10" data-listing-word-count-sort="1982">
 <div class="thumbnail">
 <p><a href="./posts/bayes-study-1/bayes-study-1.html" class="no-external"></a></p><a href="./posts/bayes-study-1/bayes-study-1.html" class="no-external">
 <p><img loading="lazy" src="./posts/bayes-study-1/reg.png" class="thumbnail-image"></p>
@@ -423,7 +575,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="6" data-categories="R,SQL" data-listing-date-sort="1721707200000" data-listing-file-modified-sort="1726864648237" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1032">
+<div class="quarto-post image-right" data-index="11" data-categories="R,SQL" data-listing-date-sort="1721707200000" data-listing-file-modified-sort="1726864648237" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1032">
 <div class="thumbnail">
 <p><a href="./posts/duck-db/duckdb.html" class="no-external"></a></p><a href="./posts/duck-db/duckdb.html" class="no-external">
 <p><img loading="lazy" src="./posts/duck-db/duck.jpg" class="thumbnail-image"></p>
@@ -459,7 +611,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="7" data-categories="R,Spatial Statistics" data-listing-date-sort="1718424000000" data-listing-file-modified-sort="1725417935534" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="9" data-listing-word-count-sort="1711">
+<div class="quarto-post image-right" data-index="12" data-categories="R,Spatial Statistics" data-listing-date-sort="1718424000000" data-listing-file-modified-sort="1725417935534" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="9" data-listing-word-count-sort="1711">
 <div class="thumbnail">
 <p><a href="./posts/spatial-simulation/spatial-sim.html" class="no-external"></a></p><a href="./posts/spatial-simulation/spatial-sim.html" class="no-external">
 <p><img loading="lazy" src="./posts/spatial-simulation/map-gas.png" class="thumbnail-image"></p>
@@ -495,7 +647,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="8" data-categories="R,Miscellaneous" data-listing-date-sort="1712116800000" data-listing-file-modified-sort="1722808307907" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="5" data-listing-word-count-sort="986">
+<div class="quarto-post image-right" data-index="13" data-categories="R,Miscellaneous" data-listing-date-sort="1712116800000" data-listing-file-modified-sort="1722808307907" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="5" data-listing-word-count-sort="986">
 <div class="thumbnail">
 <p><a href="./posts/chipotle-weight/youtube-food.html" class="no-external"></a></p><a href="./posts/chipotle-weight/youtube-food.html" class="no-external">
 <p><img loading="lazy" src="./posts/chipotle-weight/burrito.jpg" class="thumbnail-image"></p>
@@ -531,7 +683,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="9" data-categories="R,Machine Learning &amp; Prediction" data-listing-date-sort="1711425600000" data-listing-file-modified-sort="1725417872705" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1145">
+<div class="quarto-post image-right" data-index="14" data-categories="R,Machine Learning &amp; Prediction" data-listing-date-sort="1711425600000" data-listing-file-modified-sort="1725417872705" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1145">
 <div class="thumbnail">
 <p><a href="./posts/tiny-recid/recid.html" class="no-external"></a></p><a href="./posts/tiny-recid/recid.html" class="no-external">
 <p class="card-img-top"><img src="posts\tiny-recid\table_4.png"  class="thumbnail-image card-img"/></p>
@@ -567,7 +719,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="10" data-categories="R,Bayesian Statistics" data-listing-date-sort="1710734400000" data-listing-file-modified-sort="1733410958557" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="17" data-listing-word-count-sort="3309">
+<div class="quarto-post image-right" data-index="15" data-categories="R,Bayesian Statistics" data-listing-date-sort="1710734400000" data-listing-file-modified-sort="1733410958557" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="17" data-listing-word-count-sort="3309">
 <div class="thumbnail">
 <p><a href="./posts/mmm-bayesian/mmm.html" class="no-external"></a></p><a href="./posts/mmm-bayesian/mmm.html" class="no-external">
 <p><img loading="lazy" src="./posts/mmm-bayesian/mmm.jpg" class="thumbnail-image"></p>
@@ -603,7 +755,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="11" data-categories="R,Spatial Statistics" data-listing-date-sort="1705381200000" data-listing-file-modified-sort="1725418237768" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1076">
+<div class="quarto-post image-right" data-index="16" data-categories="R,Spatial Statistics" data-listing-date-sort="1705381200000" data-listing-file-modified-sort="1725418237768" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1076">
 <div class="thumbnail">
 <p><a href="./posts/distance-plotting/distance-plotting.html" class="no-external"></a></p><a href="./posts/distance-plotting/distance-plotting.html" class="no-external">
 <p><img loading="lazy" src="./posts/distance-plotting/map.jpg" class="thumbnail-image"></p>
@@ -639,7 +791,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="12" data-categories="Python,Data Science Applications" data-listing-date-sort="1704690000000" data-listing-file-modified-sort="1725418092502" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1551">
+<div class="quarto-post image-right" data-index="17" data-categories="Python,Data Science Applications" data-listing-date-sort="1704690000000" data-listing-file-modified-sort="1725418092502" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1551">
 <div class="thumbnail">
 <p><a href="./posts/nlp-falls/nlp_falls.html" class="no-external"></a></p><a href="./posts/nlp-falls/nlp_falls.html" class="no-external">
 <p><img loading="lazy" src="./posts/nlp-falls/words.jpg" class="thumbnail-image"></p>
@@ -675,7 +827,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="13" data-categories="R,Bayesian Statistics,Miscellaneous" data-listing-date-sort="1701406800000" data-listing-file-modified-sort="1725418251802" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="18" data-listing-word-count-sort="3534">
+<div class="quarto-post image-right" data-index="18" data-categories="R,Bayesian Statistics,Miscellaneous" data-listing-date-sort="1701406800000" data-listing-file-modified-sort="1725418251802" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="18" data-listing-word-count-sort="3534">
 <div class="thumbnail">
 <p><a href="./posts/coffee/coffee.html" class="no-external"></a></p><a href="./posts/coffee/coffee.html" class="no-external">
 <p><img loading="lazy" src="./posts/coffee/coffee.jpg" class="thumbnail-image"></p>
@@ -714,7 +866,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="14" data-categories="R,Causal Inference,Bayesian Statistics" data-listing-date-sort="1698206400000" data-listing-file-modified-sort="1725417899694" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="9" data-listing-word-count-sort="1735">
+<div class="quarto-post image-right" data-index="19" data-categories="R,Causal Inference,Bayesian Statistics" data-listing-date-sort="1698206400000" data-listing-file-modified-sort="1725417899694" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="9" data-listing-word-count-sort="1735">
 <div class="thumbnail">
 <p><a href="./posts/synth-impact/synth_impact.html" class="no-external"></a></p><a href="./posts/synth-impact/synth_impact.html" class="no-external">
 <p><img loading="lazy" src="./posts/synth-impact/data.jpg" class="thumbnail-image"></p>
@@ -753,7 +905,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="15" data-categories="R,Spatial Statistics,Machine Learning &amp; Prediction" data-listing-date-sort="1696564800000" data-listing-file-modified-sort="1725417951365" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="9" data-listing-word-count-sort="1792">
+<div class="quarto-post image-right" data-index="20" data-categories="R,Spatial Statistics,Machine Learning &amp; Prediction" data-listing-date-sort="1696564800000" data-listing-file-modified-sort="1725417951365" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="9" data-listing-word-count-sort="1792">
 <div class="thumbnail">
 <p><a href="./posts/rtm-spatial/rtm.html" class="no-external"></a></p><a href="./posts/rtm-spatial/rtm.html" class="no-external">
 <p><img loading="lazy" src="./posts/rtm-spatial/city.jpg" class="thumbnail-image"></p>
@@ -792,7 +944,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="16" data-categories="R,Miscellaneous" data-listing-date-sort="1690430400000" data-listing-file-modified-sort="1725418208758" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1151">
+<div class="quarto-post image-right" data-index="21" data-categories="R,Miscellaneous" data-listing-date-sort="1690430400000" data-listing-file-modified-sort="1725418208758" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1151">
 <div class="thumbnail">
 <p><a href="./posts/gmm/gmm.html" class="no-external"></a></p><a href="./posts/gmm/gmm.html" class="no-external">
 <p><img loading="lazy" src="./posts/gmm/food.png" class="thumbnail-image"></p>
@@ -828,7 +980,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="17" data-categories="R,Anomaly Detection,Machine Learning &amp; Prediction" data-listing-date-sort="1684036800000" data-listing-file-modified-sort="1725418194583" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="12" data-listing-word-count-sort="2350">
+<div class="quarto-post image-right" data-index="22" data-categories="R,Anomaly Detection,Machine Learning &amp; Prediction" data-listing-date-sort="1684036800000" data-listing-file-modified-sort="1725418194583" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="12" data-listing-word-count-sort="2350">
 <div class="thumbnail">
 <p><a href="./posts/hbos-anomaly/hbos_anomaly.html" class="no-external"></a></p><a href="./posts/hbos-anomaly/hbos_anomaly.html" class="no-external">
 <p><img loading="lazy" src="./posts/hbos-anomaly/hist.png" class="thumbnail-image"></p>
@@ -867,7 +1019,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="18" data-categories="R,Anomaly Detection,Machine Learning &amp; Prediction" data-listing-date-sort="1682395200000" data-listing-file-modified-sort="1725453317536" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1117">
+<div class="quarto-post image-right" data-index="23" data-categories="R,Anomaly Detection,Machine Learning &amp; Prediction" data-listing-date-sort="1682395200000" data-listing-file-modified-sort="1725453317536" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1117">
 <div class="thumbnail">
 <p><a href="./posts/knn-anomaly/knn_anomaly.html" class="no-external"></a></p><a href="./posts/knn-anomaly/knn_anomaly.html" class="no-external">
 <p><img loading="lazy" src="./posts/knn-anomaly/house.png" class="thumbnail-image"></p>
@@ -906,7 +1058,7 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="19" data-categories="R,Anomaly Detection,Machine Learning &amp; Prediction" data-listing-date-sort="1682308800000" data-listing-file-modified-sort="1725417989006" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1092">
+<div class="quarto-post image-right" data-index="24" data-categories="R,Anomaly Detection,Machine Learning &amp; Prediction" data-listing-date-sort="1682308800000" data-listing-file-modified-sort="1725417989006" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1092">
 <div class="thumbnail">
 <p><a href="./posts/pca-timeseries/pca_ts.html" class="no-external"></a></p><a href="./posts/pca-timeseries/pca_ts.html" class="no-external">
 <p><img loading="lazy" src="./posts/pca-timeseries/power.png" class="thumbnail-image"></p>
@@ -945,10 +1097,10 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="20" data-categories="R,Anomaly Detection,Machine Learning &amp; Prediction" data-listing-date-sort="1680840000000" data-listing-file-modified-sort="1725418019467" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1407">
+<div class="quarto-post image-right" data-index="25" data-categories="R,Anomaly Detection,Machine Learning &amp; Prediction" data-listing-date-sort="1680840000000" data-listing-file-modified-sort="1725418019467" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1407">
 <div class="thumbnail">
 <p><a href="./posts/pca-anomaly/pca_anomaly.html" class="no-external"></a></p><a href="./posts/pca-anomaly/pca_anomaly.html" class="no-external">
-<p><img loading="lazy" src="./posts/pca-anomaly/hospital.png" class="thumbnail-image"></p>
+<p><img loading="lazy" data-src="./posts/pca-anomaly/hospital.png" class="thumbnail-image"></p>
 </a><p><a href="./posts/pca-anomaly/pca_anomaly.html" class="no-external"></a></p>
 </div>
 <div class="body">
@@ -984,10 +1136,10 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="21" data-categories="R,Spatial Statistics" data-listing-date-sort="1679284800000" data-listing-file-modified-sort="1725418285331" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1587">
+<div class="quarto-post image-right" data-index="26" data-categories="R,Spatial Statistics" data-listing-date-sort="1679284800000" data-listing-file-modified-sort="1725418285331" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1587">
 <div class="thumbnail">
 <p><a href="./posts/austin-vehicle/spatial_merging.html" class="no-external"></a></p><a href="./posts/austin-vehicle/spatial_merging.html" class="no-external">
-<p><img loading="lazy" src="./posts/austin-vehicle/car.png" class="thumbnail-image"></p>
+<p><img loading="lazy" data-src="./posts/austin-vehicle/car.png" class="thumbnail-image"></p>
 </a><p><a href="./posts/austin-vehicle/spatial_merging.html" class="no-external"></a></p>
 </div>
 <div class="body">
@@ -1020,10 +1172,10 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="22" data-categories="Python,Anomaly Detection,Machine Learning &amp; Prediction" data-listing-date-sort="1676437200000" data-listing-file-modified-sort="1725418050861" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="19" data-listing-word-count-sort="3651">
+<div class="quarto-post image-right" data-index="27" data-categories="Python,Anomaly Detection,Machine Learning &amp; Prediction" data-listing-date-sort="1676437200000" data-listing-file-modified-sort="1725418050861" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="19" data-listing-word-count-sort="3651">
 <div class="thumbnail">
 <p><a href="./posts/outlier-ensemble/alsoe_ensembling.html" class="no-external"></a></p><a href="./posts/outlier-ensemble/alsoe_ensembling.html" class="no-external">
-<p><img loading="lazy" src="./posts/outlier-ensemble/comps.png" class="thumbnail-image"></p>
+<p><img loading="lazy" data-src="./posts/outlier-ensemble/comps.png" class="thumbnail-image"></p>
 </a><p><a href="./posts/outlier-ensemble/alsoe_ensembling.html" class="no-external"></a></p>
 </div>
 <div class="body">
@@ -1059,10 +1211,10 @@ Gio Circo, Ph.D.
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="23" data-categories="R,Bayesian Statistics" data-listing-date-sort="1668142800000" data-listing-file-modified-sort="1725418174764" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1437">
+<div class="quarto-post image-right" data-index="28" data-categories="R,Bayesian Statistics" data-listing-date-sort="1668142800000" data-listing-file-modified-sort="1725418174764" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="8" data-listing-word-count-sort="1437">
 <div class="thumbnail">
 <p><a href="./posts/hlm-osha/osha_shrinkage.html" class="no-external"></a></p><a href="./posts/hlm-osha/osha_shrinkage.html" class="no-external">
-<p><img loading="lazy" src="./posts/hlm-osha/box.png" class="thumbnail-image"></p>
+<p><img loading="lazy" data-src="./posts/hlm-osha/box.png" class="thumbnail-image"></p>
 </a><p><a href="./posts/hlm-osha/osha_shrinkage.html" class="no-external"></a></p>
 </div>
 <div class="body">
@@ -1099,6 +1251,9 @@ Gio Circo, Ph.D
 <div class="listing-no-matching d-none">
 No matching items
 </div>
+<nav id="listing-pagination" class="listing-pagination" aria-label="Page Navigation">
+  <ul class="pagination"></ul>
+</nav>
 </div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
 window.document.addEventListener("DOMContentLoaded", function (event) {

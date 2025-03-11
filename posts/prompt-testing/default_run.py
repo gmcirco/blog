@@ -84,5 +84,5 @@ client.batches.create(
     input_file_id=batch_input_file_id,
     endpoint="/v1/chat/completions",
     completion_window="24h",
-    metadata={"description": "Batch Testing 4 prompts x 200 examples with caching"},
+    metadata={"description": "Batch Testing 1 prompts x 200 examples with caching and RAG"},
 )

@@ -1,0 +1,209 @@
+---
+title: "'Vibe Coding' my way into a RAG pipeline"
+subtitle: "Retrieval-augmented generation with a little help from a friend."
+author: Gio Circo, Ph.D.
+date: 2025-3-10
+categories:
+  - Python
+  - Data Science Applications
+format: 
+    html:
+        self-contained: true
+        code-fold: false
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+        mermaid:
+            theme: neutral
+theme: flatly
+image: prompt-testing.png
+---
+
+```{python}
+#| include: false
+%cd C:\Users\gioc4\Documents\blog\gcirco_blog\posts\prompt-testing
+
+import pandas as pd
+from src.rag import create_prompt_rules, search_vector_database
+
+narratives = pd.read_csv("C:\\Users\\gioc4\\Documents\\blog\\gcirco_blog\\posts\\prompt-testing\\data\\train_narratives_sample_200.csv")
+
+```
+
+*There are synthesized depictions of self-harm and suicide in this blog post.*
+
+## LLMs and RAG
+
+For most people who are up-to-date in tech, large language models (LLMs) are nothing new. In fact, they are downright pervasive. One of the largest challenges with LLMs today is that they are very good at coming up with plausible-sounding answers, but less good at telling us *why* or *where* they got that answer from. Many times we have to cast a critical eye at LLM output and determine whether or not it is real or just a hallucination. From the beginning, it was suggested that we could augment a user's prompt with a set of relevent documents that could be used to verify the output of the LLM, or improve the prompt itself. For example, imagine we [wrote a prompt](https://chatgpt.com/share/67cf3c21-fd18-8007-a043-6eaec436e169) asking an LLM about [parking restrictions](https://newyork.public.law/laws/n.y._vehicle_and_traffic_law_section_1202) in New York State:
+
+> **Q:** Is it permitted to park between roadways on a highway according to New York State law?\
+> **A:** According to New York State law, parking between roadways on a highway is not permitted, except where official signs indicate otherwise. Specifically, Section 1200 of the New York Vehicle and Traffic Law states that parking is prohibited in areas such as medians, between divided roadways, and other restricted zones unless otherwise posted.
+
+versus:
+
+> **Q:** Is it permitted to park between roadways on a highway according to New York State law? Review the following rules from the New York Vehicle and Traffic Law. Provide direct quotes to support your answer: *\[full text of Vehicle & Traffic Law Section 1202\]*
+>
+> **A:** No, it is not permitted according to New York Vehicle and Traffic Law. The law explicitly states:
+>
+> > *“No person shall stop, stand or park a vehicle... in the area between roadways of a divided highway, including crossovers, except in an emergency.”*
+>
+> This is found under Section 1(i) of the provided rules. The only exception is in the case of an emergency.
+
+This is a bit of a contrived example, but the general idea here is that we can improve the LLMs by providing them relevant external information alongside their instructions. By including extra information this helps to guard against hallucinations, and can also give the user more guidance on why the LLM came to its specific answer. In our answer above, the LLM is technically correct in the first answer that parking is not permitted - but I think it invents a rule about official signs allowing otherwise. In the prompt containing the full-text of the relevent set of rules, we get a much shorter, cleaner response with the precise rule relevant to the question.
+
+## Coding Out a RAG Pipeline
+
+In a [recent blog post](https://gmcirco.github.io/blog/posts/prompt-testing/prompt_testing.html) I walked through a step-by-step process of how to set up a A/B testing process for prompt refinement. I relied on data from a recent [DrivenData](https://www.drivendata.org/competitions/295/cdc-automated-abstraction/page/917/) competition that relied on youth suicide narrative reports from the [National Violent Death Reporting System](https://www.cdc.gov/nvdrs/resources/nvdrsCodingManual.pdf). I was pretty happy with the workflow I built out, but couldn't help but feel that I could improve it somehow by giving the LLM direct access to the relevant sections from the coding manual. Here is where RAG comes in! Rather than prompting the model with upwards of 200 pages of text, of which it might need less than 1 page, I could pass just the smallest subsections for each question.
+
+### My mental model
+
+The way I envisioned this working was to process the RAG step separately by indexing the relevant sub-sections from section 5 of NVDRS coding manual. I would extract out the subsection chunks and then index them in vector database for retreval at the time of prompt creation. My prompt creator class adds the headers, instructions, and questions to the final prompt, and then we tack on the relevant rules from the vector database (see below):
+
+```{mermaid}
+flowchart LR
+    %% Improved node styling
+    classDef input fill:#c4e3f3,stroke:#5bc0de,stroke-width:2px,color:#31708f
+    classDef process fill:#d9edf7,stroke:#5bc0de,stroke-width:2px,color:#31708f
+    classDef database fill:#dff0d8,stroke:#5cb85c,stroke-width:2px,color:#3c763d
+    classDef output fill:#fcf8e3,stroke:#f0ad4e,stroke-width:2px,color:#8a6d3b
+    
+    %% Main components with better descriptions
+    A["NVDRS Manual<br/>(Source Document)"] -->|"Reference material"| B
+    B["RAG Model<br/>(Retrieval System)"] --> D
+    C["Narrative Text<br/>(Case Information)"] -->|"Contains: '...victim felt depressed..'"| D
+    C --> E
+    
+    %% Database and outputs
+    D[("Vector Database<br/>(Knowledge Store)")] -->|"Retrieved: '5.3.4 Current depressed mood:'"| F
+    E["Prompt Creator<br/>(Question Generator)"] -->|"Generates: Q1, Q2, Q3"| F
+    
+    %% Final output
+    F["Final Prompt<br/>(For LLM Processing)"]
+    
+    %% Apply styles
+    class A,C input
+    class B,E process
+    class D database
+    class F output
+
+```
+
+In my mind, I figured I could come up with a quick and dirty solution by using regex to hit on key words in the narrative, and then use a semantic similarity model (like `SentenceTransformers`) to retrieve the top $n$ rules. For example, a narrative might have a section stating:
+
+> "Victim had been feeling **depressed** and sad in the days leading up to the incident"
+
+We use regex to grab the relevant words around our matched word (here, **depressed**), encode them, and then retrieve rules from the vector database. In the last step we append these to our prompt before executing it.
+
+There's just one problem - I've never done this before.
+
+### Vibe-Coding
+
+What is "vibe coding"? One of my favorite definitions comes from ex-OpenAI founder Andrej Karpathy:
+
+> "There's a new kind of coding I call "vibe coding", where you fully give in to the vibes, embrace exponentials, and forget that the code even exists"
+
+In short, it represents a programmer's full surrender to the LLM, and taking what it gives back on good faith. When problems arrive, you just dig deeper and let the LLM guide you even further down the rabbit hole, trusting the process. I think the term is very funny - but there is a bit of truth to this. "Vibe-Coding" is sort of what I used to do early in grad school when I was trying to get some esoteric model running in R with virtually no background knowledge. To me, vibe-coding harkens back to the days of panicked copy-and-paste from a variety Stack Overflow posts.
+
+With this in mind, I believe in sharing my work. Here's the [full conversation](https://claude.ai/share/9ae9a888-def0-4e61-96c0-6a795d5d4ad8) I used to set up the RAG framework. I had enough of an idea of what I wanted, but wanted to speed up the code required to get the document chunking and indexing
+
+## Testing the RAG Process
+
+So what did all that get us? Well, with the help of Claude we got a set of four functions that^[If you are curious about the full code, you can look at my prompt-testing repo under my blog posts that contains the full set]:
+
+1.  Extract the relevant pages from the coding manual.
+2.  Chunk up the pages into subsections based on headers.
+3.  Encode these chunks using a `SentenceTransformers` model.
+4.  Save the embedded chunks and the section indices in a vector database.
+
+as well as two others:
+
+5. A function to query and retrieve results from the vector database.
+6. A function to append the results into a prompt-friendly text object.
+
+I took the code and made very slight adjustments (maybe 10% or less) and put them into their own .py file. I then created a separate file to perform all the steps and locally store the vector database in a cache folder:
+
+```{python}
+#| eval: false
+
+"Code to index rules from the NVDRS and store as vector store in cache"
+
+from pypdf import PdfReader
+from src.rag import (
+    extract_pages,
+    chunk_by_subsections_with_codes,
+    encode_chunks,
+    create_vector_store,
+)
+
+# import the full nvdrs coding manual
+# we only need a subset of pages on circumstances
+# page 74 - 149
+page_min = 74
+page_max = 148
+cache_dir = "cache/"
+
+reader = PdfReader("reference/nvdrsCodingManual.pdf")
+
+# extract pages, chunk subsections, then store in cache
+
+pages_circumstances = extract_pages(reader, page_min, page_max)
+section_circumstances = chunk_by_subsections_with_codes(pages_circumstances)
+section_embeddings = encode_chunks(section_circumstances)
+index, stored_chunks = create_vector_store(section_embeddings, cache_dir)
+```
+
+With that done, the other adjustment I needed to do is add the ability to search the vector database and return the relevant codes based on key works in the narrative. What I did was set up a dict containing key words for each major question, and a query term to append to the retrieved text substring. So, for example, given a narrative like this:
+
+> "Victim was at home and complained about feeling sad and depressed. Victim had been treated for ADHD and bipolar disorder and had reportedly not been taking his medications in the days preceeding"
+
+Passing thie example narrative into our query function. We pass this narrative into a `search_vector_database` function that searches for regex hits, encodes matching narrative text, and then queries it against the vector database. We have several key word hits, here, so we get several hits. We take all of results from the vector database search and pass these into another function that prepares it for insertion to the prompt. Essentially the `create_prompt_rules` function adds a header for the section for coding rules, and organizes them in order. The code below shows a successful retreval for the DepressedMood variable:
+
+```{python}
+test_narrative = "Victim was at home and complained about feeling sad and depressed. Victim had told his partner that he was thinking about taking his own life."
+
+val, matched_variables = search_vector_database(test_narrative, 1, "cache/rules_index.faiss", "cache/rule_chunks.pkl")
+PROMPT_RULES = create_prompt_rules(val, matched_variables)
+
+print(PROMPT_RULES)
+```
+
+## Adding it All Together
+
+Now that I had the LLM stuff mostly incorporated, all I needed to do is append this to my old LLM class. I added an extra parameter named `include_rag` that triggered the RAG process and appended it to the prompt:
+
+```{python}
+#| eval: false
+
+def standard_prompt_caching(
+        self,
+        header: str | list = None,
+        narrative: str | list = None,
+        body: str | list = None,
+        example_output: str | list = None,
+        footer: str | list = None,
+        include_rag: bool | list = False,
+        **kwargs
+    ) -> list:
+        """Create multiple standard prompts based on all combinations of list elements.
+        This puts the narrative at the end to support OpenAI prompt caching.
+        """
+
+        # Ensure all inputs are lists for consistent iteration
+        if include_rag:
+            val, matched_variables = search_vector_database(
+                narrative,
+                2,
+                "cache/rules_index.faiss",
+                "cache/rule_chunks.pkl",
+            )
+            rag = create_prompt_rules(val, matched_variables)
+            params = [body, example_output, rag, footer, header, narrative]
+        else:
+            params = [body, example_output, footer, header, narrative]
+        param_lists = [
+            [item] if not isinstance(item, list) else item for item in params
+        ]
+```
+
+Here's the crazy thing. It *works*. It works better than I expected. It looked like plausible code to me, but I had no idea if it would actually do what I envisioned. The code to do the chunking, embedding, and indexing took maybe under 30 minutes for me to read through, edit slightly, and execute.

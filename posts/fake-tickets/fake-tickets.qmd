@@ -1,0 +1,260 @@
+---
+title: "Finding Fake Traffic Tickets in CT State Police Data"
+subtitle: "A decidedly old-school approach"
+author: Gio Circo, Ph.D.
+date: 2025-3-07
+categories:
+  - R
+  - Anomaly Detection
+format: 
+    html:
+        self-contained: true
+        code-fold: false
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+        mermaid:
+            theme: neutral
+theme: flatly
+image: ecdf.png
+---
+
+```{r}
+#| include: false
+
+library(tidyverse)
+library(knitr)
+
+traffic <- read_csv("C:\\Users\\gioc4\\Documents\\blog\\data\\connecticut-r5.csv") %>%
+  filter(str_starts(`Department Name`,"CSP"))
+
+
+# ================= #
+# DATA SETUP
+# ================= #
+
+# get top 100 officers, for simplicity
+top_officer_ids <- 
+traffic %>%
+  count(ReportingOfficerIdentificationID) %>%
+  arrange(desc(n)) %>%
+  slice(1:100) %>%
+  pull(ReportingOfficerIdentificationID)
+
+# compute the average daily interval between stops
+daily_stop_interval <-
+traffic %>%
+  distinct(InterventionIdentificationID, .keep_all = TRUE) %>%
+  filter(ReportingOfficerIdentificationID %in% top_officer_ids) %>%
+  mutate(date = as.Date(InterventionDateTime, format = "%m/%d/%y")) %>%
+  select(officer_id = ReportingOfficerIdentificationID,
+         department = `Department Name`,
+         ReasonForStop,
+         date,
+         SubjectRaceCode,
+         time = InterventionTime) %>%
+  group_by(officer_id, date) %>%
+  arrange(officer_id, date, time) %>%
+  mutate(time_diff = time - lag(time,1),
+         time_diff_min = (as.numeric(time_diff) / 60)) %>%
+  filter(between(time_diff_min, 0, 60))
+
+# number of stops per-day
+times <-
+  daily_stop_interval %>%
+  group_by(officer_id) %>%
+  summarise(avg_time_diff_min = as.numeric((mean(time_diff, na.rm = TRUE) / 60)), count = n()) 
+
+# compute bands on all ecdfs, for 100 points
+time_min <- min(daily_stop_interval$time_diff_min)
+time_max <- max(daily_stop_interval$time_diff_min)
+N_points <- 125
+
+x_vals <- seq(time_min, time_max, length.out = N_points)
+
+
+# Compute all ECDF values at each x for all officer IDs
+ecdf_values <- sapply(times$officer_id, function(id) {
+  ecdf_func <- ecdf(daily_stop_interval$time_diff_min[daily_stop_interval$officer_id == id])
+  ecdf_func(x_vals)  
+})
+
+
+# Compute 5th and 95th percentiles for the confidence bands
+lower_band <- apply(ecdf_values, 1, function(row) quantile(row, 0.05))
+upper_band <- apply(ecdf_values, 1, function(row) quantile(row, 0.95))
+
+
+# ================= #
+# LOCAL FUNCS
+# ================= #
+
+# OK, let's compute the ECDF
+# function to plot single ecdf, or plot overlapping lines
+ecdf_plot <-  function(id, alpha = 1, lines = FALSE, ...) {
+  x <- daily_stop_interval$time_diff_min[daily_stop_interval$officer_id %in% id]
+  Fn <- ecdf(x)
+  ecdf_vals <- sort(unique(Fn(x)))
+  time_vals <- knots(Fn)
+  
+  if (lines == FALSE) {
+    plot(time_vals,
+         ecdf_vals,
+         type = 'l',
+         ...)
+  }
+  else{
+    lines(time_vals,
+          ecdf_vals,
+          type = 'l',
+          ...)
+  }
+}
+
+
+# just interesting notes to myself
+#Fn <- ecdf(one_officer$time_diff_min)
+
+# compute intervals
+#n <- length(one_officer$time_diff_min)
+#a <- .01
+
+#sigma <- sqrt(log(2/a)/(2*n))
+#vals <- Fn(one_officer$time_diff_min)
+
+#plot(sort(unique(one_officer$time_diff_min)), sort(unique(vals)), type = 'l')
+#lines(sort(unique(one_officer$time_diff_min)), pmin(sort(unique(vals))+sigma, 1), lty = 2, col='grey60')
+#lines(sort(unique(one_officer$time_diff_min)), pmax(sort(unique(vals))-sigma, 0), lty = 2, col='grey60')
+
+```
+
+
+## Fake Tickets Galore
+
+In 2022 news broke that Connecticut State Police officers had been likely submitting tens of thousands of fake traffic tickets. What started from a [report by CT Insider](https://www.ctinsider.com/news/article/CT-troopers-fabricated-tickets-17393339.php) about 4 officers expanded to an audit that implicated dozens more officers in the scandal. 
+
+Before I start, this is more of an academic exercise. I actually think the approach that the folks who did the audit is probably the best way and simplest way. In their case they found fake tickets by counting up the number of stops which didn't have a matching citation in the system. For this example we're going to rely only on the raw data which is publically available.
+
+## Working on the outside
+
+My hypothesis for the fake ticketing was that officers wanted to quickly pad their activity logs with fake stops. Because creating a stop log requires filling out a standardized form, I assumed that these officers would do it as quickly and as lazily as possible. I can imagine this looking like an officer at the end of their shift padding out activity with a bunch of zero-effort fake stops. Relying on this hunch, I figured I could detect unusual officer behavior by finding those whose distribution of stop times looked much different than the average officer. Humans are actually [quite bad](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0041531) at generating "random" numbers. In order to pad out a shift, there would probably be a lot of stops with very short times.
+
+### The Data
+
+The data for this comes from Connecticut's [Racial Profiling Prohibition Project](http://trafficstops.ctdata.org/) data portal. These contain data on all traffic stops conducted by local and state police, which have information on the time, date, reason for the stop, and some basic demographic information on the driver. For this analysis I use the data from 2018, and focus on unique stops involving only officers from the Connecticut State Police. 
+
+Unfortunately for me, the publicly available data doesn't directly disclose the length of the stop. There is a variable `InterventionDurationCode` which only reports the length of the stop between 3 bins: `(0-15, 16-30, 30+)`. For my purposes this is far too coarse of a measure to distinguish abnormal stop lengths. However, as an analog, I figured I could instead compute the time interval *between* stops. That is, the interval in time between when one stop begins and the next stop begins. This gives us an indirect way of measuring how long a stop took before the next stop was initiated:
+
+$$interval= time_{stop2} - time_{stop_1}$$
+
+So if we had two stops, with one at `16:31:31` and one at `16:40:15`, the *interval* would be about 8.7 minutes. As an example, this would look like:
+
+```{r}
+#| echo: false
+
+data.frame(
+  ID = c(1000001884, 1000001884),
+  Troop = c("CSP Troop E", "CSP Troop E"),
+  Violation_Type = c("STC Violation", "Speed Related"),
+  Date = as.Date(c("2018-01-07", "2018-01-07")),
+  Time = c("16:31:31", "16:40:15"),
+  Duration = c(NA, "524 secs"),
+  Interval = c(NA, 8.733333)
+)
+```
+
+## Results
+
+To start, it makes sense to first evaluate what "average" stop length intervals look like. One way of doing this is just a bunch of density plots for each officer. Here we're looking at the top 100 officers by number of stops for 2018. The dark line here is the average for all 100 officers. We can see that the majority of stop intervals are between 10 and 20 minutes, with a long tail reaching out to our maximum of 1 hour. This makes sense, because most traffic stops are pretty perfunctory: warning drivers that a tail light is out, writing a ticket for speeding, etc...). However, a small number of traffic stops are more complex and might involve searches, DWI investigations, or require another officer to attend. Regardless, this plot below gives us some idea of the "average" stop time, as well as the individual behaviors of different officers.  
+
+```{r}
+#| warning: false
+#| echo: false
+daily_stop_interval %>%
+  filter(time_diff_min < 60) %>%
+  na.omit() %>%
+  ggplot() +
+  geom_density(aes(x = time_diff_min, group = officer_id), 
+               color = scales::alpha('#004488', 0.1)) +
+    geom_density(aes(x = time_diff_min), 
+               color = '#004488', size = 1) +
+  labs(x = "Interval Time (minutes)", y = "Probability Density", title = "Distribution of Stop Time Intervals") +
+  theme_bw() +
+  theme(axis.text = element_text(size = 11, color = 'black'),
+        axis.title = element_text(size = 12, color = 'black'),
+        plot.title = element_text(size = 13, face = 'bold', hjust = .5))
+```
+
+But I think an easier way to visualize this is to transform the distribution above to the *empirical cumulative density function* (ECDF) for each officer. The ECDF is actually a very useful tool for this kind of question because it makes no assumptions about the distribution of the data. Simply put, and ECDF reports the proportion of observations at or below each given interval between $[0,1]$. All we do is report the cumulative value $1/n$ for each of the $n$ data points in a distribution. This is closely related to the quantile. Such that the ECDF at 0.5 is equivalent to the median. 
+
+The plot below shows the distribution of stop time intervals for all intervals between 0 and 60 minutes. The dark line is the average for all 100 officers, and the light colored lines are the individual officers' ECDFs. Below we see that the  median interval between stops is about 18 minutes. As we expect officer stop intervals are mostly randomly distributed above and below this. What we are actually interested in are officers whose ECDFs are unusually shorter compared to everyone else.
+
+```{r}
+#| code-fold: true
+#| fig-cap: "Among stop intervals under 60 minutes the median stop interval was 14 minutes. Under 10% of stops had intervals less than 6.5 minutes."
+# plot all ecdfs 
+ecdf_plot(id = unique(daily_stop_interval$officer_id),
+          lwd = 3,
+          main = "Empirical CDF, Time Interval Between Stops",
+          xlab = "Interval Time (minutes)",
+          ylab = "Percentiles",
+          col = "#004488")
+for(id in times$officer_id){
+  ecdf_plot(id, lines=TRUE,col = alpha(rgb(0, .267, .533), .1))
+}
+
+```
+
+### Intervals
+
+To get intervals we do the following:
+
+```{r}
+#| eval: false
+
+# compute bands on all ecdfs, for 100 points
+time_min <- min(daily_stop_interval$time_diff_min)
+time_max <- max(daily_stop_interval$time_diff_min)
+N_points <- 125
+
+x_vals <- seq(time_min, time_max, length.out = N_points)
+
+
+# Compute all ECDF values at each x for all officer IDs
+ecdf_values <- sapply(times$officer_id, function(id) {
+  ecdf_func <- ecdf(daily_stop_interval$time_diff_min[daily_stop_interval$officer_id == id])
+  ecdf_func(x_vals)  
+})
+
+
+# Compute 5th and 95th percentiles for the confidence bands
+lower_band <- apply(ecdf_values, 1, function(row) quantile(row, 0.05))
+upper_band <- apply(ecdf_values, 1, function(row) quantile(row, 0.95))
+
+```
+
+
+### Officer "88185785"
+
+This officer had the shortest average interval between stops at 14.2 minutes. In fact, more than half of their stops were at intervals of 10 minutes or less. This feels incredibly fast if you consider how long it takes to pull someone over. It seems implausible that this person was conducting almost non-stop traffic stops, taking driver information, issuing a warning (I assume?), and then getting *another* stop almost immediately afterwards. 
+
+```{r}
+#| code-fold: true
+
+officer_id = '88185785'
+
+# Add confidence bands (shaded region)
+plot.new()
+plot(c(0, 60), c(0,1), col = "white", 
+     main = "Empirical CDF, Time Interval Between Stops",
+     xlab = "Interval Time (minutes)",
+     ylab = "Percentiles")
+polygon(c(x_vals, rev(x_vals)), c(lower_band, rev(upper_band)), 
+        col = rgb(0, .267, .533, 0.3), border = NA)
+lines(x_vals, lower_band, col = "#004488", lwd = 2, lty = 3)
+lines(x_vals, upper_band, col = "#004488", lwd = 2, lty = 3)
+ecdf_plot(officer_id, col = '#BB5566', lwd=2, lines = T)
+
+```
+

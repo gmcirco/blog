@@ -5,12 +5,15 @@
 *.Ruserdata
 *.csv
 *.ipynb
+*.jsonl
 /.quarto/
 /_site/
 __pycache__
 .Rproj.user
 
 # specific projects
-posts/modern-bert/models
-posts/prompt-testing/json
-posts/prompt-testing/notebooks
+docs/posts/modern-bert/models
+docs/posts/prompt-testing/json
+docs/posts/prompt-testing/notebooks
+
+posts/prompt-testing/cache
