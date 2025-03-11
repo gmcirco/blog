@@ -374,10 +374,10 @@ print(output[58]['response']['body']['choices'][0]['message']['content'])
 ```
 </details>
 
-I didn't ask for any reasoning or citations for the rules provided. Here I just wanted the raw JSON output - but it would be trivial to add another section and ask for specific citations when the rules provided were applied. Looking at the retreval part I am actually quite surprised how well it was able to pull the relevant rules based on keyword hits.
+I didn't ask for any reasoning or citations for the rules provided. Here I just wanted the raw JSON output - but it would be trivial to add another section and ask for specific citations when the rules provided were applied. Looking at the retrieval part I am actually quite surprised how well it was able to pull the relevant rules based on keyword hits. 
 
 ## My Take
 
 To be honest, I was surprised that most of the Claude-generated code worked as well as it did. I had to make few substantial changes. The code to do the chunking, embedding, and indexing took maybe under 30 minutes for me to read through, edit slightly, and execute. Adding these functions into my existing workflow took under and hour - so maybe 90 minutes total from prompt to working RAG proof-of-concept. To be honest, totally wild. I could have figured this out on my own, but this was like half a day of work, compared to the week it would take me to do it solely by scratch.
 
-Here's the rub - I think "vibe coding" can be helpful to jumpstart a project from nothing to a workable proof-of-concept. I do NOT think it is a good idea to rely 100% on AI-generated code without knowing what it is actually doing. Personally, I think its a good idea to get a working POC and then pick apart all of the functions and steps the LLM generated to understand whats happening. Blind coding can certainly be a "vibe" but I don't think it is sustainable for real-world production-level code.
+Here's the rub - I think "vibe coding" can be helpful to jump start a project from nothing to a workable proof-of-concept. I do NOT think it is a good idea to rely 100% on AI-generated code without knowing what it is actually doing. Personally, I think its a good idea to get a working POC and then pick apart all of the functions and steps the LLM generated to understand whats happening. Blind coding can certainly be a "vibe" but I don't think it is sustainable for real-world production-level code.
