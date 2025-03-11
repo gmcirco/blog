@@ -114,8 +114,8 @@
 <li>A function to query and retrieve results from the vector database.</li>
 <li>A function to append the results into a prompt-friendly text object.</li>
 </ol>
-<p>I took the code and made very slight adjustments (maybe 10% or less) and put them into their own .py file. I then created a separate file to perform all the steps and locally store the vector database in a cache folder:</p>
-<div id="ffe52efc" class="cell" data-execution_count="2">
+<p>I took the code and made some adjustments (maybe 10-15% or less) and then put them into their own .py file under my src folder. I then created a separate file <code>index_rules.py</code> to perform all the steps and locally store the vector database in a cache folder:</p>
+<div id="5ea1d62a" class="cell" data-execution_count="2">
 <div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">"Code to index rules from the NVDRS and store as vector store in cache"</span></span>
@@ -184,19 +184,90 @@ font-style: inherit;">=</span> encode_chunks(section_circumstances)</span>
 background-color: null;
 font-style: inherit;">=</span> create_vector_store(section_embeddings, cache_dir)</span></code></pre></div>
 </div>
-<p>With that done, the other adjustment I needed to do is add the ability to search the vector database and return the relevant codes based on key works in the narrative. What I did was set up a dict containing key words for each major question, and a query term to append to the retrieved text substring. So, for example, given a narrative like this:</p>
+<p>With that done, the other adjustment I needed to make was to add the ability to query the vector database and return relevant coding rules based on matching key words in the narrative. What I did was set up a dict containing key words for each major question, and a query term to append to the retrieved text substring. So, for example, given a narrative like this:</p>
 <blockquote class="blockquote">
 <p>“Victim was at home and complained about feeling sad and depressed. Victim had been treated for ADHD and bipolar disorder and had reportedly not been taking his medications in the days preceeding”</p>
 </blockquote>
-<p>Passing thie example narrative into our query function. We pass this narrative into a <code>search_vector_database</code> function that searches for regex hits, encodes matching narrative text, and then queries it against the vector database. We have several key word hits, here, so we get several hits. We take all of results from the vector database search and pass these into another function that prepares it for insertion to the prompt. Essentially the <code>create_prompt_rules</code> function adds a header for the section for coding rules, and organizes them in order. The code below shows a successful retreval for the DepressedMood variable:</p>
-<div id="6f6b2d98" class="cell" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">test_narrative <span class="op" style="color: #5E5E5E;
+<p>We would use a regex pattern to match 30 characters on either side of a matching keyword in the dict of keywords (one selected here below):</p>
+<div id="f01d7f13" class="cell" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">keyterms <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> {</span>
+<span id="cb2-2">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"DepressedMood"</span>: {</span>
+<span id="cb2-3">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Terms"</span>: [</span>
+<span id="cb2-4">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"depressed"</span>,</span>
+<span id="cb2-5">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"depressive symptoms"</span>,</span>
+<span id="cb2-6">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"sad"</span>,</span>
+<span id="cb2-7">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"unhappy"</span>,</span>
+<span id="cb2-8">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"low mood"</span>,</span>
+<span id="cb2-9">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"feeling down"</span>,</span>
+<span id="cb2-10">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"persistent sadness"</span>,</span>
+<span id="cb2-11">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"major depression"</span>,</span>
+<span id="cb2-12">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"melancholy"</span>,</span>
+<span id="cb2-13">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"hopeless"</span>,</span>
+<span id="cb2-14">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"despair"</span>,</span>
+<span id="cb2-15">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"gloomy"</span>,</span>
+<span id="cb2-16">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"emotional distress"</span>,</span>
+<span id="cb2-17">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"tearful"</span>,</span>
+<span id="cb2-18">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"loss of interest"</span>,</span>
+<span id="cb2-19">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"worthlessness"</span>,</span>
+<span id="cb2-20">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"self-loathing"</span>,</span>
+<span id="cb2-21">        ],</span>
+<span id="cb2-22">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Query"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Coding rules for DepressedMood"</span>,</span>
+<span id="cb2-23">    }</span></code></pre></div>
+</div>
+<p>We then just loop through the dict of keywords and collect all the hits.</p>
+<p>To illustrate: passing this example narrative into our <code>search_vector_database</code> performs the steps of searching for all regex hits, encodes the matching narrative text, and then queries it against the vector database. We take all of results from the vector database search and pass these into another function that prepares it for insertion to the prompt. The <code>create_prompt_rules</code> function adds a header for the section for coding rules, and organizes them in order of section header. The code below shows a successful retreval for the DepressedMood variable:</p>
+<div id="29f63426" class="cell" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">test_narrative <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> <span class="st" style="color: #20794D;
 background-color: null;
 font-style: inherit;">"Victim was at home and complained about feeling sad and depressed. Victim had told his partner that he was thinking about taking his own life."</span></span>
-<span id="cb2-2"></span>
-<span id="cb2-3">val, matched_variables <span class="op" style="color: #5E5E5E;
+<span id="cb3-2"></span>
+<span id="cb3-3">val, matched_variables <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> search_vector_database(test_narrative, <span class="dv" style="color: #AD0000;
 background-color: null;
@@ -205,11 +276,11 @@ background-color: null;
 font-style: inherit;">"cache/rules_index.faiss"</span>, <span class="st" style="color: #20794D;
 background-color: null;
 font-style: inherit;">"cache/rule_chunks.pkl"</span>)</span>
-<span id="cb2-4">PROMPT_RULES <span class="op" style="color: #5E5E5E;
+<span id="cb3-4">PROMPT_RULES <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> create_prompt_rules(val, matched_variables)</span>
-<span id="cb2-5"></span>
-<span id="cb2-6"><span class="bu" style="color: null;
+<span id="cb3-5"></span>
+<span id="cb3-6"><span class="bu" style="color: null;
 background-color: null;
 font-style: inherit;">print</span>(PROMPT_RULES)</span></code></pre></div>
 <div class="cell-output cell-output-stdout">
@@ -256,16 +327,16 @@ Manner of Death: All manners.
 </section>
 <section id="adding-it-all-together" class="level2">
 <h2 class="anchored" data-anchor-id="adding-it-all-together">Adding it All Together</h2>
-<p>Now that I had the LLM stuff mostly incorporated, all I needed to do is append this to my old LLM class. I added an extra parameter named <code>include_rag</code> that triggered the RAG process and appended it to the prompt:</p>
-<div id="a4df51fb" class="cell" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><span class="kw" style="color: #003B4F;
+<p>Now that I had the LLM stuff mostly incorporated, all I needed to do is append this new RAG workflow to my old LLM class. I added an extra parameter named <code>include_rag</code> that triggered the RAG process and appended it to the prompt if specified by the user:</p>
+<div id="9dbf638c" class="cell" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><span class="kw" style="color: #003B4F;
 background-color: null;
 font-weight: bold;
 font-style: inherit;">def</span> standard_prompt_caching(</span>
-<span id="cb4-2">        <span class="va" style="color: #111111;
+<span id="cb5-2">        <span class="va" style="color: #111111;
 background-color: null;
 font-style: inherit;">self</span>,</span>
-<span id="cb4-3">        header: <span class="bu" style="color: null;
+<span id="cb5-3">        header: <span class="bu" style="color: null;
 background-color: null;
 font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
 background-color: null;
@@ -276,7 +347,7 @@ background-color: null;
 font-style: inherit;">=</span> <span class="va" style="color: #111111;
 background-color: null;
 font-style: inherit;">None</span>,</span>
-<span id="cb4-4">        narrative: <span class="bu" style="color: null;
+<span id="cb5-4">        narrative: <span class="bu" style="color: null;
 background-color: null;
 font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
 background-color: null;
@@ -287,7 +358,7 @@ background-color: null;
 font-style: inherit;">=</span> <span class="va" style="color: #111111;
 background-color: null;
 font-style: inherit;">None</span>,</span>
-<span id="cb4-5">        body: <span class="bu" style="color: null;
+<span id="cb5-5">        body: <span class="bu" style="color: null;
 background-color: null;
 font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
 background-color: null;
@@ -298,7 +369,7 @@ background-color: null;
 font-style: inherit;">=</span> <span class="va" style="color: #111111;
 background-color: null;
 font-style: inherit;">None</span>,</span>
-<span id="cb4-6">        example_output: <span class="bu" style="color: null;
+<span id="cb5-6">        example_output: <span class="bu" style="color: null;
 background-color: null;
 font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
 background-color: null;
@@ -309,7 +380,7 @@ background-color: null;
 font-style: inherit;">=</span> <span class="va" style="color: #111111;
 background-color: null;
 font-style: inherit;">None</span>,</span>
-<span id="cb4-7">        footer: <span class="bu" style="color: null;
+<span id="cb5-7">        footer: <span class="bu" style="color: null;
 background-color: null;
 font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
 background-color: null;
@@ -320,7 +391,7 @@ background-color: null;
 font-style: inherit;">=</span> <span class="va" style="color: #111111;
 background-color: null;
 font-style: inherit;">None</span>,</span>
-<span id="cb4-8">        include_rag: <span class="bu" style="color: null;
+<span id="cb5-8">        include_rag: <span class="bu" style="color: null;
 background-color: null;
 font-style: inherit;">bool</span> <span class="op" style="color: #5E5E5E;
 background-color: null;
@@ -331,62 +402,62 @@ background-color: null;
 font-style: inherit;">=</span> <span class="va" style="color: #111111;
 background-color: null;
 font-style: inherit;">False</span>,</span>
-<span id="cb4-9">        <span class="op" style="color: #5E5E5E;
+<span id="cb5-9">        <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">**</span>kwargs</span>
-<span id="cb4-10">    ) <span class="op" style="color: #5E5E5E;
+<span id="cb5-10">    ) <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
 background-color: null;
 font-style: inherit;">list</span>:</span>
-<span id="cb4-11">        <span class="co" style="color: #5E5E5E;
+<span id="cb5-11">        <span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">"""Create multiple standard prompts based on all combinations of list elements.</span></span>
-<span id="cb4-12"><span class="co" style="color: #5E5E5E;
+<span id="cb5-12"><span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">        This puts the narrative at the end to support OpenAI prompt caching.</span></span>
-<span id="cb4-13"><span class="co" style="color: #5E5E5E;
+<span id="cb5-13"><span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">        """</span></span>
-<span id="cb4-14"></span>
-<span id="cb4-15">        <span class="co" style="color: #5E5E5E;
+<span id="cb5-14"></span>
+<span id="cb5-15">        <span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;"># Ensure all inputs are lists for consistent iteration</span></span>
-<span id="cb4-16">        <span class="cf" style="color: #003B4F;
+<span id="cb5-16">        <span class="cf" style="color: #003B4F;
 background-color: null;
 font-weight: bold;
 font-style: inherit;">if</span> include_rag:</span>
-<span id="cb4-17">            val, matched_variables <span class="op" style="color: #5E5E5E;
+<span id="cb5-17">            val, matched_variables <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> search_vector_database(</span>
-<span id="cb4-18">                narrative,</span>
-<span id="cb4-19">                <span class="dv" style="color: #AD0000;
+<span id="cb5-18">                narrative,</span>
+<span id="cb5-19">                <span class="dv" style="color: #AD0000;
 background-color: null;
 font-style: inherit;">2</span>,</span>
-<span id="cb4-20">                <span class="st" style="color: #20794D;
+<span id="cb5-20">                <span class="st" style="color: #20794D;
 background-color: null;
 font-style: inherit;">"cache/rules_index.faiss"</span>,</span>
-<span id="cb4-21">                <span class="st" style="color: #20794D;
+<span id="cb5-21">                <span class="st" style="color: #20794D;
 background-color: null;
 font-style: inherit;">"cache/rule_chunks.pkl"</span>,</span>
-<span id="cb4-22">            )</span>
-<span id="cb4-23">            rag <span class="op" style="color: #5E5E5E;
+<span id="cb5-22">            )</span>
+<span id="cb5-23">            rag <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> create_prompt_rules(val, matched_variables)</span>
-<span id="cb4-24">            params <span class="op" style="color: #5E5E5E;
+<span id="cb5-24">            params <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> [body, example_output, rag, footer, header, narrative]</span>
-<span id="cb4-25">        <span class="cf" style="color: #003B4F;
+<span id="cb5-25">        <span class="cf" style="color: #003B4F;
 background-color: null;
 font-weight: bold;
 font-style: inherit;">else</span>:</span>
-<span id="cb4-26">            params <span class="op" style="color: #5E5E5E;
+<span id="cb5-26">            params <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> [body, example_output, footer, header, narrative]</span>
-<span id="cb4-27">        param_lists <span class="op" style="color: #5E5E5E;
+<span id="cb5-27">        param_lists <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> [</span>
-<span id="cb4-28">            [item] <span class="cf" style="color: #003B4F;
+<span id="cb5-28">            [item] <span class="cf" style="color: #003B4F;
 background-color: null;
 font-weight: bold;
 font-style: inherit;">if</span> <span class="kw" style="color: #003B4F;
@@ -406,9 +477,982 @@ font-style: inherit;">for</span> item <span class="kw" style="color: #003B4F;
 background-color: null;
 font-weight: bold;
 font-style: inherit;">in</span> params</span>
-<span id="cb4-29">        ]</span></code></pre></div>
+<span id="cb5-29">        ]</span></code></pre></div>
 </div>
-<p>Here’s the crazy thing. It <em>works</em>. It works better than I expected. It looked like plausible code to me, but I had no idea if it would actually do what I envisioned. The code to do the chunking, embedding, and indexing took maybe under 30 minutes for me to read through, edit slightly, and execute.</p>
+<p>The final result looks like this, which is structurally almost identical to the non-RAG version I did before - in fact, the only real change is adding <code>include_rag = True1</code> to the LLM class parameters. This is all the code that processes the queries and passes them on to the OpenAI API:</p>
+<div id="920df520" class="cell" data-execution_count="6">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> pandas <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> pd</span>
+<span id="cb6-2"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> json</span>
+<span id="cb6-3"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> datetime <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> datetime</span>
+<span id="cb6-4"></span>
+<span id="cb6-5"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> openai <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> OpenAI</span>
+<span id="cb6-6"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> src.prompts <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> HEADER1, BODY2, EXAMPLE_OUTPUT2</span>
+<span id="cb6-7"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> src.prompt_creation <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> Prompt</span>
+<span id="cb6-8"></span>
+<span id="cb6-9">client <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> OpenAI()</span>
+<span id="cb6-10">run_date <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> datetime.now().strftime(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"%Y-%m-</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">%d</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>)</span>
+<span id="cb6-11"></span>
+<span id="cb6-12"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># set up prompt</span></span>
+<span id="cb6-13">prompt_creator <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Prompt()</span>
+<span id="cb6-14">ROLE <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""You are a mental health expert reviewing law enforcement narratives of youth suicide incidents. </span></span>
+<span id="cb6-15"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">Your task is to label variables relating to the incident. Closely review the following instructions. Read </span></span>
+<span id="cb6-16"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">the provided narrative and then add labels corresponding to the variables into the described JSON format. </span></span>
+<span id="cb6-17"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">Do NOT deviate from the instructions. If coding rules are present you may use them to guide your analysis. </span></span>
+<span id="cb6-18"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">Do NOT rely solely on the rules.</span></span>
+<span id="cb6-19"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb6-20"></span>
+<span id="cb6-21"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># load suicide narratives and labels</span></span>
+<span id="cb6-22">narratives <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pd.read_csv(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"data/train_narratives_sample_200.csv"</span>)</span>
+<span id="cb6-23">labels <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pd.read_csv(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"data/train_labels_sample_200.csv"</span>)</span>
+<span id="cb6-24"></span>
+<span id="cb6-25"></span>
+<span id="cb6-26"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Execute 1 version of prompt with RAG</span></span>
+<span id="cb6-27">json_list <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> []</span>
+<span id="cb6-28"></span>
+<span id="cb6-29"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> row <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> narratives.iterrows():</span>
+<span id="cb6-30"></span>
+<span id="cb6-31">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># grab the unique id and text</span></span>
+<span id="cb6-32">    single_narrative <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> row[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>]</span>
+<span id="cb6-33">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">id</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> single_narrative[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"uid"</span>]</span>
+<span id="cb6-34">    txt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> single_narrative[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"NarrativeLE"</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> single_narrative[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"NarrativeCME"</span>]</span>
+<span id="cb6-35"></span>
+<span id="cb6-36">    prompt_input <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> {</span>
+<span id="cb6-37">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"header"</span>: HEADER1,</span>
+<span id="cb6-38">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"narrative"</span>: txt,</span>
+<span id="cb6-39">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"body"</span>: BODY2,</span>
+<span id="cb6-40">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"example_output"</span>: EXAMPLE_OUTPUT2,</span>
+<span id="cb6-41">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"footer"</span>: <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>,</span>
+<span id="cb6-42">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"include_rag"</span>: <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span></span>
+<span id="cb6-43">    }</span>
+<span id="cb6-44"></span>
+<span id="cb6-45">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># create a prompt, pass in the text narrative</span></span>
+<span id="cb6-46">    prompt_versions <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> prompt_creator.standard_prompt_caching(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">**</span>prompt_input)</span>
+<span id="cb6-47"></span>
+<span id="cb6-48">    version_num <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span></span>
+<span id="cb6-49">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> prompt <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> prompt_versions:</span>
+<span id="cb6-50">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># now append to list</span></span>
+<span id="cb6-51">        json_list.append(</span>
+<span id="cb6-52">            {</span>
+<span id="cb6-53">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"custom_id"</span>: <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">id</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>version_num<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>,</span>
+<span id="cb6-54">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"method"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"POST"</span>,</span>
+<span id="cb6-55">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"url"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/v1/chat/completions"</span>,</span>
+<span id="cb6-56">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"body"</span>: {</span>
+<span id="cb6-57">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"model"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"gpt-4o-mini"</span>,</span>
+<span id="cb6-58">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"messages"</span>: [</span>
+<span id="cb6-59">                        {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"role"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"system"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"content"</span>: ROLE},</span>
+<span id="cb6-60">                        {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"role"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"user"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"content"</span>: prompt},</span>
+<span id="cb6-61">                    ],</span>
+<span id="cb6-62">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"max_tokens"</span>: <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">500</span>,</span>
+<span id="cb6-63">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"response_format"</span>: { <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"type"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"json_object"</span> },</span>
+<span id="cb6-64">                },</span>
+<span id="cb6-65">            }</span>
+<span id="cb6-66">        )</span>
+<span id="cb6-67">        version_num <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span></span>
+<span id="cb6-68"></span>
+<span id="cb6-69"></span>
+<span id="cb6-70"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">with</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">open</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"json/output_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>run_date<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">.jsonl"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"w"</span>) <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> outfile:</span>
+<span id="cb6-71">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> entry <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> json_list:</span>
+<span id="cb6-72">        json.dump(entry, outfile)</span>
+<span id="cb6-73">        outfile.write(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">\n</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>)</span>
+<span id="cb6-74"></span>
+<span id="cb6-75"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># upload batch to openai</span></span>
+<span id="cb6-76">batch_input_file <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> client.files.create(</span>
+<span id="cb6-77">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">file</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">open</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"json/output_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>run_date<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">.jsonl"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"rb"</span>), purpose<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"batch"</span></span>
+<span id="cb6-78">)</span>
+<span id="cb6-79"></span>
+<span id="cb6-80">batch_input_file_id <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> batch_input_file.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">id</span></span>
+<span id="cb6-81">client.batches.create(</span>
+<span id="cb6-82">    input_file_id<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>batch_input_file_id,</span>
+<span id="cb6-83">    endpoint<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/v1/chat/completions"</span>,</span>
+<span id="cb6-84">    completion_window<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"24h"</span>,</span>
+<span id="cb6-85">    metadata<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"description"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Batch Testing 1 prompt x 200 examples with caching and RAG"</span>},</span>
+<span id="cb6-86">)</span></code></pre></div>
+</details>
+</div>
+<section id="reviewing-the-output" class="level3">
+<h3 class="anchored" data-anchor-id="reviewing-the-output">Reviewing the output</h3>
+<p>Finally we can review the input and output from this. Here is the full un-edited prompt with the RAG element added. The RAG section is near the end of the prompt, just above full narrative text:</p>
+<p><em>[Warning: Depictions of Self-Harm]</em></p>
+<details>
+<summary>
+Full RAG Input Prompt
+</summary>
+<div id="a6c2ad90" class="cell" data-execution_count="7">
+<div class="cell-output cell-output-stdout">
+<pre><code>
+INSTRUCTIONS:
+    Closely follow these instructions:
+        - For each variable below return a 0 for 'no' and a 1 for 'yes' unless otherwise stated.
+        - If more than two answers are available, return ONE of the numbered values.
+        - Rely ONLY on information available in the narrative. Do NOT extrapolate.
+        - Return a properly formatted json object where the keys are the variables and the values are the numeric labels.
+        - Do NOT return anything other than the label. Do NOT include any discussion or commentary.
+
+VARIABLES:   
+    DepressedMood: The person was perceived to be depressed at the time
+    - 1: Specific signs of depression were noted in the narrative (e.g., sad, withdrawn, hopeless)
+    - 0: No mention of depressive symptoms
+
+    MentalIllnessTreatmentCurrnt: Currently in treatment for a mental health or substance abuse problem
+    - 1: The person was undergoing treatment for a mental health issue at the time of the incident
+    - 0: No indication of current treatment
+
+    HistoryMentalIllnessTreatmnt: History of ever being treated for a mental health or substance abuse problem
+    - 1: Documentation of previous treatment for mental health or substance abuse is noted in the narrative
+    - 0: No prior treatment mentioned
+
+    SuicideAttemptHistory: History of attempting suicide previously
+    - 1: A past suicide attempt was mentioned
+    - 0: No documented prior attempts
+
+    SuicideThoughtHistory: History of suicidal thoughts or plans
+    - 1: Person's prior thoughts or plans of suicide were noted in the narrative
+    - 0: No history of suicidal ideation mentioned
+
+    SubstanceAbuseProblem: The person struggled with a substance abuse problem.
+    - 1: Person was noted to have issues with alcohol or drug abuse
+    - 0: No indication of substance abuse problems
+
+    MentalHealthProblem: The person had a mental health condition at the time
+    - 1: Person was noted to have a mental health condition at the time of the event
+    - 0: No documented mental health condition
+
+    DiagnosisAnxiety: The person had a medical diagnosis of anxiety
+    - 1: Person was currently, or previously, been diagnosed or treated for anxiety
+    - 0: No documented diagnosis or treatment for anxiety
+
+    DiagnosisDepressionDysthymia: The person had a medical diagnosis of depression
+    - 1: Person was currently, or previously, been diagnosed or treated for depression or dysthymia
+    - 0: No documented diagnosis or treatment for depression
+
+    DiagnosisBipolar: The person had a medical diagnosis of bipolar
+    - 1: Person was currently, or previously, been diagnosed or treated for bipolar disorder
+    - 0: No documented diagnosis or treatment for bipolar disorder
+
+    DiagnosisAdhd: The person had a medical diagnosis of ADHD
+    - 1: Person was documented as having been diagnosed or treated for ADHD
+    - 0: Person had no documentation of treatment or diagnosis for ADHD
+
+    IntimatePartnerProblem: Problems with a current or former intimate partner appear to have contributed
+    - 1: Person's relationship issues with a spouse, partner, or ex-partner were mentioned as contributing factors
+    - 0: No relationship issues were mentioned
+
+    FamilyRelationship: Relationship problems with a family member (other than an intimate partner) appear to have contributed
+    - 1: Person's conflicts with parents, siblings, children, or other family members contributed
+    - 0: No family relationship problems mentioned
+
+    Argument: An argument or conflict appears to have contributed
+    - 1: A dispute, disagreement, or verbal altercation was mentioned as a contributing factor
+    - 0: No argument or conflict mentioned
+
+    SchoolProblem: Problems at or related to school appear to have contributed
+    - 1: Issues such as academic struggles, bullying, or school disciplinary actions were noted
+    - 0: No school-related problems mentioned
+
+    RecentCriminalLegalProblem: Criminal legal problem(s) appear to have contributed
+    - 1: The person was facing legal troubles such as arrest, charges, or sentencing
+    - 0: No criminal legal issues mentioned
+
+    SuicideNote: The person left a suicide note
+    - 1: A written, digital, or verbal message was documented as a suicide note
+    - 0: No mention of a suicide note
+
+    SuicideIntentDisclosed: The person disclosed their thoughts and/or plans to die by suicide to someone else within the last month
+    - 1: Suicide intent was communicated to another person within the last month
+    - 0: No disclosure of intent mentioned
+
+    DisclosedToIntimatePartner: Intent was disclosed to a previous or current intimate partner
+    - 1: The person told a spouse or romantic partner about suicidal thoughts/plans
+    - 0: No disclosure to an intimate partner
+
+    DisclosedToOtherFamilyMember: Intent was disclosed to another family member
+    - 1: The person told a parent, sibling, child, or other relative about suicidal thoughts/plans
+    - 0: No disclosure to a family member
+
+    DisclosedToFriend: Intent was disclosed to a friend
+    - 1: The person told a friend about suicidal thoughts/plans
+    - 0: No disclosure to a friend
+
+    InjuryLocationType: The type of place where the suicide took place.
+        - 1: House, apartment
+        - 2: Motor vehicle (excluding school bus and public transportation)
+        - 3: Natural area (e.g., field, river, beaches, woods)
+        - 4: Park, playground, public use area
+        - 5: Street/road, sidewalk, alley
+        - 6: Other
+
+    WeaponType1: Type of weapon used 
+        - 1: Blunt instrument
+        - 2: Drowning
+        - 3: Fall
+        - 4: Fire or burns
+        - 5: Firearm
+        - 6: Hanging, strangulation, suffocation
+        - 7: Motor vehicle including buses, motorcycles
+        - 8: Other transport vehicle, eg, trains, planes, boats
+        - 9: Poisoning
+        - 10: Sharp instrument
+        - 11: Other (e.g. taser, electrocution, nail gun)
+        - 12: Unknown
+
+
+Here is an example narrative and expected output:
+
+EXAMPLE NARRATIVE 1:
+The V was a XX XX XX XX who died of an intentional mixed drug (fentanyl, sertraline, and amphetamine) intoxication. The V had been court ordered to admit to a addiction recovery center, and he was admitted two days ago.  He was last seen alive yesterday during room checks. He was in his room with two others. The V was found this morning unresponsive and CPR was instituted. EMS arrived and confirmed death. The V had a significant past medical history of anxiety, depression, cleft palate repair, PTSD and asthma. He reportedly had been very depressed lately and had expressed suicidal ideations including that he was going to "take lots of pills." Per grandmother and mother, the V was known to take Percocet and Adderall.
+
+EXAMPLE OUTPUT 1:
+{
+    "DepressedMood": 1,
+    "MentalIllnessTreatmentCurrnt": 1,
+    "HistoryMentalIllnessTreatmnt": 1,
+    "SuicideAttemptHistory": 0,
+    "SuicideThoughtHistory": 1,
+    "SubstanceAbuseProblem": 1,
+    "MentalHealthProblem": 1,
+    "DiagnosisAnxiety": 1,
+    "DiagnosisDepressionDysthymia": 1,
+    "DiagnosisBipolar": 0,
+    "DiagnosisAdhd": 0,
+    "IntimatePartnerProblem": 0,
+    "FamilyRelationship": 0,
+    "Argument": 0,
+    "SchoolProblem": 0,
+    "RecentCriminalLegalProblem": 1,
+    "SuicideNote": 0,
+    "SuicideIntentDisclosed": 1,
+    "DisclosedToIntimatePartner": 0,
+    "DisclosedToOtherFamilyMember": 0,
+    "DisclosedToFriend": 0,
+    "InjuryLocationType": 6,
+    "WeaponType1": 9
+}
+
+Here is another example narrative and expected output:
+
+EXAMPLE NARRATIVE 2:
+Victim XX died of a self-intentional gunshot wound to the head, resulting in an exit wound, with a .357 caliber revolver at the victim's place of residence. The victim's ex-wife had attempted to contact the victim and had told dispatchers the victim was depressed and had thoughts of suicide. The victim left a suicide for his parents and ex-wife. Per the ex-wife, he was extremely depressed and the last text she received from him was telling her goodbye. The victim had never gotten over their divorce and struggled with depression and alcohol abuse. EMS was present and confirmed the victim deceased.
+
+EXAMPLE OUTPUT 2:
+{
+    "DepressedMood": 1,
+    "MentalIllnessTreatmentCurrnt": 0,
+    "HistoryMentalIllnessTreatmnt": 0,
+    "SuicideAttemptHistory": 1,
+    "SuicideThoughtHistory": 0,
+    "SubstanceAbuseProblem": 1,
+    "MentalHealthProblem": 0,
+    "DiagnosisAnxiety": 0,
+    "DiagnosisDepressionDysthymia": 0,
+    "DiagnosisBipolar": 0,
+    "DiagnosisAdhd": 0,
+    "IntimatePartnerProblem": 1,
+    "FamilyRelationship": 0,
+    "Argument": 0,
+    "SchoolProblem": 0,
+    "RecentCriminalLegalProblem": 0,
+    "SuicideNote": 1,
+    "SuicideIntentDisclosed": 1,
+    "DisclosedToIntimatePartner": 1,
+    "DisclosedToOtherFamilyMember": 0,
+    "DisclosedToFriend": 0,
+    "InjuryLocationType": 1,
+    "WeaponType1": 5
+}
+
+Here is another example narrative and expected output:
+
+EXAMPLE NARRATIVE 3:
+This is the death of a XX XX (V). LE was dispatched at 0806 hours in reference to the V who was shot in the head. Upon arrival, the V was in an apartment with 2 other women present and a firearm. The V had a gunshot wound to the right side of the head and no exit was noted. Medics arrived and took over life saving efforts. Per the V's fiance the V suffered form anxiety and depression. The V's mood had been changing all day as he was approaching the 1 year marker of his high school friend dying by suicide. The V had been drinking throughout the day and at 2000 hours hours the V went to the park. The V was not allowed to have firearms. Prior to shooting himself the V said "you don't think I'll do it." The V was transported to the hospital where he died. The firearm used was .22 caliber and a note was found that appeared to have been written by a child that read "I love mom and dad." There were several gummy bears rolled up in a plastic bag with #9 written on it and a small zip lock bag with pink powder inside. There were several bottles of alcohol, THC oil and cigarette butts in the bathroom. Last year the V was committed for treatment of mental disorder.
+
+EXAMPLE OUTPUT 3:
+{
+    "DepressedMood": 0,
+    "MentalIllnessTreatmentCurrnt": 0,
+    "HistoryMentalIllnessTreatmnt": 1,
+    "SuicideAttemptHistory": 0,
+    "SuicideThoughtHistory": 1,
+    "SubstanceAbuseProblem": 1,
+    "MentalHealthProblem": 1,
+    "DiagnosisAnxiety": 1,
+    "DiagnosisDepressionDysthymia": 1,
+    "DiagnosisBipolar": 0,
+    "DiagnosisAdhd": 0,
+    "IntimatePartnerProblem": 0,
+    "FamilyRelationship": 0,
+    "Argument": 0,
+    "SchoolProblem": 0,
+    "RecentCriminalLegalProblem": 0,
+    "SuicideNote": 1,
+    "SuicideIntentDisclosed": 1,
+    "DisclosedToIntimatePartner": 1,
+    "DisclosedToOtherFamilyMember": 0,
+    "DisclosedToFriend": 0,
+    "InjuryLocationType": 1,
+    "WeaponType1": 5 
+}
+
+
+
+If present, use the following rules to guide your coding of variables. Closely follow these instructions:
+    - Apply ONLY the rules relevant to the question
+    - If a rule is not relevant to the question, disregard it entirely
+    - Do NOT try and apply rules to questions where they are not closely relevant
+
+
+## RULES FOR SuicideNote:
+Evidence found: "scovered, it appeared to be a suicide note. The v was located hanging fr", "home hanging from a tree.  A suicide note was found in the home.  The m"
+
+RULE 1 [Section 5.7.6]:
+5.7.6 Left a suicide note: CME/LE_SuicideNote 
+ 
+Definition: 
+Victim left a suicide note (or other recorded communication). Note can be written or electronic. 
+ 
+Response Options: 
+0 No, Not Available, Unknown 
+1 Yes 
+ 
+Discussion: 
+ A will or folder of financial papers near the victim does not constitute a suicide note. 
+ 
+Section 5. Circumstances  131 | Page  
+   
+ If the record states the person left a note, you can infer it was a suicide note in the absence of 
+information indicating that the note had some other purpose. 
+ A suicide note can be any essentially durable message; it does not have to be on a piece of paper. 
+Emails, text messages, voice mail, or writing on any object (such as a wall or table) all qualify. Phone 
+calls do not qualify, as they are not considered durable (even 911 calls, because the decedent may 
+or may not have known they were being recorded). 
+ A suicide note does not have to communicate that the person wants or intends to die. Notes that 
+are written to warn others at the scene of the fatal injury that conditions may be hazardous or 
+disturbing may be included (e.g., “Call 911, do not enter garage” or “Carbon monoxide – do not 
+enter”).  
+ A text or electronic message sent right before the suicide occurred should be labeled a suicide note, 
+if there was no time between the sending/receipt of the message and the suicide. If there was time 
+to intervene, this should be coded as “disclosed suicidal thought or intent.” If the contents of the 
+suicide note are included or described in your source documents, summarizing this information in 
+the narrative is helpful to provide further context for the incident. If you choose to do so, do not 
+include verbatim text and do not include identifying information, but a summary of what was said. 
+This information may be helpful in noting themes related to the suicide that go beyond standard 
+NVDRS circumstances and are one of the only means of accessing the decedents’ thoughts about 
+their suicide more directly. 
+ 
+Manner of Death: Suicide and undetermined deaths. 
+ 
+ 
+
+
+RULE 2 [Section 5.7.4]:
+5.7.4 Recent Disclosed Suicidal Thoughts or Intent to Die by Suicide: 
+CME/LE_SuicideIntentDisclosed 
+ 
+Definition: Victim disclosed to another person their thoughts and/or plans to die by suicide within the 
+last month. Disclosure of suicidal thoughts or plan can be verbal, written or electronic. 
+ 
+Response Options: 
+0 No, Not Available, Unknown 
+1 Yes 
+ 
+Discussion:  
+This variable helps identifies suicides for which opportunities to intervene and prevent the death may 
+have been present near the time of the suicide. It is also useful for exploring the association between 
+stated intent and actual death. 
+ 
+ Code as “Yes” if the victim had disclosed suicidal thoughts or plans to another person recently or 
+within the last month, whether explicitly (e.g., “I have been thinking about suicide lately” or “I plan 
+to go to my cabin with my gun and never come back”) or indirectly (e.g., “I know how to put a 
+permanent end to this pain”). Include in the narrative any available details about whom the intent 
+was disclosed to, how long before the death the intent was disclosed, and what was said during the 
+disclosure. 
+ Code as “Yes” if there was opportunity to intervene between the time the person disclosed intent 
+and the injury event. 
+o Do not code this variable if the victim disclosed the intention to kill him or herself only at the 
+moment of the suicide (i.e., when there was no opportunity to intervene to stop the 
+suicide). For instance, sending an email or text message right before the victim shot herself. 
+This would be considered a suicide note. 
+ Do not endorse this variable if the victim had talked about suicide sometime in the distant past but 
+had not recently disclosed a current intent to die by suicide to anyone. This would be coded as 
+“History of disclosed suicidal thoughts/plans”. 
+ A separate suicide attempt by the victim within a month of the suicide should be coded as “Yes.” In 
+this case, “History of suicide attempts” should also be coded, “Yes.” 
+ The timing of when the victim disclosed the suicidal intent may be unclear (e.g., recently or some 
+time ago) or not mentioned. Please use the following rules to code these cases: 
+o Code “Yes” if the narrative states the victim “just” or “recently” told someone about his 
+suicidal intent. 
+o If the record indicates disclosure of intent, but is unclear about the timeframe (i.e., does not 
+mention it all), code as “Yes.” 
+o LE or C/ME reports may be unclear about timing of the disclosure. If the record indicates 
+disclosure of intent in the past, but states that there was no disclosure for the current 
+incident, do not code, instead use the “History of suicidal thoughts/plan/attempts.” 
+o If the victim disclosed suicidal intent “a long time ago,” “more than a month ago,” or in the 
+ 
+Section 5. Circumstances  130 | Page  
+   
+“past,” code as “No” and code “History of disclosed suicidal thought/plans/actions.” 
+ 
+Manner of Death: Suicide and undetermined deaths.  
+ 
+ 
+
+
+
+
+## RULES FOR DiagnosisAnxiety:
+Evidence found: "ffered from depression, ADHD, PTSD, school problems and legal pr", "an undiagnosed and untreated PTSD.  The decedent had witnessed"
+
+RULE 1 [Section 5.3.3]:
+5.3.3 Mental Health Diagnosis Variables 
+5.3.3.1. Mental health diagnosis 1: CME/LE_MentalHealthDiagnosis1 
+5.3.3.2. Mental health diagnosis 2: CME/LE_MentalHealthDiagnosis2 
+5.3.3.3. Other mental health diagnosis: CME/LE_MentalHealthDiagnosisOther 
+ 
+Definitions: 
+ CME/LE_MentalHealthDiagnosis1/2: Type of mental illness diagnosis 
+ CME/LE_MentalHealthDiagnosisOther: Other type of mental illness 
+ 
+Response Options: 
+ CME/LE_MentalHealthDiagnosis1/2  
+1 Depression/dysthymia 
+2 Bipolar disorder 
+3 Schizophrenia 
+4 Anxiety disorder 
+5 Post-traumatic stress disorder 
+6 Attention Deficit/Hyperactivity Disorder (ADHD) 
+7 Eating disorder 
+8 Obsessive- compulsive disorder 
+9 Autism Spectrum (including Asperger’s Syndrome) 
+10 Fetal Alcohol Syndrome 
+11 Down Syndrome 
+12 Dementia (e.g., Alzheimer’s disease, Lewy Body Dementia) 
+66 Other (specify in diagnosis text), including personality disorders, etc. 
+88 Not applicable 
+99 Unknown 
+ 
+ CME/LE_MentalHealthDiagnosisOther  
+Text 
+ 
+Discussion:  
+This variable indicates the nature of the victim’s mental health problem (the diagnosis), if available. 
+ 
+ Code up to two diagnoses and then write in additional diagnoses (i.e., three or more diagnoses) in 
+the “MentalHealthDiagnosisOther” field. When using the “MentalHealthDiagnosisOther” field, 
+please separate diagnoses with a comma (e.g., antisocial personality disorder, narcissistic 
+personality disorder). 
+ For cases in which the victim was noted as being treated for a mental health problem, but the actual 
+diagnosis is not documented, code “MentalHealthDiagnosis1” as “Unknown.” 
+ 
+Section 5. Circumstances  82 | Page  
+   
+ If a diagnosis is not on the code list, code “Other” and record the diagnosis in the text field, 
+“MentalHealthDiagnosisOther.” 
+ Do not attempt to infer a diagnosis based on reading the symptoms. 
+ While it is acceptable to endorse “Mental health problem” based on the victim’s prescription for a 
+psychiatric medication, please do not infer or code a specific mental health diagnosis based on the 
+medication. 
+ Please note that bipolar disorder may be referred to as “manic depression” or similar terms (e.g., 
+“manic depressive”) in source documents. While these are outdated terms, please code these cases 
+as “2 – Bipolar Disorder.” 
+ Obsessive compulsive disorder may be referred to as “OCD” in source documents. Please code these 
+cases as “8 – Obsessive Compulsive Disorder.” 
+ Post-traumatic stress disorder may be referred to as “PTSD” in source documents. Please code these 
+cases as “5 – Post-traumatic Stress Disorder.”  
+ 
+Manner of Death: All manners.  
+ 
+ 
+
+
+RULE 2 [Section 5.3.1]:
+5.3.1 Current diagnosed mental health problem: CME/LE_MentalHealthProblem 
+ 
+Definition:  
+Current mental health problem 
+ 
+Response Options: 
+0 No, Not Available, Unknown 
+1 Yes 
+ 
+Discussion: 
+Code a victim as “Yes” for “C/ME/LE_MentalHealthProblem” if he or she has been identified as currently 
+having a mental health problem. There does not need to be any indication that the mental health 
+condition directly contributed to the death. 
+ 
+ Mental health problems include those disorders and syndromes listed in the Diagnostic and 
+Statistical Manual of Mental Disorders, Fifth Edition (DSM-5) with the exception of alcohol and other 
+substance dependence (as these are captured in separate variables). 
+ Examples of disorders qualifying as mental health problems include diagnoses such as major 
+depression, schizophrenia, and generalized anxiety disorder, as well as neurodevelopmental 
+disorders (such as intellectual disability, autism, attention-deficit /hyperactivity disorder), eating 
+disorders, personality disorders, and organic mental disorders (such as Alzheimer’s and other 
+dementias). 
+ Also indicate “Yes” if it is mentioned in the source document that the victim was being treated for a 
+mental health problem, even if the nature of the problem is unclear (e.g., “was being treated for 
+various psychiatric problems”). 
+ It is acceptable to endorse this variable on the basis of past treatment of a mental health problem, 
+unless it is specifically noted that the past problem has been resolved. However, do not code this 
+circumstance based only on a positive toxicology test for psychiatric medications (such as 
+antidepressants). There must also be some indication that the victim was actually being treated for a 
+mental health condition, such as a current prescription, the report of a family member, etc. 
+  
+Also code: At least one Mental Health Diagnosis variable should also be coded if this is coded. If the type 
+of mental health diagnosis is unknown, please code “Type of first mental illness diagnosed” as “99 –
+Unknown.”  
+ 
+Manner of Death: All manners. 
+  
+ 
+
+
+
+
+## RULES FOR DiagnosisAdhd:
+Evidence found: "he suffered from depression, ADHD, PTSD, school problems and le"
+
+RULE 1 [Section 5.3.3]:
+5.3.3 Mental Health Diagnosis Variables 
+5.3.3.1. Mental health diagnosis 1: CME/LE_MentalHealthDiagnosis1 
+5.3.3.2. Mental health diagnosis 2: CME/LE_MentalHealthDiagnosis2 
+5.3.3.3. Other mental health diagnosis: CME/LE_MentalHealthDiagnosisOther 
+ 
+Definitions: 
+ CME/LE_MentalHealthDiagnosis1/2: Type of mental illness diagnosis 
+ CME/LE_MentalHealthDiagnosisOther: Other type of mental illness 
+ 
+Response Options: 
+ CME/LE_MentalHealthDiagnosis1/2  
+1 Depression/dysthymia 
+2 Bipolar disorder 
+3 Schizophrenia 
+4 Anxiety disorder 
+5 Post-traumatic stress disorder 
+6 Attention Deficit/Hyperactivity Disorder (ADHD) 
+7 Eating disorder 
+8 Obsessive- compulsive disorder 
+9 Autism Spectrum (including Asperger’s Syndrome) 
+10 Fetal Alcohol Syndrome 
+11 Down Syndrome 
+12 Dementia (e.g., Alzheimer’s disease, Lewy Body Dementia) 
+66 Other (specify in diagnosis text), including personality disorders, etc. 
+88 Not applicable 
+99 Unknown 
+ 
+ CME/LE_MentalHealthDiagnosisOther  
+Text 
+ 
+Discussion:  
+This variable indicates the nature of the victim’s mental health problem (the diagnosis), if available. 
+ 
+ Code up to two diagnoses and then write in additional diagnoses (i.e., three or more diagnoses) in 
+the “MentalHealthDiagnosisOther” field. When using the “MentalHealthDiagnosisOther” field, 
+please separate diagnoses with a comma (e.g., antisocial personality disorder, narcissistic 
+personality disorder). 
+ For cases in which the victim was noted as being treated for a mental health problem, but the actual 
+diagnosis is not documented, code “MentalHealthDiagnosis1” as “Unknown.” 
+ 
+Section 5. Circumstances  82 | Page  
+   
+ If a diagnosis is not on the code list, code “Other” and record the diagnosis in the text field, 
+“MentalHealthDiagnosisOther.” 
+ Do not attempt to infer a diagnosis based on reading the symptoms. 
+ While it is acceptable to endorse “Mental health problem” based on the victim’s prescription for a 
+psychiatric medication, please do not infer or code a specific mental health diagnosis based on the 
+medication. 
+ Please note that bipolar disorder may be referred to as “manic depression” or similar terms (e.g., 
+“manic depressive”) in source documents. While these are outdated terms, please code these cases 
+as “2 – Bipolar Disorder.” 
+ Obsessive compulsive disorder may be referred to as “OCD” in source documents. Please code these 
+cases as “8 – Obsessive Compulsive Disorder.” 
+ Post-traumatic stress disorder may be referred to as “PTSD” in source documents. Please code these 
+cases as “5 – Post-traumatic Stress Disorder.”  
+ 
+Manner of Death: All manners.  
+ 
+ 
+
+
+RULE 2 [Section 5.1.2]:
+5.1.2 Coding Mental Health, Alcohol and Substance Abuse Problems 
+Abstractors should code circumstances related to mental health, alcohol or substance abuse problems, 
+or other addictions as “Yes” if any of these problems are indicated in investigation reports. A direct link 
+to the death is not required. These circumstances are coded for all victims. 
+ 
+ 
+
+
+
+
+## RULES FOR DepressedMood:
+Evidence found: "h his girlfriend and was very depressed the evening before, the V's r"
+
+RULE 1 [Section 5.3.4]:
+5.3.4 Current depressed mood: CME/LE_DepressedMood 
+ 
+Definition:  
+Victim was perceived by self or others to be depressed at the time of the injury. 
+ 
+Response Options: 
+0 No, Not Available, Unknown 
+1 Yes 
+ 
+Discussion: 
+Only code this variable when the victim had a depressed mood at the time of injury. There does NOT 
+need to be a clinical diagnosis, and there does not need to be any indication that the depression directly 
+contributed to the death. Other words that can trigger coding this variable besides “depressed” are sad, 
+despondent, down, blue, low, unhappy, etc. Words that should not trigger coding this variable are 
+agitated, angry, mad, anxious, overwrought, etc. 
+ 
+ If the victim has a known clinical history of depression but had no depressive symptoms at the time 
+of the incident, this variable should NOT be selected. 
+ Depressed mood should not be inferred by the coder based on the circumstances (e.g., because the 
+person reports a bankruptcy); rather it must be noted in the record. 
+ 
+Manner of Death: All manners.  
+ 
+ 
+
+
+RULE 2 [Section 5.7.1]:
+5.7.1 History of suicidal thoughts or plans: CME/LE_SuicideThoughtHistory 
+ 
+Definition:  
+Victim had a history of suicidal thoughts or plans. Disclosure of suicidal thoughts or plan can be verbal, 
+written or electronic. 
+ 
+Response Options: 
+0 No, Not Available, Unknown 
+1 Yes 
+ 
+Discussion:  
+Use this code for victims who have at any time in their life expressed suicidal thoughts or plans. The 
+victim may or may not have disclosed suicidal thoughts and/or plans close to the time of the suicide. 
+ 
+ Suicidal ideation can be expressed directly (e.g., “I am thinking of killing myself”) or indirectly (e.g., “I 
+don’t know if I want to go on living”). 
+ When the timing is unclear (e.g., timing not mentioned) or if the suicidal thoughts were described as 
+occurring in the “past,” “a few years ago,” or “just,” history of suicidal thoughts should be “Yes.” 
+ Also code “Recently disclosed suicidal thoughts/plans” in addition to this item, if the victim disclosed 
+suicidal thoughts and/or plans close to the time (within one month) of the suicide.”   
+ Code “No” for previous suicide attempts if the victim did not disclose suicidal thoughts or plans. 
+Previous suicide attempts should be coded as “History of Suicide Attempts.” 
+ 
+Note: This variable was added in August 2013.  
+ 
+Manner of Death: Suicide and undetermined deaths.  
+ 
+ 
+
+
+
+Carefully read the following law enforcement narrative:
+The V, an XX XX, was discovered by police hanging in a wooded area, 911 was called. EMS arrived and declared the V dead at the scene. The V had recently broken up with his girlfriend and was very depressed the evening before, the V's roommate was concerned the V was suicidal. The ex-girlfriend stated she was speaking with the V on the phone and he made suicidal statements to her, while talking to the V the ex-girlfriend heard a loud noise in the background and the phone went dead, she then contacted 911. Police were contacted and they made a welfare check and was unable to reach the V at his residence. While speaking to the V's roommate the police started to search on a wooded path behind his residence. A handwritten note was discovered, it appeared to be a suicide note. The v was located hanging from one of the trees just off path.The V, a XX XX, died from asphyxia due to hanging.  The decedent was found during a welfare check requested by his ex-girlfriend.  The ex-girlfriend reported he had called her and told her "he was going to kill himself" and then she heard a loud noise.  She arrived at his home and his gun was missing so she assumed he shot himself.  He was found in the woods behind his home hanging from a tree.  A suicide note was found in the home.  The mother reported he suffered from depression, ADHD, PTSD, school problems and legal problems.  The mother reported an undiagnosed and untreated PTSD.  The decedent had witnessed his friend shot in front of him.  Since then he had "gone down the wrong path".  He struggled with alcohol and drugs.  The mother reported he was trying to turn his life around after the birth of his child, but was denied visitation rights due to his legal troubles.
+</code></pre>
+</div>
+</div>
+</details>
+<p>And the output:</p>
+<details>
+<summary>
+JSON Output
+</summary>
+<div id="e67321de" class="cell" data-execution_count="8">
+<div class="cell-output cell-output-stdout">
+<pre><code>{
+    "DepressedMood": 1,
+    "MentalIllnessTreatmentCurrnt": 0,
+    "HistoryMentalIllnessTreatmnt": 1,
+    "SuicideAttemptHistory": 0,
+    "SuicideThoughtHistory": 1,
+    "SubstanceAbuseProblem": 1,
+    "MentalHealthProblem": 1,
+    "DiagnosisAnxiety": 0,
+    "DiagnosisDepressionDysthymia": 1,
+    "DiagnosisBipolar": 0,
+    "DiagnosisAdhd": 1,
+    "IntimatePartnerProblem": 1,
+    "FamilyRelationship": 0,
+    "Argument": 0,
+    "SchoolProblem": 0,
+    "RecentCriminalLegalProblem": 1,
+    "SuicideNote": 1,
+    "SuicideIntentDisclosed": 1,
+    "DisclosedToIntimatePartner": 1,
+    "DisclosedToOtherFamilyMember": 0,
+    "DisclosedToFriend": 0,
+    "InjuryLocationType": 3,
+    "WeaponType1": 6
+}</code></pre>
+</div>
+</div>
+</details>
+<p>I didn’t ask for any reasoning or citations for the rules provided. Here I just wanted the raw JSON output - but it would be trivial to add another section and ask for specific citations when the rules provided were applied.</p>
+</section>
+</section>
+<section id="my-take" class="level2">
+<h2 class="anchored" data-anchor-id="my-take">My Take</h2>
+<p>To be honest, I was surprised that most of the Claude-generated code worked as well as it did. I had to make few substantial changes. The code to do the chunking, embedding, and indexing took maybe under 30 minutes for me to read through, edit slightly, and execute. Adding these functions into my existing workflow took under and hour - so maybe 90 minutes total from prompt to working RAG proof-of-concept. To be honest, totally wild. I could have figured this out on my own, but this was like half a day of work, compared to the week it would take me to do it solely by scratch.</p>
+<p>Here’s the rub - I think “vibe coding” can be helpful to jumpstart a project from nothing to a workable proof-of-concept. I do NOT think it is a good idea to rely 100% on AI-generated code without knowing what it is actually doing. Personally, I think its a good idea to get a working POC and then pick apart all of the functions and steps the LLM generated to understand whats happening. Blind coding can certainly be a “vibe” but I don’t think it is sustainable for real-world production-level code.</p>
 
 
 </section>
@@ -424,7 +1468,7 @@ font-style: inherit;">in</span> params</span>
   <category>Data Science Applications</category>
   <guid>https://gmcirco.github.io/blog/posts/vibe-coding/vibe-coding.html</guid>
   <pubDate>Mon, 10 Mar 2025 04:00:00 GMT</pubDate>
-  <media:content url="https://gmcirco.github.io/blog/posts/vibe-coding/prompt-testing.png" medium="image" type="image/png"/>
+  <media:content url="https://gmcirco.github.io/blog/posts/vibe-coding/vibes.png" medium="image" type="image/png" height="71" width="144"/>
 </item>
 <item>
   <title>Finding Fake Traffic Tickets in CT State Police Data</title>

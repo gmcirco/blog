@@ -17,7 +17,7 @@ format:
         mermaid:
             theme: neutral
 theme: flatly
-image: prompt-testing.png
+image: vibes.png
 ---
 
 ```{python}
@@ -25,9 +25,21 @@ image: prompt-testing.png
 %cd C:\Users\gioc4\Documents\blog\gcirco_blog\posts\prompt-testing
 
 import pandas as pd
+import json 
 from src.rag import create_prompt_rules, search_vector_database
 
 narratives = pd.read_csv("C:\\Users\\gioc4\\Documents\\blog\\gcirco_blog\\posts\\prompt-testing\\data\\train_narratives_sample_200.csv")
+
+# load original prompts and output
+
+with open("C:\\Users\\gioc4\\Documents\\blog\\gcirco_blog\\posts\\prompt-testing\\json\\output_2025-03-10.jsonl") as f:
+    prompts = [json.loads(line) for line in f]
+
+
+with open("C:\\Users\\gioc4\\Documents\\blog\\gcirco_blog\\posts\\prompt-testing\\json\\batch_67cf174680b08190b7e5b5412c4d5d3b_output.jsonl") as f:
+    output = [json.loads(line) for line in f]
+
+
 
 ```
 
@@ -123,7 +135,7 @@ as well as two others:
 5.  A function to query and retrieve results from the vector database.
 6.  A function to append the results into a prompt-friendly text object.
 
-I took the code and made very slight adjustments (maybe 10% or less) and put them into their own .py file. I then created a separate file to perform all the steps and locally store the vector database in a cache folder:
+I took the code and made some adjustments (maybe 10-15% or less) and then put them into their own .py file under my src folder. I then created a separate file `index_rules.py` to perform all the steps and locally store the vector database in a cache folder:
 
 ```{python}
 #| eval: false
@@ -155,11 +167,44 @@ section_embeddings = encode_chunks(section_circumstances)
 index, stored_chunks = create_vector_store(section_embeddings, cache_dir)
 ```
 
-With that done, the other adjustment I needed to do is add the ability to search the vector database and return the relevant codes based on key works in the narrative. What I did was set up a dict containing key words for each major question, and a query term to append to the retrieved text substring. So, for example, given a narrative like this:
+With that done, the other adjustment I needed to make was to add the ability to query the vector database and return relevant coding rules based on matching key words in the narrative. What I did was set up a dict containing key words for each major question, and a query term to append to the retrieved text substring. So, for example, given a narrative like this:
 
 > "Victim was at home and complained about feeling sad and depressed. Victim had been treated for ADHD and bipolar disorder and had reportedly not been taking his medications in the days preceeding"
 
-Passing thie example narrative into our query function. We pass this narrative into a `search_vector_database` function that searches for regex hits, encodes matching narrative text, and then queries it against the vector database. We have several key word hits, here, so we get several hits. We take all of results from the vector database search and pass these into another function that prepares it for insertion to the prompt. Essentially the `create_prompt_rules` function adds a header for the section for coding rules, and organizes them in order. The code below shows a successful retreval for the DepressedMood variable:
+We would use a regex pattern to match 30 characters on either side of a matching keyword in the dict of keywords (one selected here below):
+
+```{python}
+#| eval: false
+
+keyterms = {
+    "DepressedMood": {
+        "Terms": [
+            "depressed",
+            "depressive symptoms",
+            "sad",
+            "unhappy",
+            "low mood",
+            "feeling down",
+            "persistent sadness",
+            "major depression",
+            "melancholy",
+            "hopeless",
+            "despair",
+            "gloomy",
+            "emotional distress",
+            "tearful",
+            "loss of interest",
+            "worthlessness",
+            "self-loathing",
+        ],
+        "Query": "Coding rules for DepressedMood",
+    }
+
+```
+
+We then just loop through the dict of keywords and collect all the hits.
+
+To illustrate: passing this example narrative into our `search_vector_database` performs the steps of searching for all regex hits, encodes the matching narrative text, and then queries it against the vector database.  We take all of results from the vector database search and pass these into another function that prepares it for insertion to the prompt. The `create_prompt_rules` function adds a header for the section for coding rules, and organizes them in order of section header. The code below shows a successful retreval for the DepressedMood variable:
 
 ```{python}
 test_narrative = "Victim was at home and complained about feeling sad and depressed. Victim had told his partner that he was thinking about taking his own life."
@@ -172,7 +217,7 @@ print(PROMPT_RULES)
 
 ## Adding it All Together
 
-Now that I had the LLM stuff mostly incorporated, all I needed to do is append this to my old LLM class. I added an extra parameter named `include_rag` that triggered the RAG process and appended it to the prompt:
+Now that I had the LLM stuff mostly incorporated, all I needed to do is append this new RAG workflow to my old LLM class. I added an extra parameter named `include_rag` that triggered the RAG process and appended it to the prompt if specified by the user:
 
 ```{python}
 #| eval: false
@@ -208,4 +253,131 @@ def standard_prompt_caching(
         ]
 ```
 
-Here's the crazy thing. It *works*. It works better than I expected. It looked like plausible code to me, but I had no idea if it would actually do what I envisioned. The code to do the chunking, embedding, and indexing took maybe under 30 minutes for me to read through, edit slightly, and execute. Adding these functions into my existing workflow took under and hour - so maybe 90 minutes total from prompt to working RAG proof-of-concept. To be honest, totally wild.
+The final result looks like this, which is structurally almost identical to the non-RAG version I did before - in fact, the only real change is adding `include_rag = True` to the LLM class parameters. This is all the code that processes the queries and passes them on to the OpenAI API:
+
+```{python}
+#| eval: false
+#| code-fold: true
+
+import pandas as pd
+import json
+from datetime import datetime
+
+from openai import OpenAI
+from src.prompts import HEADER1, BODY2, EXAMPLE_OUTPUT2
+from src.prompt_creation import Prompt
+
+client = OpenAI()
+run_date = datetime.now().strftime("%Y-%m-%d")
+
+# set up prompt
+prompt_creator = Prompt()
+ROLE = """You are a mental health expert reviewing law enforcement narratives of youth suicide incidents. 
+Your task is to label variables relating to the incident. Closely review the following instructions. Read 
+the provided narrative and then add labels corresponding to the variables into the described JSON format. 
+Do NOT deviate from the instructions. If coding rules are present you may use them to guide your analysis. 
+Do NOT rely solely on the rules.
+"""
+
+# load suicide narratives and labels
+narratives = pd.read_csv("data/train_narratives_sample_200.csv")
+labels = pd.read_csv("data/train_labels_sample_200.csv")
+
+
+# Execute 1 version of prompt with RAG
+json_list = []
+
+for row in narratives.iterrows():
+
+    # grab the unique id and text
+    single_narrative = row[1]
+    id = single_narrative["uid"]
+    txt = single_narrative["NarrativeLE"] + single_narrative["NarrativeCME"]
+
+    prompt_input = {
+        "header": HEADER1,
+        "narrative": txt,
+        "body": BODY2,
+        "example_output": EXAMPLE_OUTPUT2,
+        "footer": None,
+        "include_rag": True
+    }
+
+    # create a prompt, pass in the text narrative
+    prompt_versions = prompt_creator.standard_prompt_caching(**prompt_input)
+
+    version_num = 0
+    for prompt in prompt_versions:
+        # now append to list
+        json_list.append(
+            {
+                "custom_id": f"{id}_{version_num}",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {"role": "system", "content": ROLE},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "max_tokens": 500,
+                    "response_format": { "type": "json_object" },
+                },
+            }
+        )
+        version_num += 1
+
+
+with open(f"json/output_{run_date}.jsonl", "w") as outfile:
+    for entry in json_list:
+        json.dump(entry, outfile)
+        outfile.write("\n")
+
+# upload batch to openai
+batch_input_file = client.files.create(
+    file=open(f"json/output_{run_date}.jsonl", "rb"), purpose="batch"
+)
+
+batch_input_file_id = batch_input_file.id
+client.batches.create(
+    input_file_id=batch_input_file_id,
+    endpoint="/v1/chat/completions",
+    completion_window="24h",
+    metadata={"description": "Batch Testing 1 prompt x 200 examples with caching and RAG"},
+)
+
+
+```
+
+
+### Reviewing the output
+
+Finally we can review the input and output from this. Here is the full un-edited prompt with the RAG element added. The RAG section is near the end of the prompt, just above full narrative text:
+
+*[Warning: Depictions of Self-Harm]*
+
+<details>
+<summary>Full RAG Input Prompt</summary>
+```{python}
+#| echo: false
+print(prompts[58]['body']['messages'][1]['content'])
+```
+</details>
+
+And the output:
+
+<details>
+<summary>JSON Output</summary>
+```{python}
+#| echo: false
+print(output[58]['response']['body']['choices'][0]['message']['content'])
+```
+</details>
+
+I didn't ask for any reasoning or citations for the rules provided. Here I just wanted the raw JSON output - but it would be trivial to add another section and ask for specific citations when the rules provided were applied. Looking at the retreval part I am actually quite surprised how well it was able to pull the relevant rules based on keyword hits.
+
+## My Take
+
+To be honest, I was surprised that most of the Claude-generated code worked as well as it did. I had to make few substantial changes. The code to do the chunking, embedding, and indexing took maybe under 30 minutes for me to read through, edit slightly, and execute. Adding these functions into my existing workflow took under and hour - so maybe 90 minutes total from prompt to working RAG proof-of-concept. To be honest, totally wild. I could have figured this out on my own, but this was like half a day of work, compared to the week it would take me to do it solely by scratch.
+
+Here's the rub - I think "vibe coding" can be helpful to jumpstart a project from nothing to a workable proof-of-concept. I do NOT think it is a good idea to rely 100% on AI-generated code without knowing what it is actually doing. Personally, I think its a good idea to get a working POC and then pick apart all of the functions and steps the LLM generated to understand whats happening. Blind coding can certainly be a "vibe" but I don't think it is sustainable for real-world production-level code.
