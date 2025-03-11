@@ -2,8 +2,6 @@
   {
     "listing": "/index.html",
     "items": [
-      "/posts/prompt-testing/notebooks/testing.html",
-      "/posts/prompt-testing/notebooks/vibe-coding.html",
       "/posts/vibe-coding/vibe-coding.html",
       "/posts/fake-tickets/fake-tickets.html",
       "/posts/prompt-testing/prompt_testing.html",
