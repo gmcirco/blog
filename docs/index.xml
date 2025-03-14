@@ -10,7 +10,7 @@
 <atom:link href="https://gmcirco.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-1.5.56</generator>
-<lastBuildDate>Mon, 10 Mar 2025 04:00:00 GMT</lastBuildDate>
+<lastBuildDate>Fri, 14 Mar 2025 04:00:00 GMT</lastBuildDate>
 <item>
   <title>‘Vibe Coding’ my way into a RAG pipeline</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>
@@ -21,13 +21,11 @@
 
 
 
-<p><em>There are synthesized depictions of self-harm and suicide in this blog post.</em></p>
 <section id="llms-and-rag" class="level2">
 <h2 class="anchored" data-anchor-id="llms-and-rag">LLMs and RAG</h2>
-<p>For most people who are up-to-date in tech, large language models (LLMs) are nothing new. In fact, they are downright pervasive. One of the largest challenges with LLMs today is that they are very good at coming up with plausible-sounding answers, but less good at telling us <em>why</em> or <em>where</em> they got that answer from. Many times we have to cast a critical eye at LLM output and determine whether or not it is real or just a hallucination. From the beginning, it was suggested that we could augment a user’s prompt with a set of relevent documents that could be used to verify the output of the LLM, or improve the prompt itself. For example, imagine we <a href="https://chatgpt.com/share/67cf3c21-fd18-8007-a043-6eaec436e169">wrote a prompt</a> asking an LLM about <a href="https://newyork.public.law/laws/n.y._vehicle_and_traffic_law_section_1202">parking restrictions</a> in New York State:</p>
+<p>For most people who are up-to-date in tech, large language models (LLMs) are nothing new. In fact, they are downright pervasive. One of the largest challenges with LLMs today is that they are very good at coming up with plausible-sounding answers, but less good at telling us <em>why</em> or <em>where</em> they got that answer from. It’s often good practice to cast a critical eye at LLM output and determine whether or not it is real or just a hallucination. These concerns have led to suggestions that we can augment a user’s prompt with a set of reference documents that can be used to verify the output of the LLM, or to improve the prompt itself. For example, imagine we <a href="https://chatgpt.com/share/67cf3c21-fd18-8007-a043-6eaec436e169">wrote a prompt</a> asking an LLM about <a href="https://newyork.public.law/laws/n.y._vehicle_and_traffic_law_section_1202">parking restrictions</a> in New York State:</p>
 <blockquote class="blockquote">
-<p><strong>Q:</strong> Is it permitted to park between roadways on a highway according to New York State law?<br>
-<strong>A:</strong> According to New York State law, parking between roadways on a highway is not permitted, except where official signs indicate otherwise. Specifically, Section 1200 of the New York Vehicle and Traffic Law states that parking is prohibited in areas such as medians, between divided roadways, and other restricted zones unless otherwise posted.</p>
+<p><strong>Q:</strong> Is it permitted to park between roadways on a highway according to New York State law? <strong>A:</strong> According to New York State law, parking between roadways on a highway is not permitted, except where official signs indicate otherwise. Specifically, Section 1200 of the New York Vehicle and Traffic Law states that parking is prohibited in areas such as medians, between divided roadways, and other restricted zones unless otherwise posted.</p>
 </blockquote>
 <p>versus:</p>
 <blockquote class="blockquote">
@@ -38,14 +36,33 @@
 </blockquote>
 <p>This is found under Section 1(i) of the provided rules. The only exception is in the case of an emergency.</p>
 </blockquote>
-<p>This is a bit of a contrived example, but the general idea here is that we can improve the LLMs by providing them relevant external information alongside their instructions. By including extra information this helps to guard against hallucinations, and can also give the user more guidance on why the LLM came to its specific answer. In our answer above, the LLM is technically correct in the first answer that parking is not permitted - but I think it invents a rule about official signs allowing otherwise. In the prompt containing the full-text of the relevent set of rules, we get a much shorter, cleaner response with the precise rule relevant to the question.</p>
+<p>This is a bit of a contrived example, but the general idea is that we can improve the LLMs performance by providing relevant external information alongside the standard instructions. Including this extra information helps to guard against hallucinations, and also gives the user more guidance on why the LLM came to its specific answer. In the example above, the LLM is <em>technically</em> correct in the first answer that parking is not permitted - but I think it invents a rule about official signs allowing otherwise. This is probably speculation on the part of the LLM. In the prompt containing the full-text of the relevent set of rules, we obtain a shorter, cleaner response with the precise rule relevant to the question - including the citation to the exact section and subsection.</p>
+<section id="retrieval-augmented-generation" class="level3">
+<h3 class="anchored" data-anchor-id="retrieval-augmented-generation">Retrieval-augmented generation</h3>
+<p>The example I’ve described above is essentially RAG or Retrieval-augmented generation. RAG is another one of those buzzwords that enters the conversation every time “AI” comes up. I wrote this blog post, in part, to demystify it for my readers (all 3 of your) and myself. When you boil down the workflow, RAG is essentially an additional step of retrieving relevant information from a database or document store before generating a response. Instead of relying solely on a model’s pre-trained knowledge, the RAG step pulls in context-specific data relevant to the question. This approach is particularly useful when dealing with rapidly changing information or domain-specific knowledge.</p>
+</section>
 </section>
 <section id="coding-out-a-rag-pipeline" class="level2">
 <h2 class="anchored" data-anchor-id="coding-out-a-rag-pipeline">Coding Out a RAG Pipeline</h2>
-<p>In a <a href="https://gmcirco.github.io/blog/posts/prompt-testing/prompt_testing.html">recent blog post</a> I walked through a step-by-step process of how to set up a A/B testing process for prompt refinement. I relied on data from a recent <a href="https://www.drivendata.org/competitions/295/cdc-automated-abstraction/page/917/">DrivenData</a> competition that relied on youth suicide narrative reports from the <a href="https://www.cdc.gov/nvdrs/resources/nvdrsCodingManual.pdf">National Violent Death Reporting System</a>. I was pretty happy with the workflow I built out, but couldn’t help but feel that I could improve it somehow by giving the LLM direct access to the relevant sections from the coding manual. Here is where RAG comes in! Rather than prompting the model with upwards of 200 pages of text, of which it might need less than 1 page, I could pass just the smallest subsections for each question.</p>
-<section id="my-mental-model" class="level3">
-<h3 class="anchored" data-anchor-id="my-mental-model">My mental model</h3>
-<p>The way I envisioned this working was to process the RAG step separately by indexing the relevant sub-sections from section 5 of NVDRS coding manual. I would extract out the subsection chunks and then index them in vector database for retreval at the time of prompt creation. My prompt creator class adds the headers, instructions, and questions to the final prompt, and then we tack on the relevant rules from the vector database (see below):</p>
+<p>In a <a href="https://gmcirco.github.io/blog/posts/prompt-testing/prompt_testing.html">recent blog post</a> I walked through a step-by-step process of how to set up a A/B testing process for prompt refinement. I relied on data from a recent <a href="https://www.drivendata.org/competitions/295/cdc-automated-abstraction/page/917/">DrivenData</a> competition that used youth suicide narrative reports from the CDC’s <a href="https://www.cdc.gov/nvdrs/resources/nvdrsCodingManual.pdf">National Violent Death Reporting System</a>. I was pretty happy with the workflow I built out, but couldn’t help but feel that I could improve it somehow. The NVDRS has nearly 300 page coding manual with detailed instructions for each variable type. For example, section 5.5.9 describes the rules of how to code a death that is the result of a gang-related crime:</p>
+<blockquote class="blockquote">
+<p>5.5.9 Gang-related: CME/LE_GangRelated<br>
+<strong>Definition</strong><br>
+Definitions for gang-related homicide can vary by law enforcement agency or CME and tend to capture<br>
+deaths that are classified as gang-motivated (i.e., the motive of the incident was gang-related) or had<br>
+suspected involvement of a gang member (i.e., a gang member was a suspect or victim in the incident).<br>
+This variable captures both types of gang-related deaths reported by agencies.</p>
+<p><strong>Response Options</strong><br>
+- <strong>0</strong> No, Not available, Unknown<br>
+- <strong>1</strong> Yes, gang motivated<br>
+- <strong>2</strong> Yes, suspected gang member involvement<br>
+- <strong>3</strong> Yes, gang-related not otherwise specified<br>
+- <strong>4</strong> Organized crime including motorcycle gangs, mafia, and drug cartels</p>
+</blockquote>
+<p>There are nearly a hundred such rules in this manual. However, it doesn’t really make sense to try and pass the entire manual into our prompt. Even if the context window could handle the full size, when you are paying for tokens it makes sense to minimize the prompt to only the necessary bits. So what if we just wanted to augment each prompt with <em>only</em> the references that are relevant for the narrative being coded? This is where RAG comes in!</p>
+<section id="envisioning-a-rag-pipeline" class="level3">
+<h3 class="anchored" data-anchor-id="envisioning-a-rag-pipeline">Envisioning a RAG pipeline</h3>
+<p>The way I envisioned this working was to process the RAG step separately by first indexing the relevant sub-sections from section 5 of NVDRS coding manual, which contains all information about incident circumstances. I would extract out the subsection chunks and then index them in vector database for retreval at the time of prompt creation. My prompt creator class already adds the headers, instructions, and questions to the final prompt, so all we need to add is the additional step of then tacking on the relevant rules from the vector database (see below):</p>
 <div class="cell" data-layout-align="default">
 <div class="cell-output-display">
 <div>
@@ -83,11 +100,11 @@
 </div>
 </div>
 </div>
-<p>In my mind, I figured I could come up with a quick and dirty solution by using regex to hit on key words in the narrative, and then use a semantic similarity model (like <code>SentenceTransformers</code>) to retrieve the top <img src="https://latex.codecogs.com/png.latex?n"> rules. For example, a narrative might have a section stating:</p>
+<p>In my mind, I figured I could come up with a quick and dirty solution by using regex to hit on key words in each narrative, and then use a semantic similarity model (like <code>SentenceTransformers</code>) to retrieve the top <img src="https://latex.codecogs.com/png.latex?n"> rules from the vector database. For example, a narrative might have a section stating:</p>
 <blockquote class="blockquote">
 <p>“Victim had been feeling <strong>depressed</strong> and sad in the days leading up to the incident”</p>
 </blockquote>
-<p>We use regex to grab the relevant words around our matched word (here, <strong>depressed</strong>), encode them, and then retrieve rules from the vector database. In the last step we append these to our prompt before executing it.</p>
+<p>Using regex we can grab the relevant words around our matched word (here, <strong>depressed</strong>), encode them, and then retrieve rules from the vector database. In the last step we append these to our prompt before executing it.</p>
 <p>There’s just one problem - I’ve never done this before.</p>
 </section>
 <section id="vibe-coding" class="level3">
@@ -96,8 +113,8 @@
 <blockquote class="blockquote">
 <p>“There’s a new kind of coding I call”vibe coding”, where you fully give in to the vibes, embrace exponentials, and forget that the code even exists”</p>
 </blockquote>
-<p>In short, it represents a programmer’s full surrender to the LLM, and taking what it gives back on good faith. When problems arrive, you just dig deeper and let the LLM guide you even further down the rabbit hole, trusting the process. I think the term is very funny - but there is a bit of truth to this. “Vibe-Coding” is sort of what I used to do early in grad school when I was trying to get some esoteric model running in R with virtually no background knowledge. To me, vibe-coding harkens back to the days of panicked copy-and-paste from a variety Stack Overflow posts.</p>
-<p>With this in mind, I believe in sharing my work. Here’s the <a href="https://claude.ai/share/9ae9a888-def0-4e61-96c0-6a795d5d4ad8">full conversation</a> I used to set up the RAG framework. I had enough of an idea of what I wanted, but wanted to speed up the code required to get the document chunking and indexing</p>
+<p>In short, it represents a programmer’s full surrender to the LLM, and taking what it gives back on good faith. When problems arrive, you just dig deeper and let the LLM guide you even further down the rabbit hole, trusting the process. I think the term is very funny - but there is a bit of truth to this. “Vibe-coding” is sort of what I used to do early in grad school when I was trying to get some esoteric model running in R with virtually no background knowledge. To me, vibe-coding harkens back to the days of panicked copy-and-paste from a variety Stack Overflow posts.</p>
+<p>With this in mind, I believe in sharing my work. Here’s the <a href="https://claude.ai/share/9ae9a888-def0-4e61-96c0-6a795d5d4ad8">full conversation</a> I used to set up the RAG framework. I had enough of an idea of what I wanted, but wanted to speed up the processing of generating code required to get the document chunking and indexing working.</p>
 </section>
 </section>
 <section id="testing-the-rag-process" class="level2">
@@ -114,8 +131,8 @@
 <li>A function to query and retrieve results from the vector database.</li>
 <li>A function to append the results into a prompt-friendly text object.</li>
 </ol>
-<p>I took the code and made some adjustments (maybe 10-15% or less) and then put them into their own .py file under my src folder. I then created a separate file <code>index_rules.py</code> to perform all the steps and locally store the vector database in a cache folder:</p>
-<div id="5ea1d62a" class="cell" data-execution_count="2">
+<p>I took the LLM-generated code and made some adjustments (maybe 10-15% or less) and then put them into their own .py file under my src folder. I then created a separate file <code>index_rules.py</code> to perform all the steps and locally store the vector database in a cache folder:</p>
+<div id="96349415" class="cell" data-execution_count="2">
 <div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">"Code to index rules from the NVDRS and store as vector store in cache"</span></span>
@@ -189,7 +206,7 @@ font-style: inherit;">=</span> create_vector_store(section_embeddings, cache_dir
 <p>“Victim was at home and complained about feeling sad and depressed. Victim had been treated for ADHD and bipolar disorder and had reportedly not been taking his medications in the days preceeding”</p>
 </blockquote>
 <p>We would use a regex pattern to match 30 characters on either side of a matching keyword in the dict of keywords (one selected here below):</p>
-<div id="f01d7f13" class="cell" data-execution_count="3">
+<div id="4a4c3b5d" class="cell" data-execution_count="3">
 <div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">keyterms <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> {</span>
@@ -259,8 +276,8 @@ font-style: inherit;">"Coding rules for DepressedMood"</span>,</span>
 <span id="cb2-23">    }</span></code></pre></div>
 </div>
 <p>We then just loop through the dict of keywords and collect all the hits.</p>
-<p>To illustrate: passing this example narrative into our <code>search_vector_database</code> performs the steps of searching for all regex hits, encodes the matching narrative text, and then queries it against the vector database. We take all of results from the vector database search and pass these into another function that prepares it for insertion to the prompt. The <code>create_prompt_rules</code> function adds a header for the section for coding rules, and organizes them in order of section header. The code below shows a successful retreval for the DepressedMood variable:</p>
-<div id="29f63426" class="cell" data-execution_count="4">
+<p>To illustrate: passing this example narrative into the <code>search_vector_database</code> performs the steps of searching for all regex hits, encodes the matching narrative text, and then queries it against the vector database. It then takes all of the results from the vector database search and passes these into another function that prepares it for insertion to the prompt. The <code>create_prompt_rules</code> function adds a header for the section for coding rules, and organizes them in order of section header. The code below shows a successful retreval for the <code>DepressedMood</code> variable:</p>
+<div id="7a3e9d2e" class="cell" data-execution_count="4">
 <div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">test_narrative <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> <span class="st" style="color: #20794D;
@@ -327,8 +344,8 @@ Manner of Death: All manners.
 </section>
 <section id="adding-it-all-together" class="level2">
 <h2 class="anchored" data-anchor-id="adding-it-all-together">Adding it All Together</h2>
-<p>Now that I had the LLM stuff mostly incorporated, all I needed to do is append this new RAG workflow to my old LLM class. I added an extra parameter named <code>include_rag</code> that triggered the RAG process and appended it to the prompt if specified by the user:</p>
-<div id="9dbf638c" class="cell" data-execution_count="5">
+<p>Now that I had the LLM stuff mostly incorporated, all I needed to do is append this new RAG workflow to my old LLM class. I added an extra parameter named <code>include_rag</code> that triggers the RAG process and appended it to the prompt if specified by the user:</p>
+<div id="6c58191d" class="cell" data-execution_count="5">
 <div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><span class="kw" style="color: #003B4F;
 background-color: null;
 font-weight: bold;
@@ -479,8 +496,8 @@ font-weight: bold;
 font-style: inherit;">in</span> params</span>
 <span id="cb5-29">        ]</span></code></pre></div>
 </div>
-<p>The final result looks like this, which is structurally almost identical to the non-RAG version I did before - in fact, the only real change is adding <code>include_rag = True1</code> to the LLM class parameters. This is all the code that processes the queries and passes them on to the OpenAI API:</p>
-<div id="920df520" class="cell" data-execution_count="6">
+<p>The final result looks like this, which is structurally almost identical to the non-RAG version I did before. In fact, the only real change is adding <code>include_rag = True</code> to the LLM class parameters. This is all the code that processes the queries and passes them on to the OpenAI API:</p>
+<div id="05327de6" class="cell" data-execution_count="6">
 <details class="code-fold">
 <summary>Code</summary>
 <div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="im" style="color: #00769E;
@@ -838,7 +855,7 @@ font-style: inherit;">"Batch Testing 1 prompt x 200 examples with caching and RA
 <summary>
 Full RAG Input Prompt
 </summary>
-<div id="a6c2ad90" class="cell" data-execution_count="7">
+<div id="9d53519b" class="cell" data-execution_count="7">
 <div class="cell-output cell-output-stdout">
 <pre><code>
 INSTRUCTIONS:
@@ -1416,7 +1433,7 @@ The V, an XX XX, was discovered by police hanging in a wooded area, 911 was call
 <summary>
 JSON Output
 </summary>
-<div id="e67321de" class="cell" data-execution_count="8">
+<div id="b69d22be" class="cell" data-execution_count="8">
 <div class="cell-output cell-output-stdout">
 <pre><code>{
     "DepressedMood": 1,
@@ -1446,13 +1463,13 @@ JSON Output
 </div>
 </div>
 </details>
-<p>I didn’t ask for any reasoning or citations for the rules provided. Here I just wanted the raw JSON output - but it would be trivial to add another section and ask for specific citations when the rules provided were applied.</p>
+<p>I didn’t ask for any reasoning or citations for the rules provided. Here I just wanted the raw JSON output - but it would be trivial to add another section and ask for specific citations when the rules provided were applied. Looking at the retrieval part I am actually quite surprised how well it was able to pull the relevant rules based on keyword hits.</p>
 </section>
 </section>
 <section id="my-take" class="level2">
 <h2 class="anchored" data-anchor-id="my-take">My Take</h2>
 <p>To be honest, I was surprised that most of the Claude-generated code worked as well as it did. I had to make few substantial changes. The code to do the chunking, embedding, and indexing took maybe under 30 minutes for me to read through, edit slightly, and execute. Adding these functions into my existing workflow took under and hour - so maybe 90 minutes total from prompt to working RAG proof-of-concept. To be honest, totally wild. I could have figured this out on my own, but this was like half a day of work, compared to the week it would take me to do it solely by scratch.</p>
-<p>Here’s the rub - I think “vibe coding” can be helpful to jumpstart a project from nothing to a workable proof-of-concept. I do NOT think it is a good idea to rely 100% on AI-generated code without knowing what it is actually doing. Personally, I think its a good idea to get a working POC and then pick apart all of the functions and steps the LLM generated to understand whats happening. Blind coding can certainly be a “vibe” but I don’t think it is sustainable for real-world production-level code.</p>
+<p>Here’s the rub - I think “vibe coding” can be helpful to jump start a project from nothing to a workable proof-of-concept. I do NOT think it is a good idea to rely 100% on AI-generated code without knowing what it is actually doing. Personally, I think its a good idea to get a working POC and then pick apart all of the functions and steps the LLM generated to understand whats happening. Blind coding can certainly be a “vibe” but I don’t think it is sustainable for real-world production-level code.</p>
 
 
 </section>
@@ -1461,13 +1478,13 @@ JSON Output
 <div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
 
 <ol>
-<li id="fn1"><p>If you are curious about the full code, you can look at my prompt-testing repo under my blog posts that contains the full set↩︎</p></li>
+<li id="fn1"><p>If you are curious about the code, you can look at my <a href="https://github.com/gmcirco/blog/tree/master/posts/prompt-testing/src">prompt-testing repo</a> under my blog posts that contains the full set of classes and functions.↩︎</p></li>
 </ol>
 </section></div> ]]></description>
   <category>Python</category>
   <category>Data Science Applications</category>
   <guid>https://gmcirco.github.io/blog/posts/vibe-coding/vibe-coding.html</guid>
-  <pubDate>Mon, 10 Mar 2025 04:00:00 GMT</pubDate>
+  <pubDate>Fri, 14 Mar 2025 04:00:00 GMT</pubDate>
   <media:content url="https://gmcirco.github.io/blog/posts/vibe-coding/vibes.png" medium="image" type="image/png" height="71" width="144"/>
 </item>
 <item>

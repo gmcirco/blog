@@ -2,7 +2,7 @@
 title: "'Vibe Coding' my way into a RAG pipeline"
 subtitle: "Retrieval-augmented generation with a little help from a friend."
 author: Gio Circo, Ph.D.
-date: 2025-3-10
+date: 2025-3-14
 categories:
   - Python
   - Data Science Applications
@@ -43,13 +43,11 @@ with open("C:\\Users\\gioc4\\Documents\\blog\\gcirco_blog\\posts\\prompt-testing
 
 ```
 
-*There are synthesized depictions of self-harm and suicide in this blog post.*
-
 ## LLMs and RAG
 
-For most people who are up-to-date in tech, large language models (LLMs) are nothing new. In fact, they are downright pervasive. One of the largest challenges with LLMs today is that they are very good at coming up with plausible-sounding answers, but less good at telling us *why* or *where* they got that answer from. Many times we have to cast a critical eye at LLM output and determine whether or not it is real or just a hallucination. From the beginning, it was suggested that we could augment a user's prompt with a set of relevent documents that could be used to verify the output of the LLM, or improve the prompt itself. For example, imagine we [wrote a prompt](https://chatgpt.com/share/67cf3c21-fd18-8007-a043-6eaec436e169) asking an LLM about [parking restrictions](https://newyork.public.law/laws/n.y._vehicle_and_traffic_law_section_1202) in New York State:
+For most people who are up-to-date in tech, large language models (LLMs) are nothing new. In fact, they are downright pervasive. One of the largest challenges with LLMs today is that they are very good at coming up with plausible-sounding answers, but less good at telling us *why* or *where* they got that answer from. It's often good practice to cast a critical eye at LLM output and determine whether or not it is real or just a hallucination. These concerns have led to suggestions that we can augment a user's prompt with a set of reference documents that can be used to verify the output of the LLM, or to improve the prompt itself. For example, imagine we [wrote a prompt](https://chatgpt.com/share/67cf3c21-fd18-8007-a043-6eaec436e169) asking an LLM about [parking restrictions](https://newyork.public.law/laws/n.y._vehicle_and_traffic_law_section_1202) in New York State:
 
-> **Q:** Is it permitted to park between roadways on a highway according to New York State law?\
+> **Q:** Is it permitted to park between roadways on a highway according to New York State law?
 > **A:** According to New York State law, parking between roadways on a highway is not permitted, except where official signs indicate otherwise. Specifically, Section 1200 of the New York Vehicle and Traffic Law states that parking is prohibited in areas such as medians, between divided roadways, and other restricted zones unless otherwise posted.
 
 versus:
@@ -62,15 +60,35 @@ versus:
 >
 > This is found under Section 1(i) of the provided rules. The only exception is in the case of an emergency.
 
-This is a bit of a contrived example, but the general idea here is that we can improve the LLMs by providing them relevant external information alongside their instructions. By including extra information this helps to guard against hallucinations, and can also give the user more guidance on why the LLM came to its specific answer. In our answer above, the LLM is technically correct in the first answer that parking is not permitted - but I think it invents a rule about official signs allowing otherwise. In the prompt containing the full-text of the relevent set of rules, we get a much shorter, cleaner response with the precise rule relevant to the question.
+This is a bit of a contrived example, but the general idea is that we can improve the LLMs performance by providing relevant external information alongside the standard instructions. Including this extra information helps to guard against hallucinations, and also gives the user more guidance on why the LLM came to its specific answer. In the example above, the LLM is *technically* correct in the first answer that parking is not permitted - but I think it invents a rule about official signs allowing otherwise. This is probably speculation on the part of the LLM. In the prompt containing the full-text of the relevent set of rules, we obtain a shorter, cleaner response with the precise rule relevant to the question - including the citation to the exact section and subsection.
+
+### Retrieval-augmented generation
+
+The example I've described above is essentially RAG or Retrieval-augmented generation. RAG is another one of those buzzwords that enters the conversation every time "AI" comes up. I wrote this blog post, in part, to demystify it for my readers (all 3 of your) and myself. When you boil down the workflow, RAG is essentially an additional step of retrieving relevant information from a database or document store before generating a response. Instead of relying solely on a model’s pre-trained knowledge, the RAG step pulls in context-specific data relevant to the question. This approach is particularly useful when dealing with rapidly changing information or domain-specific knowledge. 
 
 ## Coding Out a RAG Pipeline
 
-In a [recent blog post](https://gmcirco.github.io/blog/posts/prompt-testing/prompt_testing.html) I walked through a step-by-step process of how to set up a A/B testing process for prompt refinement. I relied on data from a recent [DrivenData](https://www.drivendata.org/competitions/295/cdc-automated-abstraction/page/917/) competition that relied on youth suicide narrative reports from the [National Violent Death Reporting System](https://www.cdc.gov/nvdrs/resources/nvdrsCodingManual.pdf). I was pretty happy with the workflow I built out, but couldn't help but feel that I could improve it somehow by giving the LLM direct access to the relevant sections from the coding manual. Here is where RAG comes in! Rather than prompting the model with upwards of 200 pages of text, of which it might need less than 1 page, I could pass just the smallest subsections for each question.
+In a [recent blog post](https://gmcirco.github.io/blog/posts/prompt-testing/prompt_testing.html) I walked through a step-by-step process of how to set up a A/B testing process for prompt refinement. I relied on data from a recent [DrivenData](https://www.drivendata.org/competitions/295/cdc-automated-abstraction/page/917/) competition that used youth suicide narrative reports from the CDC's [National Violent Death Reporting System](https://www.cdc.gov/nvdrs/resources/nvdrsCodingManual.pdf). I was pretty happy with the workflow I built out, but couldn't help but feel that I could improve it somehow. The NVDRS has nearly 300 page coding manual with detailed instructions for each variable type. For example, section 5.5.9 describes the rules of how to code a death that is the result of a gang-related crime:
 
-### My mental model
+> 5.5.9 Gang-related: CME/LE_GangRelated  
+> **Definition**  
+> Definitions for gang-related homicide can vary by law enforcement agency or CME and tend to capture  
+> deaths that are classified as gang-motivated (i.e., the motive of the incident was gang-related) or had  
+> suspected involvement of a gang member (i.e., a gang member was a suspect or victim in the incident).  
+> This variable captures both types of gang-related deaths reported by agencies.  
+>  
+> **Response Options**  
+> - **0** No, Not available, Unknown  
+> - **1** Yes, gang motivated  
+> - **2** Yes, suspected gang member involvement  
+> - **3** Yes, gang-related not otherwise specified  
+> - **4** Organized crime including motorcycle gangs, mafia, and drug cartels  
 
-The way I envisioned this working was to process the RAG step separately by indexing the relevant sub-sections from section 5 of NVDRS coding manual. I would extract out the subsection chunks and then index them in vector database for retreval at the time of prompt creation. My prompt creator class adds the headers, instructions, and questions to the final prompt, and then we tack on the relevant rules from the vector database (see below):
+There are nearly a hundred such rules in this manual. However, it doesn't really make sense to try and pass the entire manual into our prompt. Even if the context window could handle the full size, when you are paying for tokens it makes sense to minimize the prompt to only the necessary bits. So what if we just wanted to augment each prompt with *only* the references that are relevant for the narrative being coded? This is where RAG comes in! 
+
+### Envisioning a RAG pipeline
+
+The way I envisioned this working was to process the RAG step separately by first indexing the relevant sub-sections from section 5 of NVDRS coding manual, which contains all information about incident circumstances. I would extract out the subsection chunks and then index them in vector database for retreval at the time of prompt creation. My prompt creator class already adds the headers, instructions, and questions to the final prompt, so all we need to add is the additional step of then tacking on the relevant rules from the vector database (see below):
 
 ```{mermaid}
 flowchart LR
@@ -101,11 +119,11 @@ flowchart LR
 
 ```
 
-In my mind, I figured I could come up with a quick and dirty solution by using regex to hit on key words in the narrative, and then use a semantic similarity model (like `SentenceTransformers`) to retrieve the top $n$ rules. For example, a narrative might have a section stating:
+In my mind, I figured I could come up with a quick and dirty solution by using regex to hit on key words in each narrative, and then use a semantic similarity model (like `SentenceTransformers`) to retrieve the top $n$ rules from the vector database. For example, a narrative might have a section stating:
 
 > "Victim had been feeling **depressed** and sad in the days leading up to the incident"
 
-We use regex to grab the relevant words around our matched word (here, **depressed**), encode them, and then retrieve rules from the vector database. In the last step we append these to our prompt before executing it.
+Using regex we can grab the relevant words around our matched word (here, **depressed**), encode them, and then retrieve rules from the vector database. In the last step we append these to our prompt before executing it.
 
 There's just one problem - I've never done this before.
 
@@ -115,15 +133,15 @@ What is "vibe coding"? One of my favorite definitions comes from ex-OpenAI found
 
 > "There's a new kind of coding I call "vibe coding", where you fully give in to the vibes, embrace exponentials, and forget that the code even exists"
 
-In short, it represents a programmer's full surrender to the LLM, and taking what it gives back on good faith. When problems arrive, you just dig deeper and let the LLM guide you even further down the rabbit hole, trusting the process. I think the term is very funny - but there is a bit of truth to this. "Vibe-Coding" is sort of what I used to do early in grad school when I was trying to get some esoteric model running in R with virtually no background knowledge. To me, vibe-coding harkens back to the days of panicked copy-and-paste from a variety Stack Overflow posts.
+In short, it represents a programmer's full surrender to the LLM, and taking what it gives back on good faith. When problems arrive, you just dig deeper and let the LLM guide you even further down the rabbit hole, trusting the process. I think the term is very funny - but there is a bit of truth to this. "Vibe-coding" is sort of what I used to do early in grad school when I was trying to get some esoteric model running in R with virtually no background knowledge. To me, vibe-coding harkens back to the days of panicked copy-and-paste from a variety Stack Overflow posts.
 
-With this in mind, I believe in sharing my work. Here's the [full conversation](https://claude.ai/share/9ae9a888-def0-4e61-96c0-6a795d5d4ad8) I used to set up the RAG framework. I had enough of an idea of what I wanted, but wanted to speed up the code required to get the document chunking and indexing
+With this in mind, I believe in sharing my work. Here's the [full conversation](https://claude.ai/share/9ae9a888-def0-4e61-96c0-6a795d5d4ad8) I used to set up the RAG framework. I had enough of an idea of what I wanted, but wanted to speed up the processing of generating code required to get the document chunking and indexing working.
 
 ## Testing the RAG Process
 
 So what did all that get us? Well, with the help of Claude we got a set of four functions that[^1]:
 
-[^1]: If you are curious about the full code, you can look at my prompt-testing repo under my blog posts that contains the full set
+[^1]: If you are curious about the code, you can look at my [prompt-testing repo](https://github.com/gmcirco/blog/tree/master/posts/prompt-testing/src) under my blog posts that contains the full set of classes and functions.
 
 1.  Extract the relevant pages from the coding manual.
 2.  Chunk up the pages into subsections based on headers.
@@ -135,7 +153,7 @@ as well as two others:
 5.  A function to query and retrieve results from the vector database.
 6.  A function to append the results into a prompt-friendly text object.
 
-I took the code and made some adjustments (maybe 10-15% or less) and then put them into their own .py file under my src folder. I then created a separate file `index_rules.py` to perform all the steps and locally store the vector database in a cache folder:
+I took the LLM-generated code and made some adjustments (maybe 10-15% or less) and then put them into their own .py file under my src folder. I then created a separate file `index_rules.py` to perform all the steps and locally store the vector database in a cache folder:
 
 ```{python}
 #| eval: false
@@ -204,7 +222,7 @@ keyterms = {
 
 We then just loop through the dict of keywords and collect all the hits.
 
-To illustrate: passing this example narrative into our `search_vector_database` performs the steps of searching for all regex hits, encodes the matching narrative text, and then queries it against the vector database.  We take all of results from the vector database search and pass these into another function that prepares it for insertion to the prompt. The `create_prompt_rules` function adds a header for the section for coding rules, and organizes them in order of section header. The code below shows a successful retreval for the DepressedMood variable:
+To illustrate: passing this example narrative into the `search_vector_database` performs the steps of searching for all regex hits, encodes the matching narrative text, and then queries it against the vector database. It then takes all of the results from the vector database search and passes these into another function that prepares it for insertion to the prompt. The `create_prompt_rules` function adds a header for the section for coding rules, and organizes them in order of section header. The code below shows a successful retreval for the `DepressedMood` variable:
 
 ```{python}
 test_narrative = "Victim was at home and complained about feeling sad and depressed. Victim had told his partner that he was thinking about taking his own life."
@@ -217,7 +235,7 @@ print(PROMPT_RULES)
 
 ## Adding it All Together
 
-Now that I had the LLM stuff mostly incorporated, all I needed to do is append this new RAG workflow to my old LLM class. I added an extra parameter named `include_rag` that triggered the RAG process and appended it to the prompt if specified by the user:
+Now that I had the LLM stuff mostly incorporated, all I needed to do is append this new RAG workflow to my old LLM class. I added an extra parameter named `include_rag` that triggers the RAG process and appended it to the prompt if specified by the user:
 
 ```{python}
 #| eval: false
@@ -253,7 +271,7 @@ def standard_prompt_caching(
         ]
 ```
 
-The final result looks like this, which is structurally almost identical to the non-RAG version I did before - in fact, the only real change is adding `include_rag = True` to the LLM class parameters. This is all the code that processes the queries and passes them on to the OpenAI API:
+The final result looks like this, which is structurally almost identical to the non-RAG version I did before. In fact, the only real change is adding `include_rag = True` to the LLM class parameters. This is all the code that processes the queries and passes them on to the OpenAI API:
 
 ```{python}
 #| eval: false
@@ -349,32 +367,37 @@ client.batches.create(
 
 ```
 
-
 ### Reviewing the output
 
 Finally we can review the input and output from this. Here is the full un-edited prompt with the RAG element added. The RAG section is near the end of the prompt, just above full narrative text:
 
-*[Warning: Depictions of Self-Harm]*
+*\[Warning: Depictions of Self-Harm\]*
 
 <details>
+
 <summary>Full RAG Input Prompt</summary>
+
 ```{python}
 #| echo: false
 print(prompts[58]['body']['messages'][1]['content'])
 ```
+
 </details>
 
 And the output:
 
 <details>
+
 <summary>JSON Output</summary>
+
 ```{python}
 #| echo: false
 print(output[58]['response']['body']['choices'][0]['message']['content'])
 ```
+
 </details>
 
-I didn't ask for any reasoning or citations for the rules provided. Here I just wanted the raw JSON output - but it would be trivial to add another section and ask for specific citations when the rules provided were applied. Looking at the retrieval part I am actually quite surprised how well it was able to pull the relevant rules based on keyword hits. 
+I didn't ask for any reasoning or citations for the rules provided. Here I just wanted the raw JSON output - but it would be trivial to add another section and ask for specific citations when the rules provided were applied. Looking at the retrieval part I am actually quite surprised how well it was able to pull the relevant rules based on keyword hits.
 
 ## My Take
 
