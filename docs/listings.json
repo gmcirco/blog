@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/did-short/did-short.html",
       "/posts/vibe-coding/vibe-coding.html",
       "/posts/fake-tickets/fake-tickets.html",
       "/posts/prompt-testing/prompt_testing.html",
