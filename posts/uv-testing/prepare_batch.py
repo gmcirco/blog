@@ -5,16 +5,12 @@ import pandas as pd
 import os
 from openai import OpenAI
 import json
-<<<<<<< HEAD
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 from datetime import datetime
 import re
 
-=======
-from datetime import datetime
->>>>>>> f268a1c (Saving local changes before pull)
 
 # setup openai creds
 client = OpenAI()
@@ -23,7 +19,6 @@ neiss_data = r"C:\Users\gioc4\Documents\blog\data\neiss2024.csv"
 neiss_codes = r"C:\Users\gioc4\Documents\blog\data\us-national-electronic-injury-surveillance-system-neiss-product-codes.json"
 
 RUN_DATE = datetime.now().strftime("%Y-%m-%d")
-<<<<<<< HEAD
 NUM_NARRATIVES = 10
 RAG_MODEL = SentenceTransformer("all-mpnet-base-v2")
 MODEL = "gpt-4o-mini"
@@ -73,10 +68,6 @@ class NEISSVectorDB:
             )
 
         return matches
-=======
-NUM_NARRATIVES = 100
-MODEL = "gpt-4.1"
->>>>>>> f268a1c (Saving local changes before pull)
 
 
 def load_product_codes(path_to_file):
@@ -85,7 +76,6 @@ def load_product_codes(path_to_file):
     return data
 
 
-<<<<<<< HEAD
 def extract_core_narrative(neiss_narrative):
     match = CORE_NARRATIVE_REGEX.search(neiss_narrative)
 
@@ -95,24 +85,12 @@ def extract_core_narrative(neiss_narrative):
         return neiss_narrative
 
 
-=======
->>>>>>> f268a1c (Saving local changes before pull)
 def load_neiss_data(path_to_file, max=5):
     dataframe = pd.read_csv(path_to_file)
     json_output = dataframe[:max].to_json(lines=True, orient="records")
     return [line for line in json_output.strip().split("\n") if line]
 
 
-<<<<<<< HEAD
-=======
-def get_product_codes(product_codes_json):
-    code_str = ""
-    for code in product_codes_json:
-        code_str += f"\n{code['code']} {code['product_title']}"
-    return code_str
-
-
->>>>>>> f268a1c (Saving local changes before pull)
 def get_narrative(neiss_json):
     narrative = json.loads(neiss_json)
     return narrative["Narrative_1"]
@@ -123,7 +101,6 @@ def get_id(json_str):
     return neiss_json["CPSC_Case_Number"]
 
 
-<<<<<<< HEAD
 def create_prompt(neiss_incident, neiss_product_codes):
 
     prompt = f"""Closely follow the numbered instructions to perform your evaluation of the narrative.
@@ -151,45 +128,6 @@ def create_prompt(neiss_incident, neiss_product_codes):
         {{"primary_injury": [injury], "product": [product], "product_code": [product_code]}}
 
         5. Review the following examples and follow the format closely in your output.
-=======
-def create_role(neiss_product_codes):
-    role = f"""You are an expert medical grader. Your goal is to read incident narratives and 
-    extract structured output based on the information available in the narrative field. Your
-    PRIMARY GOAL is to determine the product that is MOST PROXIMATE to the injury reported in
-    the narrative. You must choose ONLY from the provided list of products and return the 
-    EXACT product name and produce code in your answer.
-
-    ## PRODUCT LIST
-
-    2. Review the following list of products to choose from:
-    
-    Products are listed in the format [product_code] [product]
-    {neiss_product_codes}
-"""
-
-    return role
-
-
-def create_prompt(neiss_incident):
-
-    prompt = f"""Closely follow the numbered instructions to perform your evaluation of the narrative.
-
-        ## NARRATIVE
-        1. Read the following injury report narrative:
-
-        {neiss_incident}
-
-        ## INSTRUCTIONS
-
-        2. Identify the primary injury listed in the narrative
-        3. Identify the product from the product list that is MOST PROXIMATE to the primary injury
-        4. Provide the name of the product AND the product code in your answer
-        5. Return your answer as a JSON object, following the format below EXACTLY:
-
-        {{"primary_injury": [injury], "product": [product], "product_code": [product_code]}}
-
-        6. Review the following examples and follow the format closely in your output.
->>>>>>> f268a1c (Saving local changes before pull)
 
         ## EXAMPLE 1
         '13YOM REPORTS HE WAS GETTING INTO THE SHOWER WHEN HE SLIPPED AND FELL ON HIS SIDE AND HEARD A POP IN HIS FOOT. DX ACHILLES TENDON INJURY'
@@ -211,7 +149,6 @@ def create_prompt(neiss_incident):
     return prompt
 
 
-<<<<<<< HEAD
 # get  NEISS narratives
 neiss_json = load_neiss_data(neiss_data, NUM_NARRATIVES)
 product_codes = load_product_codes(neiss_codes)
@@ -273,60 +210,3 @@ client.batches.create(
     completion_window="24h",
     metadata={"description": f"Testing {NUM_NARRATIVES} NEISS narratives"},
 )
-=======
-# get NEISS narratives
-neiss_json = load_neiss_data(neiss_data, NUM_NARRATIVES)
-product_codes = load_product_codes(neiss_codes)
-
-# define system role, with list of product
-system_role = create_role(get_product_codes(product_codes))
-
-
-def main():
-    # now loop through whole process, fill up jsonl
-    json_list = []
-
-    for case in neiss_json:
-        id = get_id(case)
-        narrative = get_narrative(case)
-        prompt = create_prompt(narrative)
-
-        json_list.append(
-            {
-                "custom_id": f"{id}",
-                "method": "POST",
-                "url": "/v1/chat/completions",
-                "body": {
-                    "model": MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_role},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "max_tokens": 100,
-                    "response_format": {"type": "json_object"},
-                },
-            }
-        )
-
-    with open(f"json/output_{RUN_DATE}.jsonl", "w") as outfile:
-        for entry in json_list:
-            json.dump(entry, outfile)
-            outfile.write("\n")
-
-    # upload batch to openai
-    batch_input_file = client.files.create(
-        file=open(f"json/output_{RUN_DATE}.jsonl", "rb"), purpose="batch"
-    )
-
-    batch_input_file_id = batch_input_file.id
-    client.batches.create(
-        input_file_id=batch_input_file_id,
-        endpoint="/v1/chat/completions",
-        completion_window="24h",
-        metadata={"description": f"Testing {NUM_NARRATIVES} NEISS narratives"},
-    )
-
-
-if __name__ == "__main__":
-    main()
->>>>>>> f268a1c (Saving local changes before pull)
