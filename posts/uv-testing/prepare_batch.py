@@ -1,15 +1,14 @@
 """Code to submit batch output to OpenAI API"""
 
-import json
+import re
 import pandas as pd
-import os
-from openai import OpenAI
 import json
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from sentence_transformers import SentenceTransformer, util
+from openai import OpenAI
 from datetime import datetime
-import re
 
 
 # setup openai creds
@@ -19,7 +18,7 @@ neiss_data = r"C:\Users\gioc4\Documents\blog\data\neiss2024.csv"
 neiss_codes = r"C:\Users\gioc4\Documents\blog\data\us-national-electronic-injury-surveillance-system-neiss-product-codes.json"
 
 RUN_DATE = datetime.now().strftime("%Y-%m-%d")
-NUM_NARRATIVES = 10
+NUM_NARRATIVES = 500
 RAG_MODEL = SentenceTransformer("all-mpnet-base-v2")
 MODEL = "gpt-4o-mini"
 ROLE = """You are an expert medical grader. Your goal is to read incident narratives and 
@@ -29,52 +28,21 @@ the narrative. You MUST choose only from the provided list of products and retur
 EXACT product name and produce code in your answer.
 """
 
+# parameters for rag
 # define regex to extract the core narrative for RAG
+# max number of products per-phrase
+# minimum matching score (cosine sim)
 CORE_NARRATIVE_REGEX = re.compile("\d{1,3}\s?[A-Z]{2,4}[,]?\s+(.*?)(?=\s*DX:)")
+RAG_MAX_PRODUCTS = 10
+RAG_MIN_MATCH = 0.35
 
-
-class NEISSVectorDB:
-    def __init__(self, products, model):
-        self.products = products
-        self.model = model
-        self.product_embeddings = None
-        self.create_embeddings()
-
-    def create_embeddings(self):
-        """Create vector embeddings for all product titles"""
-        product_titles = [p["product_title"] for p in self.products]
-        self.product_embeddings = self.model.encode(product_titles)
-        print(f"Created embeddings for {len(product_titles)} NEISS products")
-
-    def find_closest_product(self, query_product, top_k=3):
-        """Find the closest NEISS product(s) for a given query product"""
-        # Convert query to embedding
-        query_embedding = self.model.encode([query_product])
-
-        # Calculate similarity with all product embeddings
-        similarities = cosine_similarity(query_embedding, self.product_embeddings)[0]
-
-        # Get top k matches
-        top_indices = np.argsort(similarities)[::-1][:top_k]
-
-        matches = []
-        for idx in top_indices:
-            matches.append(
-                {
-                    "code": self.products[idx]["code"],
-                    "product_title": self.products[idx]["product_title"],
-                    "similarity": similarities[idx],
-                }
-            )
-
-        return matches
-
+# stopwords for parsing phrases
+STOPWORDS = set(stopwords.words("english"))
 
 def load_product_codes(path_to_file):
     with open(path_to_file, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data
-
 
 def extract_core_narrative(neiss_narrative):
     match = CORE_NARRATIVE_REGEX.search(neiss_narrative)
@@ -100,7 +68,61 @@ def get_id(json_str):
     neiss_json = json.loads(json_str)
     return neiss_json["CPSC_Case_Number"]
 
+# RAG STUFF HERE
+# MOSTLY CHAT-GPT GENERATED WITH SOME HUMAN EDITS
+def extract_phrases(text, max_n=3):
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9\s]", "", text)
+    tokens = [t for t in word_tokenize(text) if t not in STOPWORDS]
 
+    phrases = set()
+    for n in range(1, max_n + 1):
+        for i in range(len(tokens) - n + 1):
+            phrase = " ".join(tokens[i : i + n])
+            if phrase.strip():
+                phrases.add(phrase)
+
+    return list(phrases)
+
+def match_phrases_to_products(phrases, embeddings, products):
+    if not phrases:
+        return ["9999 - UNCATEGORIZED PRODUCT"]
+
+    # Batch encode all phrases at once
+    phrase_embeddings = RAG_MODEL.encode(phrases, convert_to_tensor=True)
+    
+    # Compute cosine similarity in one go
+    similarity = util.cos_sim(phrase_embeddings, embeddings).cpu().numpy()
+
+    results = []
+    for i, scores in enumerate(similarity):
+        top_indices = np.argsort(scores)[::-1][:RAG_MAX_PRODUCTS]
+        matches = [
+            f"{products[j]['code']} - {products[j]['product_title']}"
+            for j in top_indices
+            if scores[j] >= RAG_MIN_MATCH
+        ]
+        if matches:
+            results.append({"term": phrases[i], "matches": matches})
+
+    return results
+
+
+def extract_unique_matches_as_string(results):
+    seen = set()
+    unique_matches = []
+
+    for entry in results:
+        for match in entry["matches"]:
+            if match not in seen:
+                seen.add(match)
+                unique_matches.append(match)
+
+    unique_matches.sort()
+
+    return "\n".join(unique_matches)
+
+# Set up prompt
 def create_prompt(neiss_incident, neiss_product_codes):
 
     prompt = f"""Closely follow the numbered instructions to perform your evaluation of the narrative.
@@ -114,7 +136,7 @@ def create_prompt(neiss_incident, neiss_product_codes):
 
         2. Review the following list of products to choose from:
 
-        Products are listed in the format [code] [product]
+        Products are listed in the format [code] - [product]
 
         {neiss_product_codes}
 
@@ -144,29 +166,34 @@ def create_prompt(neiss_incident, neiss_product_codes):
         ## EXAMPLE 4
         '67YOM FELL OUT OF CHAIR AND HAVING ALTERED MENTAL STATUS. DX FALL NO INJURY'
         {{"primary_injury": "FALL NO INJURY", "product": "CHAIRS, OTHER OR NOT SPECIFIED", "product_code": 4074}}
-        """
 
+        ## EXAMPLE 5
+        '48YOM WAS ATTEMPTING TO GET OUT OF BED AND FELT VERY DIZZY AND FELL DX: CLOSED HEAD INJURY VERTIGO'
+        {{"primary_injury": "CLOSED HEAD INJURY VERTIGO", "product": "BEDS OR BEDFRAMES, OTHER OR NOT SPECIFIED", "product_code": 4076}}
+        """
+    
     return prompt
 
 
-# get  NEISS narratives
+# get NEISS narratives
 neiss_json = load_neiss_data(neiss_data, NUM_NARRATIVES)
 product_codes = load_product_codes(neiss_codes)
 
 # set up vector db for rag
-vector_db = NEISSVectorDB(product_codes, RAG_MODEL)
+products = load_product_codes(neiss_codes)
 
-# func to loop add rag to prompt
-def create_prompt_with_rag(neiss_json, rag_top_n=50):
+# Precompute product description embeddings
+product_texts = [p["product_title"] for p in products]
+product_embeddings = RAG_MODEL.encode(product_texts, convert_to_tensor=True)
+
+# func to loop, add rag to prompt
+def create_prompt_with_rag(neiss_json):
     neiss_narrative = get_narrative(neiss_json)
     neiss_product_narrative = extract_core_narrative(neiss_narrative)
-    codes = vector_db.find_closest_product(neiss_product_narrative, rag_top_n)
-
-    # construct the rag addition
-    code_str = ""
-    for code in codes:
-        code_str += f"\n{code['code']} {code['product_title']}"
-
+    phrases = extract_phrases(neiss_product_narrative)
+    codes = match_phrases_to_products(phrases, product_embeddings, product_codes)
+    code_str = extract_unique_matches_as_string(codes)
+    
     return create_prompt(neiss_narrative, code_str)
 
 # now loop through whole process, fill up jsonl
