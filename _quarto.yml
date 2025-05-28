@@ -1,6 +1,11 @@
 project:
   type: website
   output-dir: docs
+  render:
+    - "*.qmd"
+    - "!*.ipynb"
+    - "!ignored.qmd"
+    - "!ignored-dir/"
 
 website:
   title: "A Blog for Data Stuff"

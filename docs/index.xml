@@ -10,7 +10,1440 @@
 <atom:link href="https://gmcirco.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-1.5.56</generator>
-<lastBuildDate>Sun, 30 Mar 2025 04:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 27 May 2025 04:00:00 GMT</lastBuildDate>
+<item>
+  <title>Fine Tuning Your LLM for Fun and Profit</title>
+  <dc:creator>Gio Circo, Ph.D.</dc:creator>
+  <link>https://gmcirco.github.io/blog/posts/uv-testing/fine-tuning.html</link>
+  <description><![CDATA[ 
+
+
+
+
+
+<section id="fine-tuning-an-llm" class="level2">
+<h2 class="anchored" data-anchor-id="fine-tuning-an-llm">Fine Tuning an LLM</h2>
+<p>This is part one of a two part blog series where I will be walking through the steps of building and evaluating a fine-tuned version of an LLM. I initially became interested in trying this, based on responses from other researchers claiming that cheap models could be fine-tuned for specific tasks and match or beat the performance of more expensive ones. In the real world, I see a lot of practical value. While more expenive models might give you better “off the shelf” performance, you might only need the LLM to complete a series of relatively simple tasks. Why not, instead, take a cheap model and train it on your specific task?</p>
+<p>Well, I thought I would give it a shot!</p>
+</section>
+<section id="setting-up-the-project" class="level2">
+<h2 class="anchored" data-anchor-id="setting-up-the-project">Setting up the Project</h2>
+<section id="neiss-injury-and-product-narratives" class="level3">
+<h3 class="anchored" data-anchor-id="neiss-injury-and-product-narratives">NEISS Injury and Product Narratives</h3>
+<p>Let’s start with straightforward task for the LLM. For this blog post I rely on the National Electronic Injury Surveillance System (<a href="https://www.cpsc.gov/Research--Statistics/NEISS-Injury-Data">NEISS</a>) 2024 dataset. This data contains information about injuries reported to a representative sample of hospitals across the U.S. The data contains information about the person who was injured, including a short narrative from the hospital, which is useful for our purposes. The narratives look something like this:</p>
+<blockquote class="blockquote">
+<p>70YOM WAS DRINKING ALCOHOL AND TRIPPED AND FELL CAUSING HIS ARM TO GO THROUGH A GLASS WINDOW, DX: LT FOREARM LACERATION</p>
+</blockquote>
+<p>In addition to the narratives, another set of fields are listings of various “products” that were related to the injury (<code>Product_1</code> to <code>Product_3</code>). These are referred to as the the “external cause” of the injury. The NEISS coding manualy provides the following definition as the “external cause”:</p>
+<blockquote class="blockquote">
+<p>…the existence of a medical condition which can be associated with a specific object or acute process that was caused by something outside the body</p>
+</blockquote>
+<p>So, for this specific example above, the product coded for this injury was <code>1894 - WINDOWS AND WINDOW GLASS, OTHER THAN STORM WINDOWS</code>. Here, the external cause is the glass that was broken by the patient’s arm which caused a laceration to the forearm.</p>
+<p>So how is the product chosen? Well, this can be a bit tricky. First off, the <a href="https://www.cpsc.gov/s3fs-public/January-2024-NEISS-CPSC-only-Coding-Manual.pdf?VersionId=bEaz2iKYDAlz8KA60KEKKrLrXZW3kLOj">NEISS coding manual</a> contains over 800 different products. A small sampling shows:</p>
+<pre><code>101 - WASHING MACHINES WITHOUT WRINGERS OR OTHER DRYERS
+102 - WRINGER WASHING MACHINES
+103 - WASHING MACHINES WITH UNHEATED SPIN DRYERS
+106 - ELECTRIC CLOTHES DRYERS WITHOUT WASHERS
+107 - GAS CLOTHES DRYERS WITHOUT WASHERS
+108 - MANGLE IRONS
+110 - ELECTRIC HEATING PADS
+112 - SEWING MACHINES OR ACCESSORIES
+113 - FLOOR BUFFERS OR WAXERS
+114 - RUG SHAMPOOERS
+115 - VACUUM CLEANERS
+116 - ELECTRIC BROOMS
+118 - GAS WATER HEATERS
+119 - ELECTRIC WATER HEATERS
+125 - WATER SOFTENERS OR CONDITIONERS (APPLIANCES)
+126 - WASHING MACHINES, NOT SPECIFIED
+127 - CLOTHES DRYERS, NOT SPECIFIED</code></pre>
+</section>
+<section id="identifying-the-external-cause" class="level3">
+<h3 class="anchored" data-anchor-id="identifying-the-external-cause">Identifying the “external cause”</h3>
+<p>The large variety of possible options highlights an interesting question. If we wanted an LLM to read the injury case narratives and tag each case with the appropriate product, how feasible would this be? Could we do it with a very cheap model? There are a few possible issues to consider here:</p>
+<ol type="1">
+<li><p>There are a very large number of possible products from which we can choose, but only one “correct” answer.</p></li>
+<li><p>Many of the products are very subtly different from each other. For example, how do we easily distinguish between <code>610 - NONGLASS BATHTUBS OR SHOWERS</code> and <code>611 - BATHTUBS OR SHOWERS</code> (a bit of a hint for later)?</p></li>
+<li><p>A narrative can have many products involved in an injury, but we have to choose the product that is <em>most related</em> to that injury.</p></li>
+</ol>
+<p>Here’s a clearer way to illustrate the problem. Read this narrative below and guess which product was related to this injury. For simplicity I am narrowing it down to four options.</p>
+<blockquote class="blockquote">
+<p>64YOF, NINE DAYS AGO WAS STANDING ON A CHAIR HANGING HOLIDAY DECORATIONS WHEN SHE FELL ONTO LEFT HIP AND SINCE THEN HAS LOW BACK PAIN, DX: LOW BACK PAIN</p>
+</blockquote>
+<ol type="a">
+<li>1714 - SEASONAL DECORATIONS</li>
+<li>4074 - CHAIRS, OTHER OR NOT SPECIFIED</li>
+<li>1807 - FLOORS OR FLOORING MATERIALS</li>
+<li>4025 - BARSTOOLS OR KITCHEN STOOLS</li>
+</ol>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-1-contents" aria-controls="callout-1" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Answer
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-1" class="callout-1-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>The answer is “b”: 4074 - CHAIRS, OTHER OR NOT SPECIFIED</p>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section id="labeling-narratives-with-chatgpt" class="level2">
+<h2 class="anchored" data-anchor-id="labeling-narratives-with-chatgpt">Labeling Narratives with ChatGPT</h2>
+<p>To start, I’ll run quickly through my initial approach to this problem, using ChatGPT via the <code>OpenAI</code> python library. My idea is to do the following:</p>
+<ol type="1">
+<li>Construct a prompt that narrowly focuses the AI to identify the product that is <em>most proximate</em> to the injury</li>
+<li>Use RAG to give the AI a narrower list of products to choose from</li>
+<li>Review the results, then build a fine-tuned version of the model, based on steps 1&amp;2.</li>
+</ol>
+<p>Today we’ll focus just on the first two steps, before we get into fine tuning. I’ll walk through a few key functions in my code, but if you want to look at the whole setup, you can just navigate to the working environment <a href="https://github.com/gmcirco/blog/tree/master/posts/uv-testing">on my repo</a>.</p>
+<section id="parameters-roles-and-prompts" class="level3">
+<h3 class="anchored" data-anchor-id="parameters-roles-and-prompts">Parameters, Roles, and Prompts</h3>
+<p>In my <code>prepare_batch.py</code> file I first define some important parameters for setting up the RAG model, as well as defining the LLM’s role:</p>
+<div id="07d8d745" class="cell" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">RUN_DATE <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> datetime.now().strftime(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"%Y-%m-</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">%d</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>)</span>
+<span id="cb2-2">NUM_NARRATIVES <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">500</span></span>
+<span id="cb2-3">RAG_MODEL <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> SentenceTransformer(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"all-mpnet-base-v2"</span>)</span>
+<span id="cb2-4">MODEL <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"gpt-4o-mini"</span></span>
+<span id="cb2-5">ROLE <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""You are an expert medical grader. Your goal is to read incident narratives and </span></span>
+<span id="cb2-6"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">extract structured output based on the information available in the narrative field. Your</span></span>
+<span id="cb2-7"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">PRIMARY GOAL is to determine the product that is MOST PROXIMATE to the injury reported in</span></span>
+<span id="cb2-8"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">the narrative. You MUST choose only from the provided list of products and return the </span></span>
+<span id="cb2-9"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">EXACT product name and produce code in your answer.</span></span>
+<span id="cb2-10"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb2-11"></span>
+<span id="cb2-12"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># define regex to extract the core narrative for RAG</span></span>
+<span id="cb2-13">CORE_NARRATIVE_REGEX <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> re.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">compile</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"\d{1,3}\s?[A-Z]{2,4}[,]?\s+(.*?)(?=\s*DX:)"</span>)</span>
+<span id="cb2-14"></span>
+<span id="cb2-15"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Load stopwords</span></span>
+<span id="cb2-16">STOPWORDS <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">set</span>(stopwords.words(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"english"</span>))</span></code></pre></div>
+</div>
+<p>Here, I set up a RAG model using sentence transformers, and choose a cheap model from <a href="https://platform.openai.com/docs/models">OpenAI’s model library</a>. I choose the cheapest available model which is <code>gpt-4o-mini</code> (at a cost of a measley 15 cents per million tokens!). The system role I define instructs the LLM to find the injury that is “most proximate” to the injury reported in the narrative. Finally, I have some regex to extract out just the core narrative (excluding the injury description) to pass to the RAG model for retriving a list of possible products.</p>
+<p>I set up a bunch of helper functions (see the repo if you’re interested), but the important one is the prompt creator. This function takes as input a text narrative from a single injury case, as well as the RAG that gives the LLM a list of possible products to choose.</p>
+<div id="cd62ea31" class="cell" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> create_prompt(neiss_incident, neiss_product_codes):</span>
+<span id="cb3-2"></span>
+<span id="cb3-3">    prompt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"""Closely follow the numbered instructions to perform your evaluation of the narrative.</span></span>
+<span id="cb3-4"></span>
+<span id="cb3-5"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        ## NARRATIVE</span></span>
+<span id="cb3-6"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        1. Read the following injury report narrative:</span></span>
+<span id="cb3-7"></span>
+<span id="cb3-8"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>neiss_incident<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-9"></span>
+<span id="cb3-10"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        ## PRODUCT LIST</span></span>
+<span id="cb3-11"></span>
+<span id="cb3-12"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        2. Review the following list of products to choose from:</span></span>
+<span id="cb3-13"></span>
+<span id="cb3-14"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        Products are listed in the format [code] - [product]</span></span>
+<span id="cb3-15"></span>
+<span id="cb3-16"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>neiss_product_codes<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-17"></span>
+<span id="cb3-18"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        ## INSTRUCTIONS</span></span>
+<span id="cb3-19"></span>
+<span id="cb3-20"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        3. Identify the primary injury listed in the narrative</span></span>
+<span id="cb3-21"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        4. Identify the product from the provided product list that is MOST PROXIMATE to the primary injury</span></span>
+<span id="cb3-22"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        5. Provide the name of the product AND the product code in your answer</span></span>
+<span id="cb3-23"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        6. Return your answer as a JSON object, following the format below EXACTLY:</span></span>
+<span id="cb3-24"></span>
+<span id="cb3-25"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        </span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{{</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"primary_injury": [injury], "product": [product], "product_code": [product_code]</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}}</span></span>
+<span id="cb3-26"></span>
+<span id="cb3-27"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        5. Review the following examples and follow the format closely in your output.</span></span>
+<span id="cb3-28"></span>
+<span id="cb3-29"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        ## EXAMPLE 1</span></span>
+<span id="cb3-30"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        '13YOM REPORTS HE WAS GETTING INTO THE SHOWER WHEN HE SLIPPED AND FELL ON HIS SIDE AND HEARD A POP IN HIS FOOT. DX ACHILLES TENDON INJURY'</span></span>
+<span id="cb3-31"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        </span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{{</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"primary_injury": "DX ACHILLES TENDON INJURY", "product": "BATHTUBS OR SHOWERS", "product_code": 611</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}}</span></span>
+<span id="cb3-32"></span>
+<span id="cb3-33"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        ## EXAMPLE 2</span></span>
+<span id="cb3-34"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        '36YOM REPORTS WITH KNEE PAIN AFTER FALLING OFF AN ELECTRIC SCOOTER. DX KNEE ABRASION'</span></span>
+<span id="cb3-35"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        </span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{{</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"primary_injury": "KNEE ABRASION", "product": "SCOOTERS, POWERED", "product_code": 5022</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}}</span></span>
+<span id="cb3-36"></span>
+<span id="cb3-37"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        ## EXAMPLE 3</span></span>
+<span id="cb3-38"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        '76YOF WAS WALKING INTO A BUILDING AND TRIPPED OVER A DOOR JAM AND FELL. PAIN TO HIPS, RIGHT KNEE AND RIGHT WRIST. DX: PAIN KNEE RIGHT, PAIN WRIST RIGHT, PAIN HIP LEFT'</span></span>
+<span id="cb3-39"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        </span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{{</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"primary_injury": "PAIN KNEE RIGHT, PAIN WRIST RIGHT, PAIN HIP LEFT", "product": "DOOR SILLS OR FRAMES", "product_code": 1878</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}}</span></span>
+<span id="cb3-40"></span>
+<span id="cb3-41"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        ## EXAMPLE 4</span></span>
+<span id="cb3-42"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        '67YOM FELL OUT OF CHAIR AND HAVING ALTERED MENTAL STATUS. DX FALL NO INJURY'</span></span>
+<span id="cb3-43"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        </span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{{</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"primary_injury": "FALL NO INJURY", "product": "CHAIRS, OTHER OR NOT SPECIFIED", "product_code": 4074</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}}</span></span>
+<span id="cb3-44"></span>
+<span id="cb3-45"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        ## EXAMPLE 5</span></span>
+<span id="cb3-46"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        '48YOM WAS ATTEMPTING TO GET OUT OF BED AND FELT VERY DIZZY AND FELL DX: CLOSED HEAD INJURY VERTIGO'</span></span>
+<span id="cb3-47"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        </span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{{</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"primary_injury": "CLOSED HEAD INJURY VERTIGO", "product": "BEDS OR BEDFRAMES, OTHER OR NOT SPECIFIED", "product_code": 4076</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}}</span></span>
+<span id="cb3-48"><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">        """</span></span>
+<span id="cb3-49"></span>
+<span id="cb3-50">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> prompt</span></code></pre></div>
+</div>
+<p>The actual prompt when it is populated with the narrative and the list of products from RAG looks like this:</p>
+<div id="9bf52332" class="cell" data-execution_count="4">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb4-2"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">Closely follow the numbered instructions to perform your evaluation of the narrative.</span></span>
+<span id="cb4-3"></span>
+<span id="cb4-4"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        ## NARRATIVE</span></span>
+<span id="cb4-5"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1. Read the following injury report narrative:</span></span>
+<span id="cb4-6"></span>
+<span id="cb4-7"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        16YOM PLAYING SOCCER, HURT HIS SHOULDER.  HIT BY A BALL.DX:   MUSCLE STRAIN LEFT SHOULDER.</span></span>
+<span id="cb4-8"></span>
+<span id="cb4-9"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        ## PRODUCT LIST</span></span>
+<span id="cb4-10"></span>
+<span id="cb4-11"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        2. Review the following list of products to choose from:</span></span>
+<span id="cb4-12"></span>
+<span id="cb4-13"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        Products are listed in the format [code] - [product]</span></span>
+<span id="cb4-14"></span>
+<span id="cb4-15"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1200 - Sports and recreational activity, not elsewhere classified</span></span>
+<span id="cb4-16"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1205 - Basketball (activity, apparel or equipment)</span></span>
+<span id="cb4-17"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1206 - Bowling (activity, apparel or equipment)</span></span>
+<span id="cb4-18"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1211 - Football (activity, apparel or equipment)</span></span>
+<span id="cb4-19"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1233 - Trampolines</span></span>
+<span id="cb4-20"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1260 - Billiards or pool (activity, apparel or equipment)</span></span>
+<span id="cb4-21"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1266 - Volleyball (activity, apparel or equipment)</span></span>
+<span id="cb4-22"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1267 - Soccer (activity, apparel or equipment)</span></span>
+<span id="cb4-23"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1282 - Handball (activity, apparel or equipment)</span></span>
+<span id="cb4-24"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1295 - Field hockey (activity, apparel or equipment)</span></span>
+<span id="cb4-25"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1326 - Blocks, stacking toys or pull toys</span></span>
+<span id="cb4-26"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1333 - Skateboards</span></span>
+<span id="cb4-27"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1346 - Clacker balls</span></span>
+<span id="cb4-28"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1392 - Toy sports equipment</span></span>
+<span id="cb4-29"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1513 - Playpens and play yards</span></span>
+<span id="cb4-30"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        1554 - Safety pins</span></span>
+<span id="cb4-31"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        3235 - Other ball sports (activity, apparel or equipment)</span></span>
+<span id="cb4-32"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        3236 - Ball sports (activity, apparel or equipment), not specified</span></span>
+<span id="cb4-33"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        3256 - Squash, racquet ball or paddle ball (activity, apparel or equipment)</span></span>
+<span id="cb4-34"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        3265 - Weight lifting (activity, apparel or equipment)</span></span>
+<span id="cb4-35"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        3272 - Hockey (activity, apparel or equipment), not specified</span></span>
+<span id="cb4-36"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        3276 - Water polo (activity, apparel or equipment)</span></span>
+<span id="cb4-37"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        3289 - Darts, for indoor use (activity or equipment)</span></span>
+<span id="cb4-38"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        3290 - Darts, lawn (activity or equipment)</span></span>
+<span id="cb4-39"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        3291 - Darts, not specified</span></span>
+<span id="cb4-40"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        5016 - Balls, other or not specified</span></span>
+<span id="cb4-41"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        5034 - Softball (activity, apparel or equipment)</span></span>
+<span id="cb4-42"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        5041 - Baseball (activity, apparel or equipment</span></span>
+<span id="cb4-43"></span>
+<span id="cb4-44"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        ## INSTRUCTIONS</span></span>
+<span id="cb4-45"></span>
+<span id="cb4-46"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        3. Identify the primary injury listed in the narrative</span></span>
+<span id="cb4-47"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        4. Identify the product from the provided product list that is MOST PROXIMATE to the primary injury</span></span>
+<span id="cb4-48"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        5. Provide the name of the product AND the product code in your answer</span></span>
+<span id="cb4-49"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        6. Return your answer as a JSON object, following the format below EXACTLY:</span></span>
+<span id="cb4-50"></span>
+<span id="cb4-51"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        {"primary_injury": [injury], "product": [product], "product_code": [product_code]}</span></span>
+<span id="cb4-52"></span>
+<span id="cb4-53"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        5. Review the following examples and follow the format closely in your output.</span></span>
+<span id="cb4-54"></span>
+<span id="cb4-55"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">        [examples omitted]</span></span>
+<span id="cb4-56"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"""</span></span></code></pre></div>
+</details>
+</div>
+<p>The RAG model is configured to find fairly close matches based on the narrative, but give a up to 10 products per phrase match. The goal is to provide a wide variety of products that should be at least somewhat related to the narrative. This saves us a lot of tokens from not embedding the entire list of products (which is close to 9000 tokens), and helps our cheap model’s performance by shortening the context window.</p>
+<p>And, finally, the output I expect to get is in json format:</p>
+<pre><code>'{"primary_injury": "MUSCLE STRAIN LEFT SHOULDER", "product": "SOCCER (activity, apparel or equipment)", "product_code": 1267}'</code></pre>
+</section>
+<section id="full-workflow" class="level3">
+<h3 class="anchored" data-anchor-id="full-workflow">Full workflow</h3>
+<p>All right, time for the full workflow. We first grab the top <img src="https://latex.codecogs.com/png.latex?N"> narratives from the NEISS csv (here, 500), load all of the product codes, and run these through the functions to extract the narrative, build the RAG, and pipe that into a prompt creation function wrapper <code>create_prompt_with_rag</code>. Then we simply loop over all the narratives, write them into a jsonlines file, and submit the whole batch to OpenAI.</p>
+<div id="06b19a2a" class="cell" data-execution_count="5">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># get NEISS narratives</span></span>
+<span id="cb6-2">neiss_json <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> load_neiss_data(neiss_data, NUM_NARRATIVES)</span>
+<span id="cb6-3">product_codes <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> load_product_codes(neiss_codes)</span>
+<span id="cb6-4"></span>
+<span id="cb6-5"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># set up vector db for rag</span></span>
+<span id="cb6-6">products <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> load_product_codes(neiss_codes)</span>
+<span id="cb6-7"></span>
+<span id="cb6-8"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Precompute product description embeddings</span></span>
+<span id="cb6-9">product_texts <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [p[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"product_title"</span>] <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> p <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> products]</span>
+<span id="cb6-10">product_embeddings <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> RAG_MODEL.encode(product_texts, convert_to_tensor<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span>)</span>
+<span id="cb6-11"></span>
+<span id="cb6-12"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># func to loop, add rag to prompt</span></span>
+<span id="cb6-13"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> create_prompt_with_rag(neiss_json):</span>
+<span id="cb6-14">    neiss_narrative <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> get_narrative(neiss_json)</span>
+<span id="cb6-15">    neiss_product_narrative <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> extract_core_narrative(neiss_narrative)</span>
+<span id="cb6-16">    phrases <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> extract_phrases(neiss_product_narrative)</span>
+<span id="cb6-17">    codes <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> match_phrases_to_products(phrases, product_embeddings, product_codes)</span>
+<span id="cb6-18">    code_str <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> extract_unique_matches_as_string(codes)</span>
+<span id="cb6-19">    </span>
+<span id="cb6-20">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> create_prompt(neiss_narrative, code_str)</span>
+<span id="cb6-21"></span>
+<span id="cb6-22"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># now loop through whole process, fill up jsonl</span></span>
+<span id="cb6-23">json_list <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> []</span>
+<span id="cb6-24"></span>
+<span id="cb6-25"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> narrative <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> neiss_json:</span>
+<span id="cb6-26">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">id</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> get_id(narrative)</span>
+<span id="cb6-27">    prompt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> create_prompt_with_rag(narrative)</span>
+<span id="cb6-28"></span>
+<span id="cb6-29">    json_list.append(</span>
+<span id="cb6-30">        {</span>
+<span id="cb6-31">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"custom_id"</span>: <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">id</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>,</span>
+<span id="cb6-32">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"method"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"POST"</span>,</span>
+<span id="cb6-33">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"url"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/v1/chat/completions"</span>,</span>
+<span id="cb6-34">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"body"</span>: {</span>
+<span id="cb6-35">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"model"</span>: MODEL,</span>
+<span id="cb6-36">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"messages"</span>: [</span>
+<span id="cb6-37">                    {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"role"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"system"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"content"</span>: ROLE},</span>
+<span id="cb6-38">                    {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"role"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"user"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"content"</span>: prompt},</span>
+<span id="cb6-39">                ],</span>
+<span id="cb6-40">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"max_tokens"</span>: <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">100</span>,</span>
+<span id="cb6-41">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"temperature"</span>: <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.1</span>,</span>
+<span id="cb6-42">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"response_format"</span>: {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"type"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"json_object"</span>},</span>
+<span id="cb6-43">            },</span>
+<span id="cb6-44">        }</span>
+<span id="cb6-45">    )</span>
+<span id="cb6-46"></span>
+<span id="cb6-47"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">with</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">open</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"json/output_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>RUN_DATE<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">.jsonl"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"w"</span>) <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> outfile:</span>
+<span id="cb6-48">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> entry <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> json_list:</span>
+<span id="cb6-49">        json.dump(entry, outfile)</span>
+<span id="cb6-50">        outfile.write(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">\n</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>)</span>
+<span id="cb6-51"></span>
+<span id="cb6-52"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># upload batch to openai</span></span>
+<span id="cb6-53">batch_input_file <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> client.files.create(</span>
+<span id="cb6-54">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">file</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">open</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"json/output_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>RUN_DATE<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">.jsonl"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"rb"</span>), purpose<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"batch"</span></span>
+<span id="cb6-55">)</span>
+<span id="cb6-56"></span>
+<span id="cb6-57">batch_input_file_id <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> batch_input_file.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">id</span></span>
+<span id="cb6-58">client.batches.create(</span>
+<span id="cb6-59">    input_file_id<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>batch_input_file_id,</span>
+<span id="cb6-60">    endpoint<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/v1/chat/completions"</span>,</span>
+<span id="cb6-61">    completion_window<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"24h"</span>,</span>
+<span id="cb6-62">    metadata<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"description"</span>: <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"Testing </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>NUM_NARRATIVES<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> NEISS narratives"</span>},</span>
+<span id="cb6-63">)</span></code></pre></div>
+</details>
+</div>
+</section>
+</section>
+<section id="evaluation" class="level2">
+<h2 class="anchored" data-anchor-id="evaluation">Evaluation</h2>
+<p>Of course, the major question is how did our cheap model do? To evaluate it, we need to load our batch output back in after it has been run through the OpenAI batch API. For simplicity I just convert it from a jsonlines file to a pandas dataframe. I also load in the original data as well from the NEISS table, as well as the original list of product codes. To keep this simple (I am just doing this for fun, on my own blog after all) I restrict the evaluation metrics to whether the LLM correctly identified any of the 3 possible products listed for an injury. This is more in line with how they are coded by humans. According to the NEISS coding manual:</p>
+<blockquote class="blockquote">
+<p>When multiple products are involved, it does not matter in what order you enter them.</p>
+</blockquote>
+<p>So, for our purposes, I’ll be satisfied if the LLM’s listed primary product lines up with <em>any</em> of the products in the data.</p>
+<div id="9cfd1acc" class="cell" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># load the first 500 cases and product codes</span></span>
+<span id="cb7-2">neiss_df <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pd.read_csv(neiss_data).head(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">500</span>)</span>
+<span id="cb7-3">product_codes <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> load_product_codes(neiss_codes)</span>
+<span id="cb7-4"></span>
+<span id="cb7-5"></span>
+<span id="cb7-6"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># load output, set up vector database and original data</span></span>
+<span id="cb7-7"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">file</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"json/batch_682f2331c2fc81908ea42a70bf77709c_output.jsonl"</span></span>
+<span id="cb7-8">json_batch_output, narrative_ids <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> load_batch(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">file</span>)</span>
+<span id="cb7-9"></span>
+<span id="cb7-10"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># converting output to datafraames</span></span>
+<span id="cb7-11">product_codes_df <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pd.DataFrame(product_codes)</span>
+<span id="cb7-12">product_codes_df[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'code'</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> product_codes_df[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'code'</span>].astype(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>)</span>
+<span id="cb7-13"></span>
+<span id="cb7-14">neiss_df <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> neiss_df.merge(product_codes_df, how<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'left'</span>, left_on<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_1'</span>, right_on<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'code'</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb7-15">                   .rename(columns<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title'</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title_1'</span>}) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb7-16">                   .merge(product_codes_df, how<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'left'</span>, left_on<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_2'</span>, right_on<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'code'</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb7-17">                   .rename(columns<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title'</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title_2'</span>}) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb7-18">                   .merge(product_codes_df, how<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'left'</span>, left_on<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_3'</span>, right_on<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'code'</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb7-19">                   .rename(columns<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title'</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title_3'</span>})</span>
+<span id="cb7-20"></span>
+<span id="cb7-21">neiss_df <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> neiss_df[[</span>
+<span id="cb7-22">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'CPSC_Case_Number'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_1'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_2'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_3'</span>,</span>
+<span id="cb7-23">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title_1'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title_2'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title_3'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Narrative_1'</span></span>
+<span id="cb7-24">]]</span>
+<span id="cb7-25"></span>
+<span id="cb7-26"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># get llm output into a dataframe</span></span>
+<span id="cb7-27">llm_output_dataframe <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pd.DataFrame([json.loads(json_str) <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> json_str <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> json_batch_output])</span>
+<span id="cb7-28">llm_output_dataframe[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'CPSC_Case_Number'</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span>(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">map</span>(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>, narrative_ids))</span>
+<span id="cb7-29"></span>
+<span id="cb7-30"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Rename fields</span></span>
+<span id="cb7-31">llm_output_dataframe <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> llm_output_dataframe.rename(columns<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{</span>
+<span id="cb7-32">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product'</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product'</span>,</span>
+<span id="cb7-33">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_code'</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product_code'</span></span>
+<span id="cb7-34">})</span>
+<span id="cb7-35"></span>
+<span id="cb7-36"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># now flag, add a label for hit or miss</span></span>
+<span id="cb7-37">llm_output_dataframe[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'label'</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> (</span>
+<span id="cb7-38">    (llm_output_dataframe[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product_code'</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> neiss_df[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_1'</span>].astype(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>)) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span></span>
+<span id="cb7-39">    (llm_output_dataframe[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product_code'</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> neiss_df[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_2'</span>].astype(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>)) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span></span>
+<span id="cb7-40">    (llm_output_dataframe[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product_code'</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> neiss_df[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_3'</span>].astype(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>))</span>
+<span id="cb7-41">)</span>
+<span id="cb7-42"></span>
+<span id="cb7-43">accuracy <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> llm_output_dataframe[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'label'</span>].mean()</span></code></pre></div>
+</div>
+<p>Here’s the LLM output in a pandas dataframe. I grab the LLM’s primary injury, the product name, and the product code. I can then compare this to the original labels, keeping in mind that I’m only interested in the <code>Product_1</code> code.</p>
+<div id="d8dbfbcc" class="cell" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f'Accuracy: </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>accuracy<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:.2%}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Accuracy: 66.40%</code></pre>
+</div>
+</div>
+<p>An initial accuracy here at about 66%. Not great, but not terrible for a first pass. This will be the baseline value I use before building out a fine-tuned model.</p>
+<section id="digging-a-bit-deeper" class="level3">
+<h3 class="anchored" data-anchor-id="digging-a-bit-deeper">Digging a bit deeper</h3>
+<p>So one important thing to consider is where the model did well, and where it fell short. Before starting on any fine-tuning, it would be helpful to look for areas where there are obvious shortcomings and set up the LLM with examples to help guide it toward more “correct” answers.</p>
+<p>First, there are the original NEISS fields (<code>Narrative_1</code>, <code>Product_1</code>, <code>product_title_1</code>) merged with the LLM labeled ones (<code>product_code</code>, <code>product</code>), and a flag for whether the LLM’s guess at the primary product was correct or not (<code>label</code>).</p>
+<div id="5c4ad573" class="cell" data-execution_count="8" data-cap-location="undefined">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb10" data-cap-location="undefined" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># merge and re-order</span></span>
+<span id="cb10-2">col_order <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> [<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'CPSC_Case_Number'</span>,<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Narrative_1'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_1'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_2'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_3'</span>,<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title_1'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product_code'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product'</span>,<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'label'</span>]</span>
+<span id="cb10-3">llm_output_dataframe <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> llm_output_dataframe.merge(neiss_df, on <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"CPSC_Case_Number"</span>)</span>
+<span id="cb10-4">llm_output_dataframe <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> llm_output_dataframe[col_order]</span>
+<span id="cb10-5">llm_output_dataframe.head(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span>)</span></code></pre></div>
+</details>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">CPSC_Case_Number</th>
+<th data-quarto-table-cell-role="th">Narrative_1</th>
+<th data-quarto-table-cell-role="th">Product_1</th>
+<th data-quarto-table-cell-role="th">Product_2</th>
+<th data-quarto-table-cell-role="th">Product_3</th>
+<th data-quarto-table-cell-role="th">product_title_1</th>
+<th data-quarto-table-cell-role="th">llm_product_code</th>
+<th data-quarto-table-cell-role="th">llm_product</th>
+<th data-quarto-table-cell-role="th">label</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>240108461</td>
+<td>16YOM PLAYING SOCCER, HURT HIS SHOULDER. HIT ...</td>
+<td>1267</td>
+<td>0</td>
+<td>0</td>
+<td>Soccer (activity, apparel or equipment)</td>
+<td>1267</td>
+<td>SOCCER (activity, apparel or equipment)</td>
+<td>True</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>240108462</td>
+<td>56YOF WAS CUTTING UP CABBAGE AND KNIFE SLIPPED...</td>
+<td>464</td>
+<td>0</td>
+<td>0</td>
+<td>Knives, not elsewhere classified</td>
+<td>464</td>
+<td>KNIVES, NOT ELSEWHERE CLASSIFIED</td>
+<td>True</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>240109863</td>
+<td>10 YOM C/O CRUSH INJURY OF TOE S/P RIDING A DI...</td>
+<td>5036</td>
+<td>1615</td>
+<td>0</td>
+<td>Two-wheeled, powered, off-road vehicles (incl....</td>
+<td>1615</td>
+<td>FOOTWEAR</td>
+<td>True</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">3</td>
+<td>240109864</td>
+<td>3 YOF PRESENTS WITH SWALLOWED FOREIGN BODY S/P...</td>
+<td>1686</td>
+<td>0</td>
+<td>0</td>
+<td>Coins</td>
+<td>1686</td>
+<td>COINS</td>
+<td>True</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">4</td>
+<td>240109865</td>
+<td>2 YOM PRESENTS WITH FACIAL LACERATION S/P FELL...</td>
+<td>4074</td>
+<td>0</td>
+<td>0</td>
+<td>Chairs, other or not specified</td>
+<td>6670</td>
+<td>CHAIR, RECLINER</td>
+<td>False</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+<p>NEISS product codes and LLM-labeled product codes</p>
+</div>
+</div>
+<p>With the data in this format, it’s easy to explore a bit further. Here, I group up the products by the LLM’s labeled product code, then get the proportion correct. As an example, 34 out of 34 times that the LLM guessed the product was <code>1807 FLOORS OR FLOORING MATERIALS</code> it got it correct, and 25 out of 26 times for <code>4076 BEDS OR BEDFRAMES, OTHER OR NOT SPECIFIED</code>. Among the top 5 products the results aren’t too bad, although it misclassifies knives slightly more often.</p>
+<div id="6cb8b65e" class="cell" data-execution_count="9" data-cap-location="undefined">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb11" data-cap-location="undefined" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">llm_output_dataframe.groupby([<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product_code'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product'</span>]).agg(</span>
+<span id="cb11-2">    label_mean<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'label'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'mean'</span>),</span>
+<span id="cb11-3">    label_count<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'label'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'count'</span>)</span>
+<span id="cb11-4">).sort_values(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'label_count'</span>, ascending<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span>).head(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span>)</span></code></pre></div>
+</details>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">label_mean</th>
+<th data-quarto-table-cell-role="th">label_count</th>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">llm_product_code</th>
+<th data-quarto-table-cell-role="th">llm_product</th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">1807</td>
+<td data-quarto-table-cell-role="th">FLOORS OR FLOORING MATERIALS</td>
+<td>1.000000</td>
+<td>34</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">4076</td>
+<td data-quarto-table-cell-role="th">BEDS OR BEDFRAMES, OTHER OR NOT SPECIFIED</td>
+<td>0.961538</td>
+<td>26</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">1842</td>
+<td data-quarto-table-cell-role="th">STEPS OR STAIRS (EXCLUDING PULL-DOWN AND FOLDING STAIRS)</td>
+<td>1.000000</td>
+<td>19</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">464</td>
+<td data-quarto-table-cell-role="th">KNIVES, NOT ELSEWHERE CLASSIFIED</td>
+<td>0.733333</td>
+<td>15</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">679</td>
+<td data-quarto-table-cell-role="th">SOFAS, COUCHES, DAVENPORTS, DIVANS OR STUDIO COUCHES</td>
+<td>1.000000</td>
+<td>13</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+<p>Proportion correctly labeled, by NEISS product type</p>
+</div>
+</div>
+<p>Perhaps more importantly, I want to see the specific cases where the LLM is consistently getting it <em>wrong</em>. The following code produces all of the misses, and groups up the results by the NEISS label and the LLM label. This way I can quickly see what the LLM thought it was, versus what it really was.</p>
+<div id="f2ef8b6d" class="cell" data-execution_count="10" data-cap-location="undefined">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb12" data-cap-location="undefined" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1">llm_output_dataframe[llm_output_dataframe[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'label'</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span>].groupby([<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Product_1'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'product_title_1'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product_code'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'llm_product'</span>]).agg(</span>
+<span id="cb12-2">    label_mean<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'label'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'mean'</span>),</span>
+<span id="cb12-3">    label_count<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'label'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'count'</span>)</span>
+<span id="cb12-4">).sort_values(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'label_count'</span>, ascending<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span>).head(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">10</span>)</span></code></pre></div>
+</details>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">label_mean</th>
+<th data-quarto-table-cell-role="th">label_count</th>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">Product_1</th>
+<th data-quarto-table-cell-role="th">product_title_1</th>
+<th data-quarto-table-cell-role="th">llm_product_code</th>
+<th data-quarto-table-cell-role="th">llm_product</th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">611</td>
+<td data-quarto-table-cell-role="th">Bathtubs or showers (including fixtures or accessories</td>
+<td data-quarto-table-cell-role="th">610</td>
+<td data-quarto-table-cell-role="th">NONGLASS BATHTUB OR SHOWER ENCLOSURES</td>
+<td>0.0</td>
+<td>7</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1616</td>
+<td data-quarto-table-cell-role="th">Jewelry (excluding watches)</td>
+<td data-quarto-table-cell-role="th">1617</td>
+<td data-quarto-table-cell-role="th">EAR PROTECTION DEVICES</td>
+<td>0.0</td>
+<td>4</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">1112</td>
+<td data-quarto-table-cell-role="th">Metal containers (excluding aerosols, trash and gasoline cans)</td>
+<td data-quarto-table-cell-role="th">453</td>
+<td data-quarto-table-cell-role="th">CAN OPENERS, NOT SPECIFIED</td>
+<td>0.0</td>
+<td>3</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1616</td>
+<td data-quarto-table-cell-role="th">Jewelry (excluding watches)</td>
+<td data-quarto-table-cell-role="th">1643</td>
+<td data-quarto-table-cell-role="th">KEYS, KEY RINGS OR KEY CHAINS</td>
+<td>0.0</td>
+<td>3</td>
+</tr>
+<tr class="odd">
+<td rowspan="2" data-quarto-table-cell-role="th" data-valign="top">4074</td>
+<td rowspan="2" data-quarto-table-cell-role="th" data-valign="top">Chairs, other or not specified</td>
+<td data-quarto-table-cell-role="th">667</td>
+<td data-quarto-table-cell-role="th">CHAIR, RECLINER</td>
+<td>0.0</td>
+<td>3</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">6670</td>
+<td data-quarto-table-cell-role="th">CHAIR, RECLINER</td>
+<td>0.0</td>
+<td>3</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">836</td>
+<td data-quarto-table-cell-role="th">Knives with replaceable blades</td>
+<td data-quarto-table-cell-role="th">464</td>
+<td data-quarto-table-cell-role="th">KNIVES, NOT ELSEWHERE CLASSIFIED</td>
+<td>0.0</td>
+<td>3</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1884</td>
+<td data-quarto-table-cell-role="th">Ceilings and walls (interior part of completed structure)</td>
+<td data-quarto-table-cell-role="th">1893</td>
+<td data-quarto-table-cell-role="th">DOORS, OTHER OR NOT SPECIFIED</td>
+<td>0.0</td>
+<td>3</td>
+</tr>
+<tr class="odd">
+<td rowspan="2" data-quarto-table-cell-role="th" data-valign="top">1807</td>
+<td rowspan="2" data-quarto-table-cell-role="th" data-valign="top">Floors or flooring materials</td>
+<td data-quarto-table-cell-role="th">676</td>
+<td data-quarto-table-cell-role="th">RUGS OR CARPETS, NOT SPECIFIED</td>
+<td>0.0</td>
+<td>2</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">4074</td>
+<td data-quarto-table-cell-role="th">CHAIRS, OTHER OR NOT SPECIFIED</td>
+<td>0.0</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+<p>Incorrectly labeled products, NEISS vs LLM</p>
+</div>
+</div>
+<p>One of the first big sets of misses here is related to <code>611 - BATHTUBS OR SHOWERS</code>. Here the LLM missed 7 times by incorrectly labeling the product <code>610 - 'NONGLASS BATHTUB OR SHOWER ENCLOSURES'</code>. This one, in my opinion, is really just an artifact of some rules coding in the manual. Personally, I don’t see an easy way to distinguish the two - unless we assume that the “enclosures” part is just referring to the plastic partition that is often part of a shower.</p>
+<p>I also see some issues where the LLM picks ear protection devices instead of jewelry, metal containers instead of can openers, and recliner chairs instead of “other or not specified” chairs. An interesting issue crops up where the LLM labels <code>836 KNIVES WITH REPLACEABLE BLADES</code> as just <code>464 - KNIVES, NOT ELSEWHERE CLASSIFIED</code>. Reading through the narratives the former generally refers to things like box cutters, while the latter is typically <em>any</em> sort of knife (e.g.&nbsp;kitchen knife). There’s also some evidence of hallucinations, like where the LLM is labeling <code>6670  CHAIR, RECLINER</code> instead of <code>667 CHAIR, RECLINER</code>.</p>
+</section>
+</section>
+<section id="tasks-for-fine-tuning" class="level2">
+<h2 class="anchored" data-anchor-id="tasks-for-fine-tuning">Tasks for Fine Tuning</h2>
+<p>Reading through the results, I made myself some notes:</p>
+<div id="2b0953ee" class="cell" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># model is having trouble with following:</span></span>
+<span id="cb13-2"></span>
+<span id="cb13-3"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 1 identifying 1616 - JEWELRY</span></span>
+<span id="cb13-4"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 2 identifying 1884 - CEILINGS AND WALLS (INTERIOR PART OF COMPLETED STRUCTURE)</span></span>
+<span id="cb13-5"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 3 marking 4074 - CHAIRS, OTHER OR NOT SPECIFIED as 670 - CHAIR, RECLINER</span></span>
+<span id="cb13-6"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 4 marking 4076 - BEDS OR BEDFRAMES, OTHER OR NOT SPECIFIED as BUNK BEDS</span></span>
+<span id="cb13-7"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 5 marking 1615 - FOOTWEAR in cases that involve injuries to foot</span></span>
+<span id="cb13-8"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 6 cases involving drugs -&gt; injury  (1929 DRUGS OR MEDICATIONS)</span></span>
+<span id="cb13-9"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 7 610 - NONGLASS BATHTUBS OR SHOWERS versus 611 - BATHTUBS OR SHOWERS</span></span>
+<span id="cb13-10"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 8 Some hallucinations (e.g. knife product code listed as 9464 instead of 464, 6670 versus 667)</span></span></code></pre></div>
+</div>
+<p>Our next step, after assuming the RAG correctly provides the LLM with list of products that contains the correct one, is to fine-tune the model by feeding it examples it missed with the correct example. Ideally this will help guide the model toward the correct product, as well as help with hallucinating some product codes. In the next blog post I’ll walk through how I created a curated list of examples and fed this through OpenAI’s fine tuning API. We’ll see if it made a big difference or not!</p>
+
+
+</section>
+
+ ]]></description>
+  <category>Python</category>
+  <category>Data Science Applications</category>
+  <category>Large Language Models</category>
+  <guid>https://gmcirco.github.io/blog/posts/uv-testing/fine-tuning.html</guid>
+  <pubDate>Tue, 27 May 2025 04:00:00 GMT</pubDate>
+  <media:content url="https://gmcirco.github.io/blog/posts/uv-testing/neiss.png" medium="image" type="image/png" height="109" width="144"/>
+</item>
 <item>
   <title>How to Calculate a Simple Difference-in-Differences</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>
@@ -17031,567 +18464,6 @@ Wheeler, Andrew P, and Wouter Steenbeek. 2021. <span>“Mapping the Risk Terrain
   <guid>https://gmcirco.github.io/blog/posts/rtm-spatial/rtm.html</guid>
   <pubDate>Fri, 06 Oct 2023 04:00:00 GMT</pubDate>
   <media:content url="https://gmcirco.github.io/blog/posts/rtm-spatial/city.jpg" medium="image" type="image/jpeg"/>
-</item>
-<item>
-  <title>Good Mythical Morning: Blind Fast Food Taste Tests</title>
-  <dc:creator>Gio Circo, Ph.D.</dc:creator>
-  <link>https://gmcirco.github.io/blog/posts/gmm/gmm.html</link>
-  <description><![CDATA[ 
-
-
-
-
-
-<section id="good-mythical-morning---a-whole-lotta-food" class="level2">
-<h2 class="anchored" data-anchor-id="good-mythical-morning---a-whole-lotta-food">Good Mythical Morning - A Whole Lotta Food</h2>
-<p>So, its no secret that my wife and I are fans of Rhett and Link’s YouTube series Good Mythical Morning. Specifically, we are fans of the large variety of food- related content like <a href="https://www.youtube.com/watch?v=Mc4t66r54dU">Will it Burger?</a>, <a href="https://www.youtube.com/watch?v=xOO6Rk9XLE8">Worst Halloween Candy Taste Test</a>, <a href="https://www.youtube.com/watch?v=vbAzAIvifkg&amp;list=PLJ49NV73ttrvzyYLLkhoyqe51ptzxCROA">International Burger King Taste Test</a>, and <a href="https://www.youtube.com/watch?v=qHwpBQAx9KA&amp;list=PLJ49NV73ttrsJeC5lFgHADqyxWXB38yfd&amp;index=40">100 Years of Party Snacks Taste Test</a>.</p>
-<p>While normally this would qualify as pretty generic YouTube content, Good Mythical Morning keeps it interesting by “gamifying” many of these segments. These including making the hosts try gross food mash-ups, throw darts at a map to guess the food’s country of origin, or use a shuffleboard to guess the decade the food originated from.</p>
-<p>One of the games that is common on the channel is the <a href="https://www.youtube.com/watch?v=7sNBAoPYWKQ&amp;list=PL4x0ymuK0TYmmnGS6ZxX1TGckBToxiuWt">Blind Taste Test</a> where Rhett and Link are presented with food items from different fast food or restaurant chains, and are tasked with guessing which items come from which location. For example, in the <a href="https://www.youtube.com/watch?app=desktop&amp;v=8MK4DK1lgdE&amp;t">Blind Chicken Nugget Taste Test</a> they are given nuggets from 6 locations (McDonalds, Wendys, Chic-Fil-A, Hardees, KFC, and Frozen Tyson Nuggets) and have to try and place them based on taste alone. It’s silly content, but fun.</p>
-</section>
-<section id="how-good-are-they" class="level2">
-<h2 class="anchored" data-anchor-id="how-good-are-they">How Good Are They?</h2>
-<p>One nagging question I’ve always had is whether their performance on these segments were any better than if they just randomly guessed each time. Blind taste-testing is actually very hard, and distinguishing between 6 different pieces of mass-produced fried meat is probably even harder. Indeed, their performance on a lot of these segments is actually not great. To answer this, I gathered data from all the blind fast food taste tests that I could find, and collected it into a <a href="https://docs.google.com/spreadsheets/d/1P_LIZnnnaoCZHwmmrBM3O26sPAGCekVj_3qmWyyxTpc/edit?usp=sharing">Google Sheet</a>. Most of the games have 6 options, but a few have 5. For simplicity I will focus on the 26 segments where there were six choices available.</p>
-<section id="checking-out-the-data" class="level3">
-<h3 class="anchored" data-anchor-id="checking-out-the-data">Checking Out the Data</h3>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(googlesheets4)</span>
-<span id="cb1-2"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(tidyverse)</span>
-<span id="cb1-3"></span>
-<span id="cb1-4"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">set.seed</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">7132322</span>)</span>
-<span id="cb1-5"></span>
-<span id="cb1-6"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># Load Data</span></span>
-<span id="cb1-7"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># ---------------</span></span>
-<span id="cb1-8"></span>
-<span id="cb1-9">gsheet <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span></span>
-<span id="cb1-10">  <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"https://docs.google.com/spreadsheets/d/1P_LIZnnnaoCZHwmmrBM3O26sPAGCekVj_3qmWyyxTpc/edit?usp=sharing"</span></span>
-<span id="cb1-11"></span>
-<span id="cb1-12">taste_test <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">read_sheet</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">ss =</span> gsheet) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-13">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">filter</span>(options <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">==</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>)</span></code></pre></div>
-</details>
-</div>
-<p>The sheet here has columns corresponding to each game played <code>food</code>, with Rhett and Link’s number of correct guesses stored in their own columns.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">head</span>(taste_test)</span></code></pre></div>
-</details>
-<div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 6 × 4
-  food          options rhett  link
-  &lt;chr&gt;           &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;
-1 fries               6     4     3
-2 nuggets             6     6     3
-3 fried chicken       6     0     2
-4 bbq pork            6     2     3
-5 donut               6     0     1
-6 taco                6     2     2</code></pre>
-</div>
-</div>
-<p>First, let’s look at the distribution of correct guesses for Rhett and Link. We can generate just a simple bar chart here:</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># Plot R v L</span></span>
-<span id="cb4-2"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># ---------------</span></span>
-<span id="cb4-3"></span>
-<span id="cb4-4"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># plot observed correct answers for R&amp;L</span></span>
-<span id="cb4-5"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">par</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">mfrow =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">c</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>))</span>
-<span id="cb4-6"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">barplot</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">prop.table</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">table</span>(taste_test<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>rhett)), </span>
-<span id="cb4-7">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">main =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Rhett"</span>, </span>
-<span id="cb4-8">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">sub =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">paste0</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Avg. Correct: "</span>,<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">round</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(taste_test<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>rhett),<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>)),</span>
-<span id="cb4-9">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">col =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#e6862c'</span>)</span>
-<span id="cb4-10"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">barplot</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">prop.table</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">table</span>(taste_test<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>link)), </span>
-<span id="cb4-11">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">col =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#4ec726'</span>, </span>
-<span id="cb4-12">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">sub =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">paste0</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Avg. Correct: "</span>,<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">round</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(taste_test<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>link),<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>)),</span>
-<span id="cb4-13">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">main =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Link"</span>)</span></code></pre></div>
-</details>
-<div class="cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="https://gmcirco.github.io/blog/posts/gmm/gmm_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid figure-img" width="672"></p>
-</figure>
-</div>
-</div>
-</div>
-<p>Strangely enough, based on the 26 games that I collected, Rhett and Link have <em>the exact same number of correct guesses</em>. We can see, however, that their distributions are quite different (Rhett has a single game with all 6 right, and several with 4 correct, but also many more games with none correct). As expected, across all games we see their average is about 1.9 correct answers. Now, recall, our question here is “is Rhett and Link’s performance better than chance alone?”</p>
-</section>
-<section id="random-guessing-with-replacement" class="level3">
-<h3 class="anchored" data-anchor-id="random-guessing-with-replacement">Random Guessing With Replacement</h3>
-<p>So if we want to compare their performance to “chance” - that is, totally random guessing - we need a probability distribution. Here, the binomial is logical starting point. Let’s start with the simplest assumption of randomly guessing one of the six options <em>with replacement</em> (meaning you can guess the same option twice). While this doesn’t necessarily seem like an ideal strategy, Rhett and Link often do guess the same location two or three times.</p>
-<p>We can use the probability density function for the binomial distribution to calculate the probability of guessing between 0 and 6 items correctly, where each trial is assumed to be independent. Below, we see that there is about a 67% probability of guessing at least one of the items correctly, and a 40% chance of getting exactly one correct. Getting more than 4 correct is very rare. If we look at the observed results above, we see this mostly matches up. Both Rhett and Link rarely get more that 3 correct.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># totally random (w replacement)</span></span>
-<span id="cb5-2"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">round</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">dbinom</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">/</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>), <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>)</span></code></pre></div>
-</details>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] 0.335 0.402 0.201 0.054 0.008 0.001 0.000</code></pre>
-</div>
-</div>
-</section>
-<section id="random-guessing-without-replacement" class="level3">
-<h3 class="anchored" data-anchor-id="random-guessing-without-replacement">Random Guessing Without Replacement</h3>
-<p>Now, another strategy might be randomly guess, but not repeat any previous guesses. Instead of the guesses being independent, they are now dependent on prior guesses. That means we need to use a different method to calculate this. The hypergeometric distribution is commonly used to calculate this (e.g.&nbsp;<code>dhyper()</code>). This also falls within the realm of permutation-based math ala <a href="https://math.stackexchange.com/questions/2195572/how-do-i-find-the-probability-of-one-correct-guess-when-matching-elements">derangements</a>. However, I am a simple man with a good computer and a less-good maths background, so I will simply simulate it.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># totally random (w/o replacement)</span></span>
-<span id="cb7-2"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># simulate</span></span>
-<span id="cb7-3">n <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e5</span></span>
-<span id="cb7-4"></span>
-<span id="cb7-5">alist <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">vector</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">mode =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"list"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">length =</span> n)</span>
-<span id="cb7-6"><span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">for</span>(j <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">in</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span>n){</span>
-<span id="cb7-7">  truth <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">sample</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>)</span>
-<span id="cb7-8">  guess <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">sample</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>)</span>
-<span id="cb7-9">  </span>
-<span id="cb7-10">  alist[j] <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">sum</span>(guess <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">==</span> truth)</span>
-<span id="cb7-11">  </span>
-<span id="cb7-12">}</span>
-<span id="cb7-13"></span>
-<span id="cb7-14">res <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">sapply</span>(alist, sum)</span>
-<span id="cb7-15"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">prop.table</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">table</span>(res))</span></code></pre></div>
-</details>
-<div class="cell-output cell-output-stdout">
-<pre><code>res
-      0       1       2       3       4       6 
-0.37032 0.36459 0.18739 0.05538 0.02081 0.00151 </code></pre>
-</div>
-</div>
-<p>Here we see that if we limit our guesses to only options not previously guessed, there is a roughly equal probability of getting between 0 and 1 answers correct, and about a 28% chance of getting more than 1 correct. Note, under this strategy it is not possible to get 5 answers correct (because if you incorrectly order at least one item, by definition at least one other item is also incorrectly ordered)</p>
-</section>
-</section>
-<section id="are-rhett-and-link-better-than-random-guessing" class="level2">
-<h2 class="anchored" data-anchor-id="are-rhett-and-link-better-than-random-guessing">Are Rhett and Link Better than Random Guessing?</h2>
-<p>Let’s review our results here. Here’s what random guessing looks like under our two scenarios:</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># plot two different 'null' distributions</span></span>
-<span id="cb9-2"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">par</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">mfrow =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">c</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>))</span>
-<span id="cb9-3"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">barplot</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">prop.table</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">round</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">dbinom</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span> <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">/</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>), <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>)),</span>
-<span id="cb9-4">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">names.arg =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, </span>
-<span id="cb9-5">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">main =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"With Replacement"</span>, </span>
-<span id="cb9-6">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">col =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"#dbd895"</span>)</span>
-<span id="cb9-7"></span>
-<span id="cb9-8"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">barplot</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">prop.table</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">table</span>(res)), </span>
-<span id="cb9-9">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">main =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Without Replacement"</span>,</span>
-<span id="cb9-10">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">col =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"#dbd895"</span>)</span></code></pre></div>
-</details>
-<div class="cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="https://gmcirco.github.io/blog/posts/gmm/gmm_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid figure-img" width="672"></p>
-</figure>
-</div>
-</div>
-</div>
-<p>And here’s what Rhett and Link’s actual results look like:</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># plot observed correct answers for R&amp;L</span></span>
-<span id="cb10-2"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">par</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">mfrow =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">c</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>))</span>
-<span id="cb10-3"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">barplot</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">prop.table</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">table</span>(taste_test<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>rhett)), </span>
-<span id="cb10-4">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">main =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Rhett"</span>, </span>
-<span id="cb10-5">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">sub =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">paste0</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Avg. Correct: "</span>,<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">round</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(taste_test<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>rhett),<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>)),</span>
-<span id="cb10-6">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">col =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#e6862c'</span>)</span>
-<span id="cb10-7"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">barplot</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">prop.table</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">table</span>(taste_test<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>link)), </span>
-<span id="cb10-8">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">col =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'#4ec726'</span>, </span>
-<span id="cb10-9">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">sub =</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">paste0</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Avg. Correct: "</span>,<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">round</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(taste_test<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>link),<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">3</span>)),</span>
-<span id="cb10-10">        <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">main =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Link"</span>)</span></code></pre></div>
-</details>
-<div class="cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="https://gmcirco.github.io/blog/posts/gmm/gmm_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid figure-img" width="672"></p>
-</figure>
-</div>
-</div>
-</div>
-<p>The expected value of random guessing in both scenarios is, approximately 1, meaning that Rhett and Link’s scores of 1.8 mean that, on average, they perform marginally better than if you guessed completely at random. This is on the order of about 1 additional item correct compared to just guessing 100% randomly.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># expected value</span></span>
-<span id="cb11-2"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">rbinom</span>(<span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e5</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">/</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span>))</span></code></pre></div>
-</details>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] 1.00159</code></pre>
-</div>
-<details class="code-fold">
-<summary>Code</summary>
-<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mean</span>(res)</span></code></pre></div>
-</details>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] 0.99781</code></pre>
-</div>
-</div>
-<p>So, congrats Rhett and Link! You are a little bit better at blind tasting fast food than rolling a six-sided dice!</p>
-
-
-</section>
-
- ]]></description>
-  <category>R</category>
-  <category>Miscellaneous</category>
-  <guid>https://gmcirco.github.io/blog/posts/gmm/gmm.html</guid>
-  <pubDate>Thu, 27 Jul 2023 04:00:00 GMT</pubDate>
-  <media:content url="https://gmcirco.github.io/blog/posts/gmm/food.png" medium="image" type="image/png" height="144" width="144"/>
 </item>
 </channel>
 </rss>

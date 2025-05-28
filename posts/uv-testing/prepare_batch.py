@@ -215,6 +215,7 @@ for narrative in neiss_json:
                     {"role": "user", "content": prompt},
                 ],
                 "max_tokens": 100,
+                "temperature": 0.1,
                 "response_format": {"type": "json_object"},
             },
         }

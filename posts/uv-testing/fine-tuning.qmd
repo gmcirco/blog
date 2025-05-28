@@ -1,0 +1,509 @@
+---
+title: "Fine Tuning Your LLM for Fun and Profit"
+subtitle: "Part I: Building a working model"
+author: Gio Circo, Ph.D.
+date: 2025-5-27
+categories:
+  - Python
+  - Data Science Applications
+  - Large Language Models
+format: 
+    html:
+        self-contained: true
+        code-fold: false
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+        mermaid:
+            theme: neutral
+theme: flatly
+image: neiss.png
+---
+
+```{python}
+#| include: false
+%cd C:\Users\gioc4\Documents\blog\gcirco_blog\posts\uv-testing
+
+import json
+import pandas as pd
+import os
+from openai import OpenAI
+import json
+import numpy as np
+
+neiss_data = r"C:\Users\gioc4\Documents\blog\data\neiss2024.csv"
+neiss_codes = r"C:\Users\gioc4\Documents\blog\data\us-national-electronic-injury-surveillance-system-neiss-product-codes.json"
+
+def load_product_codes(path_to_file):
+    with open(path_to_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data
+
+def get_product_codes(product_codes_json):
+    code_str = ""
+    for code in product_codes_json:
+        code_str += f"\n{code['code']} {code['product_title']}"
+    return code_str
+
+def load_batch(filepath):
+    data = []
+    ids = []
+    with open(filepath, "r") as f:
+        for line in f:
+            resp = json.loads(line)
+            data.append(get_output_batch(resp))
+            ids.append(get_output_batch_id(resp))
+    return data, ids
+
+
+def get_output_batch(json_lines):
+    return json_lines["response"]["body"]["choices"][0]["message"]["content"]
+
+
+def get_output_batch_id(json_lines):
+    return json_lines["custom_id"]
+
+
+def get_narrative(neiss_json):
+    narrative = json.loads(neiss_json)
+
+    return narrative["Narrative_1"]
+
+```
+
+## Fine Tuning an LLM
+
+This is part one of a two part blog series where I will be walking through the steps of building and evaluating a fine-tuned version of an LLM. I initially became interested in trying this, based on responses from other researchers claiming that cheap models could be fine-tuned for specific tasks and match or beat the performance of more expensive ones. In the real world, I see a lot of practical value. While more expenive models might give you better "off the shelf" performance, you might only need the LLM to complete a series of relatively simple tasks. Why not, instead, take a cheap model and train it on your specific task?
+
+Well, I thought I would give it a shot!
+
+## Setting up the Project
+
+### NEISS Injury and Product Narratives
+
+Let's start with straightforward task for the LLM. For this blog post I rely on the National Electronic Injury Surveillance System ([NEISS](https://www.cpsc.gov/Research--Statistics/NEISS-Injury-Data)) 2024 dataset. This data contains information about injuries reported to a representative sample of hospitals across the U.S. The data contains information about the person who was injured, including a short narrative from the hospital, which is useful for our purposes. The narratives look something like this:
+
+> 70YOM WAS DRINKING ALCOHOL AND TRIPPED AND FELL CAUSING HIS ARM TO GO THROUGH A GLASS WINDOW, DX: LT FOREARM LACERATION
+
+In addition to the narratives, another set of fields are listings of various "products" that were related to the injury (`Product_1` to `Product_3`). These are referred to as the the "external cause" of the injury. The NEISS coding manualy provides the following definition as the "external cause":
+
+> ...the existence of a medical condition which can be associated with a specific object or acute process that was caused by something outside the body
+
+So, for this specific example above, the product coded for this injury was `1894 - WINDOWS AND WINDOW GLASS, OTHER THAN STORM WINDOWS`. Here, the external cause is the glass that was broken by the patient's arm which caused a laceration to the forearm.
+
+So how is the product chosen? Well, this can be a bit tricky. First off, the [NEISS coding manual](https://www.cpsc.gov/s3fs-public/January-2024-NEISS-CPSC-only-Coding-Manual.pdf?VersionId=bEaz2iKYDAlz8KA60KEKKrLrXZW3kLOj) contains over 800 different products. A small sampling shows:
+
+
+```         
+101 - WASHING MACHINES WITHOUT WRINGERS OR OTHER DRYERS
+102 - WRINGER WASHING MACHINES
+103 - WASHING MACHINES WITH UNHEATED SPIN DRYERS
+106 - ELECTRIC CLOTHES DRYERS WITHOUT WASHERS
+107 - GAS CLOTHES DRYERS WITHOUT WASHERS
+108 - MANGLE IRONS
+110 - ELECTRIC HEATING PADS
+112 - SEWING MACHINES OR ACCESSORIES
+113 - FLOOR BUFFERS OR WAXERS
+114 - RUG SHAMPOOERS
+115 - VACUUM CLEANERS
+116 - ELECTRIC BROOMS
+118 - GAS WATER HEATERS
+119 - ELECTRIC WATER HEATERS
+125 - WATER SOFTENERS OR CONDITIONERS (APPLIANCES)
+126 - WASHING MACHINES, NOT SPECIFIED
+127 - CLOTHES DRYERS, NOT SPECIFIED
+```
+
+### Identifying the "external cause"
+
+The large variety of possible options highlights an interesting question. If we wanted an LLM to read the injury case narratives and tag each case with the appropriate product, how feasible would this be? Could we do it with a very cheap model? There are a few possible issues to consider here:
+
+1.  There are a very large number of possible products from which we can choose, but only one "correct" answer.
+
+2.  Many of the products are very subtly different from each other. For example, how do we easily distinguish between `610 - NONGLASS BATHTUBS OR SHOWERS` and `611 - BATHTUBS OR SHOWERS` (a bit of a hint for later)?
+
+3.  A narrative can have many products involved in an injury, but we have to choose the product that is *most related* to that injury.
+
+Here's a clearer way to illustrate the problem. Read this narrative below and guess which product was related to this injury. For simplicity I am narrowing it down to four options.
+
+> 64YOF, NINE DAYS AGO WAS STANDING ON A CHAIR HANGING HOLIDAY DECORATIONS WHEN SHE FELL ONTO LEFT HIP AND SINCE THEN HAS LOW BACK PAIN, DX: LOW BACK PAIN
+
+a.  1714 - SEASONAL DECORATIONS
+b.  4074 - CHAIRS, OTHER OR NOT SPECIFIED
+c.  1807 - FLOORS OR FLOORING MATERIALS
+d.  4025 - BARSTOOLS OR KITCHEN STOOLS
+
+::: {.callout-tip collapse="true"}
+## Answer
+The answer is "b": 4074 - CHAIRS, OTHER OR NOT SPECIFIED
+:::
+
+## Labeling Narratives with ChatGPT
+
+To start, I'll run quickly through my initial approach to this problem, using ChatGPT via the `OpenAI` python library. My idea is to do the following:
+
+1.  Construct a prompt that narrowly focuses the AI to identify the product that is *most proximate* to the injury
+2.  Use RAG to give the AI a narrower list of products to choose from
+3.  Review the results, then build a fine-tuned version of the model, based on steps 1&2.
+
+Today we'll focus just on the first two steps, before we get into fine tuning. I'll walk through a few key functions in my code, but if you want to look at the whole setup, you can just navigate to the working environment [on my repo](https://github.com/gmcirco/blog/tree/master/posts/uv-testing).
+
+### Parameters, Roles, and Prompts
+
+In my `prepare_batch.py` file I first define some important parameters for setting up the RAG model, as well as defining the LLM's role:
+
+```{python}
+#| eval: false
+
+RUN_DATE = datetime.now().strftime("%Y-%m-%d")
+NUM_NARRATIVES = 500
+RAG_MODEL = SentenceTransformer("all-mpnet-base-v2")
+MODEL = "gpt-4o-mini"
+ROLE = """You are an expert medical grader. Your goal is to read incident narratives and 
+extract structured output based on the information available in the narrative field. Your
+PRIMARY GOAL is to determine the product that is MOST PROXIMATE to the injury reported in
+the narrative. You MUST choose only from the provided list of products and return the 
+EXACT product name and produce code in your answer.
+"""
+
+# define regex to extract the core narrative for RAG
+CORE_NARRATIVE_REGEX = re.compile("\d{1,3}\s?[A-Z]{2,4}[,]?\s+(.*?)(?=\s*DX:)")
+
+# Load stopwords
+STOPWORDS = set(stopwords.words("english"))
+
+```
+
+Here, I set up a RAG model using sentence transformers, and choose a cheap model from [OpenAI's model library](https://platform.openai.com/docs/models). I choose the cheapest available model which is `gpt-4o-mini` (at a cost of a measley 15 cents per million tokens!). The system role I define instructs the LLM to find the injury that is "most proximate" to the injury reported in the narrative. Finally, I have some regex to extract out just the core narrative (excluding the injury description) to pass to the RAG model for retriving a list of possible products.
+
+I set up a bunch of helper functions (see the repo if you're interested), but the important one is the prompt creator. This function takes as input a text narrative from a single injury case, as well as the RAG that gives the LLM a list of possible products to choose.
+
+```{python}
+#| eval: false
+
+def create_prompt(neiss_incident, neiss_product_codes):
+
+    prompt = f"""Closely follow the numbered instructions to perform your evaluation of the narrative.
+
+        ## NARRATIVE
+        1. Read the following injury report narrative:
+
+        {neiss_incident}
+
+        ## PRODUCT LIST
+
+        2. Review the following list of products to choose from:
+
+        Products are listed in the format [code] - [product]
+
+        {neiss_product_codes}
+
+        ## INSTRUCTIONS
+
+        3. Identify the primary injury listed in the narrative
+        4. Identify the product from the provided product list that is MOST PROXIMATE to the primary injury
+        5. Provide the name of the product AND the product code in your answer
+        6. Return your answer as a JSON object, following the format below EXACTLY:
+
+        {{"primary_injury": [injury], "product": [product], "product_code": [product_code]}}
+
+        5. Review the following examples and follow the format closely in your output.
+
+        ## EXAMPLE 1
+        '13YOM REPORTS HE WAS GETTING INTO THE SHOWER WHEN HE SLIPPED AND FELL ON HIS SIDE AND HEARD A POP IN HIS FOOT. DX ACHILLES TENDON INJURY'
+        {{"primary_injury": "DX ACHILLES TENDON INJURY", "product": "BATHTUBS OR SHOWERS", "product_code": 611}}
+
+        ## EXAMPLE 2
+        '36YOM REPORTS WITH KNEE PAIN AFTER FALLING OFF AN ELECTRIC SCOOTER. DX KNEE ABRASION'
+        {{"primary_injury": "KNEE ABRASION", "product": "SCOOTERS, POWERED", "product_code": 5022}}
+
+        ## EXAMPLE 3
+        '76YOF WAS WALKING INTO A BUILDING AND TRIPPED OVER A DOOR JAM AND FELL. PAIN TO HIPS, RIGHT KNEE AND RIGHT WRIST. DX: PAIN KNEE RIGHT, PAIN WRIST RIGHT, PAIN HIP LEFT'
+        {{"primary_injury": "PAIN KNEE RIGHT, PAIN WRIST RIGHT, PAIN HIP LEFT", "product": "DOOR SILLS OR FRAMES", "product_code": 1878}}
+
+        ## EXAMPLE 4
+        '67YOM FELL OUT OF CHAIR AND HAVING ALTERED MENTAL STATUS. DX FALL NO INJURY'
+        {{"primary_injury": "FALL NO INJURY", "product": "CHAIRS, OTHER OR NOT SPECIFIED", "product_code": 4074}}
+
+        ## EXAMPLE 5
+        '48YOM WAS ATTEMPTING TO GET OUT OF BED AND FELT VERY DIZZY AND FELL DX: CLOSED HEAD INJURY VERTIGO'
+        {{"primary_injury": "CLOSED HEAD INJURY VERTIGO", "product": "BEDS OR BEDFRAMES, OTHER OR NOT SPECIFIED", "product_code": 4076}}
+        """
+
+    return prompt
+
+```
+
+The actual prompt when it is populated with the narrative and the list of products from RAG looks like this:
+
+```{python}
+#| eval: false
+#| code-fold: true
+
+"""
+Closely follow the numbered instructions to perform your evaluation of the narrative.
+
+        ## NARRATIVE
+        1. Read the following injury report narrative:
+
+        16YOM PLAYING SOCCER, HURT HIS SHOULDER.  HIT BY A BALL.DX:   MUSCLE STRAIN LEFT SHOULDER.
+
+        ## PRODUCT LIST
+
+        2. Review the following list of products to choose from:
+
+        Products are listed in the format [code] - [product]
+
+        1200 - Sports and recreational activity, not elsewhere classified
+        1205 - Basketball (activity, apparel or equipment)
+        1206 - Bowling (activity, apparel or equipment)
+        1211 - Football (activity, apparel or equipment)
+        1233 - Trampolines
+        1260 - Billiards or pool (activity, apparel or equipment)
+        1266 - Volleyball (activity, apparel or equipment)
+        1267 - Soccer (activity, apparel or equipment)
+        1282 - Handball (activity, apparel or equipment)
+        1295 - Field hockey (activity, apparel or equipment)
+        1326 - Blocks, stacking toys or pull toys
+        1333 - Skateboards
+        1346 - Clacker balls
+        1392 - Toy sports equipment
+        1513 - Playpens and play yards
+        1554 - Safety pins
+        3235 - Other ball sports (activity, apparel or equipment)
+        3236 - Ball sports (activity, apparel or equipment), not specified
+        3256 - Squash, racquet ball or paddle ball (activity, apparel or equipment)
+        3265 - Weight lifting (activity, apparel or equipment)
+        3272 - Hockey (activity, apparel or equipment), not specified
+        3276 - Water polo (activity, apparel or equipment)
+        3289 - Darts, for indoor use (activity or equipment)
+        3290 - Darts, lawn (activity or equipment)
+        3291 - Darts, not specified
+        5016 - Balls, other or not specified
+        5034 - Softball (activity, apparel or equipment)
+        5041 - Baseball (activity, apparel or equipment
+
+        ## INSTRUCTIONS
+
+        3. Identify the primary injury listed in the narrative
+        4. Identify the product from the provided product list that is MOST PROXIMATE to the primary injury
+        5. Provide the name of the product AND the product code in your answer
+        6. Return your answer as a JSON object, following the format below EXACTLY:
+
+        {"primary_injury": [injury], "product": [product], "product_code": [product_code]}
+
+        5. Review the following examples and follow the format closely in your output.
+
+        [examples omitted]
+"""
+
+```
+
+The RAG model is configured to find fairly close matches based on the narrative, but give a up to 10 products per phrase match. The goal is to provide a wide variety of products that should be at least somewhat related to the narrative. This saves us a lot of tokens from not embedding the entire list of products (which is close to 9000 tokens), and helps our cheap model's performance by shortening the context window.
+
+And, finally, the output I expect to get is in json format:
+
+```
+'{"primary_injury": "MUSCLE STRAIN LEFT SHOULDER", "product": "SOCCER (activity, apparel or equipment)", "product_code": 1267}'
+```
+
+### Full workflow
+
+All right, time for the full workflow. We first grab the top $N$ narratives from the NEISS csv (here, 500), load all of the product codes, and run these through the functions to extract the narrative, build the RAG, and pipe that into a prompt creation function wrapper `create_prompt_with_rag`. Then we simply loop over all the narratives, write them into a jsonlines file, and submit the whole batch to OpenAI.
+
+```{python}
+#| eval: false
+#| code-fold: true
+
+# get NEISS narratives
+neiss_json = load_neiss_data(neiss_data, NUM_NARRATIVES)
+product_codes = load_product_codes(neiss_codes)
+
+# set up vector db for rag
+products = load_product_codes(neiss_codes)
+
+# Precompute product description embeddings
+product_texts = [p["product_title"] for p in products]
+product_embeddings = RAG_MODEL.encode(product_texts, convert_to_tensor=True)
+
+# func to loop, add rag to prompt
+def create_prompt_with_rag(neiss_json):
+    neiss_narrative = get_narrative(neiss_json)
+    neiss_product_narrative = extract_core_narrative(neiss_narrative)
+    phrases = extract_phrases(neiss_product_narrative)
+    codes = match_phrases_to_products(phrases, product_embeddings, product_codes)
+    code_str = extract_unique_matches_as_string(codes)
+    
+    return create_prompt(neiss_narrative, code_str)
+
+# now loop through whole process, fill up jsonl
+json_list = []
+
+for narrative in neiss_json:
+    id = get_id(narrative)
+    prompt = create_prompt_with_rag(narrative)
+
+    json_list.append(
+        {
+            "custom_id": f"{id}",
+            "method": "POST",
+            "url": "/v1/chat/completions",
+            "body": {
+                "model": MODEL,
+                "messages": [
+                    {"role": "system", "content": ROLE},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": 100,
+                "temperature": 0.1,
+                "response_format": {"type": "json_object"},
+            },
+        }
+    )
+
+with open(f"json/output_{RUN_DATE}.jsonl", "w") as outfile:
+    for entry in json_list:
+        json.dump(entry, outfile)
+        outfile.write("\n")
+
+# upload batch to openai
+batch_input_file = client.files.create(
+    file=open(f"json/output_{RUN_DATE}.jsonl", "rb"), purpose="batch"
+)
+
+batch_input_file_id = batch_input_file.id
+client.batches.create(
+    input_file_id=batch_input_file_id,
+    endpoint="/v1/chat/completions",
+    completion_window="24h",
+    metadata={"description": f"Testing {NUM_NARRATIVES} NEISS narratives"},
+)
+
+```
+
+## Evaluation
+
+Of course, the major question is how did our cheap model do? To evaluate it, we need to load our batch output back in after it has been run through the OpenAI batch API. For simplicity I just convert it from a jsonlines file to a pandas dataframe. I also load in the original data as well from the NEISS table, as well as the original list of product codes. To keep this simple (I am just doing this for fun, on my own blog after all) I restrict the evaluation metrics to whether the LLM correctly identified any of the 3 possible products listed for an injury. This is more in line with how they are coded by humans. According to the NEISS coding manual:
+
+> When multiple products are involved, it does not matter in what order you enter them.
+
+So, for our purposes, I'll be satisfied if the LLM's listed primary product lines up with *any* of the products in the data.
+
+```{python}
+# load the first 500 cases and product codes
+neiss_df = pd.read_csv(neiss_data).head(500)
+product_codes = load_product_codes(neiss_codes)
+
+
+# load output, set up vector database and original data
+file = "json/batch_682f2331c2fc81908ea42a70bf77709c_output.jsonl"
+json_batch_output, narrative_ids = load_batch(file)
+
+# converting output to datafraames
+product_codes_df = pd.DataFrame(product_codes)
+product_codes_df['code'] = product_codes_df['code'].astype(int)
+
+neiss_df = neiss_df.merge(product_codes_df, how='left', left_on='Product_1', right_on='code') \
+                   .rename(columns={'product_title': 'product_title_1'}) \
+                   .merge(product_codes_df, how='left', left_on='Product_2', right_on='code') \
+                   .rename(columns={'product_title': 'product_title_2'}) \
+                   .merge(product_codes_df, how='left', left_on='Product_3', right_on='code') \
+                   .rename(columns={'product_title': 'product_title_3'})
+
+neiss_df = neiss_df[[
+    'CPSC_Case_Number', 'Product_1', 'Product_2', 'Product_3',
+    'product_title_1', 'product_title_2', 'product_title_3', 'Narrative_1'
+]]
+
+# get llm output into a dataframe
+llm_output_dataframe = pd.DataFrame([json.loads(json_str) for json_str in json_batch_output])
+llm_output_dataframe['CPSC_Case_Number'] = list(map(int, narrative_ids))
+
+# Rename fields
+llm_output_dataframe = llm_output_dataframe.rename(columns={
+    'product': 'llm_product',
+    'product_code': 'llm_product_code'
+})
+
+# now flag, add a label for hit or miss
+llm_output_dataframe['label'] = (
+    (llm_output_dataframe['llm_product_code'] == neiss_df['Product_1'].astype(int)) |
+    (llm_output_dataframe['llm_product_code'] == neiss_df['Product_2'].astype(int)) |
+    (llm_output_dataframe['llm_product_code'] == neiss_df['Product_3'].astype(int))
+)
+
+accuracy = llm_output_dataframe['label'].mean()
+```
+
+Here's the LLM output in a pandas dataframe. I grab the LLM's primary injury, the product name, and the product code. I can then compare this to the original labels, keeping in mind that I'm only interested in the `Product_1` code.
+
+```{python}
+print(f'Accuracy: {accuracy:.2%}')
+```
+
+An initial accuracy here at about 66%. Not great, but not terrible for a first pass. This will be the baseline value I use before building out a fine-tuned model.
+
+### Digging a bit deeper
+
+So one important thing to consider is where the model did well, and where it fell short. Before starting on any fine-tuning, it would be helpful to look for areas where there are obvious shortcomings and set up the LLM with examples to help guide it toward more "correct" answers.
+
+First, there are the original NEISS fields (`Narrative_1`, `Product_1`, `product_title_1`) merged with the LLM labeled ones (`product_code`, `product`), and a flag for whether the LLM's guess at the primary product was correct or not (`label`).
+
+```{python}
+#| code-fold: true
+#| cap-location: top
+#| fig-cap: "NEISS product codes and LLM-labeled product codes"
+# merge and re-order
+col_order = ['CPSC_Case_Number','Narrative_1', 'Product_1', 'Product_2', 'Product_3','product_title_1', 'llm_product_code', 'llm_product','label']
+llm_output_dataframe = llm_output_dataframe.merge(neiss_df, on = "CPSC_Case_Number")
+llm_output_dataframe = llm_output_dataframe[col_order]
+llm_output_dataframe.head(5)
+```
+
+With the data in this format, it's easy to explore a bit further. Here, I group up the products by the LLM's labeled product code, then get the proportion correct. As an example, 34 out of 34 times that the LLM guessed the product was `1807 FLOORS OR FLOORING MATERIALS` it got it correct, and 25 out of 26 times for `4076 BEDS OR BEDFRAMES, OTHER OR NOT SPECIFIED`. Among the top 5 products the results aren't too bad, although it misclassifies knives slightly more often.
+
+```{python}
+#| code-fold: true
+#| cap-location: top
+#| fig-cap: "Proportion correctly labeled, by NEISS product type"
+llm_output_dataframe.groupby(['llm_product_code', 'llm_product']).agg(
+    label_mean=('label', 'mean'),
+    label_count=('label', 'count')
+).sort_values('label_count', ascending=False).head(5)
+```
+
+Perhaps more importantly, I want to see the specific cases where the LLM is consistently getting it *wrong*. The following code produces all of the misses, and groups up the results by the NEISS label and the LLM label. This way I can quickly see what the LLM thought it was, versus what it really was.
+
+```{python}
+#| code-fold: true
+#| cap-location: top
+#| fig-cap: "Incorrectly labeled products, NEISS vs LLM"
+llm_output_dataframe[llm_output_dataframe['label'] == False].groupby(['Product_1', 'product_title_1', 'llm_product_code', 'llm_product']).agg(
+    label_mean=('label', 'mean'),
+    label_count=('label', 'count')
+).sort_values('label_count', ascending=False).head(10)
+```
+
+One of the first big sets of misses here is related to `611 - BATHTUBS OR SHOWERS`. Here the LLM missed 7 times by incorrectly labeling the product `610 - 'NONGLASS BATHTUB OR SHOWER ENCLOSURES'`. This one, in my opinion, is really just an artifact of some rules coding in the manual. Personally, I don't see an easy way to distinguish the two - unless we assume that the "enclosures" part is just referring to the plastic partition that is often part of a shower.
+
+I also see some issues where the LLM picks ear protection devices instead of jewelry, metal containers instead of can openers, and recliner chairs instead of "other or not specified" chairs. An interesting issue crops up where the LLM labels `836 KNIVES WITH REPLACEABLE BLADES` as just `464 - KNIVES, NOT ELSEWHERE CLASSIFIED`. Reading through the narratives the former generally refers to things like box cutters, while the latter is typically *any* sort of knife (e.g. kitchen knife). There's also some evidence of hallucinations, like where the LLM is labeling `6670  CHAIR, RECLINER` instead of `667 CHAIR, RECLINER`.
+
+## Tasks for Fine Tuning
+
+Reading through the results, I made myself some notes:
+
+```{python}
+# model is having trouble with following:
+
+# 1 identifying 1616 - JEWELRY
+# 2 identifying 1884 - CEILINGS AND WALLS (INTERIOR PART OF COMPLETED STRUCTURE)
+# 3 marking 4074 - CHAIRS, OTHER OR NOT SPECIFIED as 670 - CHAIR, RECLINER
+# 4 marking 4076 - BEDS OR BEDFRAMES, OTHER OR NOT SPECIFIED as BUNK BEDS
+# 5 marking 1615 - FOOTWEAR in cases that involve injuries to foot
+# 6 cases involving drugs -> injury  (1929 DRUGS OR MEDICATIONS)
+# 7 610 - NONGLASS BATHTUBS OR SHOWERS versus 611 - BATHTUBS OR SHOWERS
+# 8 Some hallucinations (e.g. knife product code listed as 9464 instead of 464, 6670 versus 667)
+```
+
+Our next step, after assuming the RAG correctly provides the LLM with list of products that contains the correct one, is to fine-tune the model by feeding it examples it missed with the correct example. Ideally this will help guide the model toward the correct product, as well as help with hallucinating some product codes. In the next blog post I'll walk through how I created a curated list of examples and fed this through OpenAI's fine tuning API. We'll see if it made a big difference or not!
