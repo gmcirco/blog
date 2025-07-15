@@ -1,0 +1,216 @@
+---
+title: "And Now For Somthing Completely Different..."
+subtitle: "Building a personal wine reccomendation bot"
+author: Gio Circo, Ph.D.
+date: 2025-7-14
+categories:
+  - Python
+  - Data Science Applications
+  - Large Language Models
+format: 
+    html:
+        self-contained: true
+        code-fold: false
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+        mermaid:
+            theme: neutral
+theme: flatly
+image: vino2.png
+---
+
+## A Little Bit About Wine
+
+I haven't ever really talked about any of my other hobbies on this blog. Mostly because there isn't really a lot of overlap with the things I do for work, and what I do for leisure. Some of my favorite things are totally divorced from the computer: cooking, wine, mixology, and reading to name a few. However, what spurred this work is actually a very real world issue:
+
+*I was getting sniped on my favorite wine retailer's site!*
+
+To back up for a minute: for those of who couldn't care less about wine, let me explain. There is a lot of fine wine in the world. Often we think of things like Bordeaux, Burgandy, or Napa Valley as the "kings" of the most revered and expensive wines. Some of the things I am most interested in are often among the hardest to come by: producers from small regions (the [Jura](https://en.wikipedia.org/wiki/Jura_wine) in France, for example), smaller cult-y innovators ([Keller](https://www.vomboden.com/growers/keller/)), or simply rare bottlings that often don't make it into many stores (López de Heredia's [whites and Roses](https://www.barberry.io/wines/a3ce9c93-1782-4588-b9b6-0f9082089018)). For me, some of the fun is seeking out the rare and unusual and tasting truly unique things. There's a bit of a thrill fussing over rare allocations (maybe a bit like collecting pokemon cards). The biggest problem is that there are lots of other people like me, and not very much to go around.
+
+![A few estimable examples from the Jura, Mosel, and Rioja](vino.PNG){width="40%"}
+
+So, after losing out on a few really choice selections I decided to try and build something to help increase my chances.
+
+### The Problem
+
+Let's lay this out like any other data science problem:
+
+1.  A wine retailer sends out intermittent "private collection" email blasts to their subscribers. These emails have lots of rare and unusual wines for sale at great prices.
+2.  Lots of people get these emails, so the *really* good wines typically get snapped up almost instantly.
+3.  Things move fast, so even if I get to view the sales almost immediately, I have a very short time to decide on a purchase.
+
+My core idea was to try and come up with a method that would notify me as soon as the email hit my inbox, and then quickly prepare me a shortened list of things to examine and decide on. The goal here was to reduce, as much as possible, the interval between seeing the wines and making a purchasing decision. A minute or two might mean the difference between getting something I wanted and missing out.[^1]
+
+[^1]: Yes, I know I probably could have just made a standard bot that would buy things for me, but I only really trust myself with my finger on the trigger
+
+## The Solution
+
+My solution was to write up some code to do a few things. First, I needed to know when the emails arrived to my inbox within a very short period of time. Second, I needed to then follow the link to the sales page and get the full listing of wines for sale. Finally, I needed to identify ONLY the wines I would be interested in buying and send them to my phone or email so I could quickly review them. I wrote up some code to do this using the Google gmail API for the email monitoring, and a separate script to pull all the listings from the sales page.
+
+If you want to review the whole codebase, I have it up on my personal github page [here](https://github.com/gmcirco/email-wine-alert/tree/main). The most important parts are:
+
+-   [Scan](https://github.com/gmcirco/email-wine-alert/blob/main/src/email_monitor.py) my personal gmail account for the sales email
+
+-   [Scrape](https://github.com/gmcirco/email-wine-alert/blob/main/src/search_wines.py) the listings off the sales page
+
+-   [Email and text](https://github.com/gmcirco/email-wine-alert/blob/main/src/send_email.py) me back purchase recommendations
+
+The last thing I needed to decide on was how to get only the most relevant recommendations to myself quickly.
+
+### And a Bit More About the Bot
+
+I initially thought that I could just write up a config file containing all the names of wines and producers that I wanted to buy, and then check for their presence in the scraped listings using regex. However, with virtually little extra effort I figured I could use an LLM to identify whether the wines I wanted were present AND provide some recommendations if the exact ones were not present. My idea was to write a prompt that would contain all my preferences, then give a series of rules on how to evaluate whether to recommend something to me or not. The end goal here is that I wanted to end up with a tightly curated list of things to buy that were either: (1) an exact producer I wanted to buy or (2) something very similar that I would probably like.
+
+For the AI component I wrote up a short prompt. The task I gave the LLM was to review a full list of wines for sale in the link from the email (about 70 to 80 wines total), identify the top 5 most relevant based on my stated preferences, and send me a text and email with direct links to buy them. Implementing the actual LLM component was simple compared to all the web scraping stuff. I defined a system role laying out broad the rules of how to pick wines, then populated the body of the prompt with a detailed selection about my wine preferences. (Incidentally, if you want to buy me a good Christmas gift, feel free to closely peruse the list below). To give the LLM more context on things that I like I first defined some broad categories (countries, regions, and grape varietals), then more specific ones (producers).
+
+### Wine recommending prompt
+
+```{python}
+#| eval: false
+#| code-fold: true
+
+ROLE = """You are a wine expert. Your goal is to review a list of wines that are 
+available for purchase. Your PRIMARY GOAL is to review a list of preferences 
+based on country, region, grape, and producer, and choose ONLY the wines that are 
+close matches based on similarities to these listed preferences. If no wines 
+are a close match, you may suggest none of them. Rely CLOSELY on the list
+of preferences provided to you.
+"""
+
+def create_prompt(wines_list):
+    prompt = f"""
+        1. First, review this list of preferences:
+
+        ## Region Preferences
+        - (France): Jura, Champagne, Burgandy, Loire, Alsace, Savoie
+        - (United States): California, Willamette Valley
+        - (Spain): Andalucia, Canary Islands
+        - (Portugal): Dão, Maideria
+        - (Germany): Mosel, Baden
+
+        ## Grape Preferences
+        - Chardonnay, Savignin, Aligote, Chenin Blanc, Riesling, Pinot Noir, Trousseau, Poulsard
+
+        ## Producer Preferences
+        - France:
+            * (Jura): Ganevat, Tissot, Gahier, Labet, Marnes Blanches, Chatillon, Les Bottes Rouges, Tony Bornard, Domaine de Saint Pierre, Nicolas Jacob
+            * (Champagne): Marguet, Laherte Frères, Georges Laval, Suenen
+            * (Burgandy): DeMoor, Sylvain Pataille
+            * (Savoie): Camille et Mathieu Apffel, Jean-Yves Péron, Belluard, Domaine du Gringet
+            * (Loire): Chateau Yvvone, Jean-Pierre Robinot
+        - United States:
+            * (California): Arnot-Roberts, Ridge, Outward, Scar of the Sea, Iruai, Pax Mahle
+            * (Willamette Valley): Martin Woods, Ken Wright, Kelley Fox
+        - Spain:
+            * López de Heredia
+            * Cota 45, Ramiro Ibáñez
+            * Commando G
+            * Envinate
+        - Portugal:
+            * João Pato
+        - Germany:
+            * (Mosel): Ulli Stein, JJ Prum, Peter Lauer, Julian Haart
+            * (Obermosel): Jonas Dostert
+            * (Rheinhessen): Keller
+            * (Saar): Hofgut Falkenstein
+            * Wasenhaus
+
+        ## Highest Priority Wines
+            - Jura Chardonnay & Savagnin (sous voile)
+            - Jura Macvin, Vin de Paille
+            - Red wines from Nicolas Jacob
+            - White or Rosé López de Heredia
+            - Large format wines (1.5L or 3L)
+
+        2. Next, review this list of wines available for sale:
+        {wines_list}
+
+        3. Based on the preferences listed in step 1, suggest a MAXIMUM of 5 wines to purchase.
+            - ONLY choose from the wines that are available for sale under step 2
+            - If a producer has more than 1 wine present, ONLY CHOOSE UP TO 2 of their wines
+            - If a wine is present that matches the "Highest Priority Wines" section, you MUST include it
+            - You may make suggestions for wines that are not present in the "Producer Preferences" section
+            - If no wines are a close match, make your best effort to suggest AT LEAST one wine that matches preferences
+
+        4. Closely follow these rules to generate your output:
+            - Provide your response as a properly formatted JSON object.
+            - You MUST include the name of the wine, the producer, and a link to the wine in the shop.
+            - You MUST respond ONLY with valid JSON, without any extra text or explanation
+            - The JSON should be a single array of objects
+            - Follow the format below EXACTLY:
+
+        ## Example Output
+
+        {{"Wine": "[name of wine]", "Producer": "[producer name]", "URL": "[url]"}}
+        """
+
+    return prompt
+
+```
+
+Aside from the preferences in the prompt, I tell the LLM to follow some rules about not choosing all wines from a single producer, and to always recommend things that I deem "highest priority". Finally, I tell it to give me results as a object parseable as JSON so I can quickly unpack it.
+
+### The main workflow
+
+From experience I know with some certainty when the emails come in: they arrive exclusively on weekdays, and during a certain 30 minute period of the late morning. I use the Windows scheduler to execute the code via a `.bat` file at a specific hour of the morning when I know the emails typically come in. This just activates the code in main, which continually scans my inbox for the email for the next ten minutes or so. If it's found, then the rest of the process kicks off.
+
+The function `export_shop_link()` simply looks for an email from the retailer containing a specific subject line. The next step of the process opens the email up, goes to the specific link that leads to the shop, and scrapes the listings into a list of dicts. These get passed directly into the prompt, which the LLM then uses to make a suggestion. It also passes along the exact hyperlinks in the output which is sent back to my email with a text notification.
+
+```{python}
+#| eval: false
+
+CARRIER_GATEWAY = "vtext.com"
+TO_PHONE_NUMBER = json.loads(os.getenv('TO_PHONE_NUMBER', '[]'))
+TO_EMAIL = json.loads(os.getenv("TO_EMAIL", "[]"))
+FROM_EMAIL = os.getenv("FROM_EMAIL")
+GMAIL_PASS = os.getenv("GMAIL_AUTH_TOKEN")
+
+TOTAL_TIME_DURATION_MINUTES = 15 
+TIME_INTERVAL_SECONDS = 60
+TIME_DURATION_SECONDS = TOTAL_TIME_DURATION_MINUTES*60
+TIME_BEGIN = datetime.now()
+TIME_END = TIME_BEGIN + timedelta(seconds=TIME_DURATION_SECONDS)
+
+if __name__ == "__main__":
+    logging.info("Starting wine suggestion monitor...")
+    # logic:
+    # daily, at 11:20 AM, main.py is triggered by scheduler
+    # main then continues to scan at 1 min intervals until:
+        # time runs out (~15 minutes) = END
+        # a valid email is found = END
+
+    while datetime.now() < TIME_END:
+        link = export_shop_link()
+
+        # run if a valid link is found
+        if link:
+            logging.info(f"Found a valid link: {link}")
+            listed_wines = scrape_wines_from_page(link)
+
+            suggestions_json = suggest_wines(listed_wines)
+            suggestions = json.loads(suggestions_json)
+
+            email_body = format_email(suggestions)
+
+            # push notifications
+            for to_person in TO_EMAIL:
+                send_email("Your Wine Picks 🍷", email_body, to_person, FROM_EMAIL, GMAIL_PASS)
+
+            for to_number in TO_PHONE_NUMBER:
+                send_sms_via_email(to_number, CARRIER_GATEWAY, FROM_EMAIL, GMAIL_PASS)
+
+            logging.info(f"Suggestions: {suggestions}")
+            break
+        else:
+            logging.info("No emails found.")
+            time.sleep(TIME_INTERVAL_SECONDS)
+            
+logging.info("Wine monitor script ended.")
+
+```
+
+The result is a text message to my phone, and a link to my inbox with the AI's best guess picks. Here was an example I generated during testing. The following was actually a pretty good set of selections. I am a big fan of DeMoor (they are listed by name in my list of recommendations), and Dauvissat is another good rec as a legendary Chablis producer, if a bit out of my price range. It was a good test too - I modified the prompt after this to only give me a max of 2 wines from the same producer, to avoid the list filling up with a single hit.
+
+![A selection of bot-curated selections from Burgandy and Chablis](picks.png){width="75%"}
