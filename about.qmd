@@ -20,7 +20,7 @@ about:
 
 ## Who Am I?
 
-I'm Gio Circo, a Ph.D. in criminology and former assistant professor. I currently work at Gainwell Technologies as a data scientist. My work at Gainwell focuses primarily on models for payment integrity (fraud detection, and anomaly detection), synthetic data generation, and deep learning models for insurance subrogation.
+I'm Gio Circo, a Ph.D. in criminology and former assistant professor. I currently work at Gainwell Technologies leading one of our AI teams as senior data scientist. Some of my work at Gainwell has focused on models for payment integrity (fraud detection, and anomaly detection), synthetic data generation, and deep learning models for insurance subrogation. I currently work on AI and LLM models for quality assurance, call summarization, and other applications.
 
 Outside of work I love running, cooking, making cocktails, and drinking wine.
 

@@ -1,0 +1,200 @@
+---
+title: "Re-Discovering Spatial Scan Statistics"
+subtitle: "Detecting 'hot spots' of auto accidents"
+author: Gio Circo, Ph.D.
+date: 2025-24-10
+categories:
+  - R
+  - Anomaly Detection
+format: 
+    html:
+        self-contained: true
+        code-fold: false
+        mainfont: "Roboto"
+        section-divs: true
+        toc: true
+        title-block-banner: true
+        mermaid:
+            theme: neutral
+theme: flatly
+image: ecdf.png
+---
+
+```{r}
+#| include: false
+#| warning: false
+#| code-fold: true
+
+library(spdep)
+library(sf)
+library(tidyverse)
+
+# ...in feet
+MIN_ELLIPSE_SIZE = 2e5
+MAX_ELLIPSE_SIZE = 1e6
+ELLIPSE_NUM_STEPS = 20
+ELLIPSE_SIZE_STEPS = round(seq(MIN_ELLIPSE_SIZE, MAX_ELLIPSE_SIZE, length.out = ELLIPSE_NUM_STEPS))
+
+# some funcs
+compute_rate <- function(X) {
+  births <- sum(X$BIR79)
+  sids <- sum(X$SID79)
+  
+  return(list(x = sids, n = births))
+}
+
+# compute a bernoulli log-likelihood
+# try and mimic the approach from SATSCAN
+# let GPT figure out the finer points here
+bernoulli_llr <- function(c, n, C, N) {
+  if (c / n <= (C - c) / (N - n))
+    return(0)  # I()=0
+  
+  # expected values under null
+  Ec <- n * (C / N)
+  En_c <- n - Ec
+  E_Cc <- (N - n) * (C / N)
+  E_NnCc <- (N - n) - E_Cc
+  
+  # log-likelihood ratio
+  llr <- 0
+  if (c > 0)
+    llr <- llr + c * log(c / Ec)
+  if ((n - c) > 0)
+    llr <- llr + (n - c) * log((n - c) / En_c)
+  if ((C - c) > 0)
+    llr <- llr + (C - c) * log((C - c) / E_Cc)
+  if (((N - n) - (C - c)) > 0) {
+    llr <- llr + ((N - n) - (C - c)) * log(((N - n) - (C - c)) / E_NnCc)
+  }
+  
+  return(max(0, llr))
+}
+
+# load, transform
+nc <- st_read(system.file("shapes/sids.gpkg", package = "spData")[1], quiet =
+                TRUE)
+nc <- st_transform(nc, crs = 32019) # lamberts conformal conic
+```
+
+## Spatial Scan Statistics
+
+Spatial scan statistics were one of the first topics I studied in grad school. The 
+
+## Replicating the NC SIDS Study
+
+### Identifying high clusters
+
+So the basic workflow is as follows:
+
+1. The spatial scan works by passing an ellipse of radius $r$ over each county centroid $c$. 
+2. For each county $c$ we compute the bernoulli log-likelihood ratio within $r$ to the remainder of the study region.
+3. We then repeat steps 1&2 for a fixed value of steps.
+4. The primary cluster is the ellipse which maximizes the bernoulli log-likelihood 
+
+Below you can see how I define some constants. I define a minimum and maximum ellipse radius in feet (here I am just using a circle), along with the number of steps we take between the minimum and maximum size. The `ELLIPSE_SIZE_STEPS` gives us a vector of 20 radii to pass over each of the counties. So for 100 counties over 20 different size steps, we get 2000 
+
+```{r}
+#| eval: false
+#| code-fold: false
+
+MIN_ELLIPSE_SIZE = 2e5
+MAX_ELLIPSE_SIZE = 1e6
+ELLIPSE_NUM_STEPS = 20
+ELLIPSE_SIZE_STEPS = round(seq(MIN_ELLIPSE_SIZE, MAX_ELLIPSE_SIZE, length.out = ELLIPSE_NUM_STEPS))
+```
+
+The code below performs the loop and adds the results to a dataframe `llr_df`. This will allow us to quickly sort and pull the results.
+
+```{r}
+#| code-fold: true
+#| warning: false
+
+nc <- nc %>%
+  mutate(rate = (SID74 / BIR74) * 1000)
+
+# get county centroids
+centroids <- st_centroid(nc)
+
+llr_df <- tibble()
+
+for (j in seq_along(ELLIPSE_SIZE_STEPS)) {
+  ellipse_size <- ELLIPSE_SIZE_STEPS[j]
+  
+  llr_list <- vector("list", nrow(centroids))
+  
+  for (i in seq_len(nrow(centroids))) {
+    # 1 choose a single county
+    buff <- st_buffer(centroids[i, ], ellipse_size)
+    
+    # 2 get all counties within 'buff'
+    z <- centroids[buff, ]
+    z_idx <- centroids$CNTY_ID %in% z$CNTY_ID
+    G <- centroids[!z_idx, ]
+    
+    # compute rates
+    Z <- compute_rate(z)
+    A <- compute_rate(G)
+    
+    c <- Z$x
+    n <- Z$n
+    C <- A$x + c
+    N <- A$n + n
+    
+    # store county index and log likelihood ratio
+    llr_df <- bind_rows(
+      llr_df,
+      tibble(
+        idx = i,
+        llr = bernoulli_llr(c, n, C, N),
+        idx_ellipse_size = as.character(j),
+        cases = c,
+        births = n
+      ),
+    )
+  }
+}
+
+```
+
+After running this we have a fully populated dataframe containing the bernoulli log-likelihood for each potential cluster centroid, the size of the elipse around that centroid, and the number of births and deaths in that cluster. For example the output looks something like this:
+
+```{r}
+#| echo: false
+head(llr_df)
+```
+
+To identify the primary cluster we just need to select the maximum log-likelihood:
+
+```{r}
+#| code-fold: true
+
+
+# get the most likely cluster & select its buffer
+idx_max_llr <- llr_df$idx[llr_df$llr == max(llr_df$llr)]
+idx_max_buff <- as.numeric(llr_df$idx_ellipse_size[llr_df$llr == max(llr_df$llr)])
+new_buff <- st_buffer(centroids[idx_max_llr, ], ELLIPSE_SIZE_STEPS[idx_max_buff])
+
+# compute the rate
+llr_df$rate <- (llr_df$cases / llr_df$births)*1000
+```
+
+...and plot it:
+
+```{r}
+#| echo: false
+ggplot() +
+  geom_sf(data = nc, aes(fill = rate)) +
+  geom_sf(data = centroids) + 
+  geom_sf(data = new_buff, color = "red", fill = NA, size=1) +
+  scale_fill_viridis_c() +
+  theme_void() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(face="bold"))
+```
+
+Here we see that the location selected is a cluster of 6 counties centered on Robeson county. This region observed 127 cases of SIDS out of 45,976 live births which is a rate of 2.76 cases per 1,000 births. This is in comparison to the global rate for North Carolina at 2.02 per 1,000. To note - my numbers here don't line up exactly with the one from Kulldorff's 1997 paper. I think the sample data I am working with is slightly different. However, more importantly, the primary cluster I identified contains the exact same counties in his paper. So our bit of reverse engineering worked.
+
+## Other Applications: Pedestrian Injuries in NYC
+
+Let's look at another question that originally 
