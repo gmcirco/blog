@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/gridpred-demo/gridpred.html",
       "/posts/spatial-scan/spatial_scan.html",
       "/posts/wine-reqs/wine.html",
       "/posts/uv-testing/fine-tuning.html",

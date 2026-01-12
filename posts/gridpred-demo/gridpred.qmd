@@ -1,0 +1,196 @@
+---
+title: "Introducing 'GridPred'"
+subtitle: "Spatial grid prediction using machine learning models"
+author: Gio Circo, Ph.D.
+date: 2026-01-11
+categories:
+  - Python
+  - Data Science Applications
+bibliography: refs.bib
+format: 
+  html:
+    self-contained: true
+    code-fold: false
+    mainfont: "Roboto"
+    section-divs: true
+    toc: true
+    title-block-banner: true
+    mermaid:
+      theme: neutral
+theme: flatly
+image: map.png
+---
+
+```{python}
+# | include: false
+import pandas as pd
+import numpy as np
+from gridpred.evaluate.metrics import evaluate, pai, pei, rri
+from gridpred.model.random_forest import RandomForestGridPred
+from gridpred.plotting import visualize_predictions
+from gridpred.prediction import GridPred
+
+root_dir = "/home/gmcirco/Documents/Projects/data/hartford_robberies"
+
+crime_data = f"{root_dir}/input/hartford_robberies.csv"
+predictor_features = f"{root_dir}/input/hartford_pois.csv"
+region_shapefile = f"{root_dir}/input/hartford.shp"
+```
+
+## Spatial Crime Prediction Models
+
+There are no shortage of crime prediction models available today. In fact, [stuff]
+
+My goal for this project was to put together a fairly simple, minimal, and effective workflow for setting up disparate sets of data into something that can be used in a machine learning model (a sort of plug-and-play model). I wanted to avoid overt complexity, because there is ample research that prior crime counts are often the best predictor of future crime events[@gorr2003short]. The actual described workflow below is, in fact, inspired by earlier work that was demonstrated in Dallas[@wheeler2021mapping].
+
+## Working with `GridPred`
+
+With this in mind, To this end, the absolute minimal set of functions `GridPred` does is create a spatial grid over a set of input points (like crime), split them into a training and evaluation set, and allows you to pass them into a machine learning model. For a lot of use cases, this might get you 80 - 90% there.
+
+Below, we import the key modules and define define the inputs. The key functions are all contained under the core `GridPred` class under `gridpred.prediction`. The library optionally contains a number of helper functions to aid with model fitting, visualization, and metrics calculations.
+
+For importing, at a minimum you need to provide either a pandas dataframe or csv file containing a longitudinal set of crime data with a date field and longitude and latitude fields:
+
+```{python}
+#| eval: false
+#| code-fold: show
+
+# import all relevant functions
+import pandas as pd
+import numpy as np
+from gridpred.evaluate.metrics import evaluate, pai, pei, rri
+from gridpred.model.random_forest import RandomForestGridPred
+from gridpred.plotting import visualize_predictions
+from gridpred.prediction import GridPred
+
+# inputs
+crime_data = "input/hartford_robberies.csv"
+predictor_features = "input/hartford_pois.csv"
+region_shapefile = "input/hartford.shp"
+```
+
+If possible, you should also provide additional predictor features in the same format as the input crime data. If you have a shapefile that marks the boundry of your study area, you can pass that as well to make sure the metrics calculated correspond strictly to the region's boundaries.
+
+```{python}
+#| code-fold: show
+
+# define variable names
+time_var = "year"
+features_var = "types"
+
+# spatial projections
+# includes the coordinate reference system of the input crime data
+# as well as a desired projection for all spatial objects
+input_crime_crs = 3508
+projected_crs = 3508
+
+# size of the grid to use (in units based on projection)
+grid_size = 400
+
+
+# This initalizes the GridPred class with the specified data
+gridpred = GridPred(
+    input_crime_data=crime_data,
+    input_features_data=predictor_features,
+    input_study_region=region_shapefile,
+    crime_time_variable=time_var,
+    features_names_variable=features_var,
+    input_crs=input_crime_crs,
+)
+```
+
+The `prepare_data` function takes all of our inputs and creates a tabular dataset `X` that can be used in a prediction model. Printing the object below shows that we have the counts of 2017 robberies, as well as the nearest distance to a variety of potentially criminogenic features (gas stations, bars, night clubs, etc...). `y` is the hold-out evaluation set (by default, it is the most recent time value)
+
+```{python}
+# This generates the input to the regression model
+gridpred.prepare_data(
+    grid_cell_size=grid_size,
+    do_projection=True,
+    projected_crs=projected_crs
+)
+
+# Look at top 5 values in the predictor matrix
+# is stored as a class object `X`
+gridpred.X.head(5).round(2)
+```
+
+By default, when creating the predictor dataset, `GridPred` sets aside $t-2$ as the outcome for training the model, and $t-1$ for evaluation. All remaining time periods are used as count features in the model.
+
+### Predictor Models
+
+For the actual modelling portion, users can specify *any* model that accepts a tabular input format. For simplicity we can just use a `RandomForestGridPred` which is primarily a wrapper around a `scikit-learn` Random Forest model with some convience functions added on top. But you could just as easily import any other model and run them separately.
+
+```{python}
+# very basic demo model workflow
+# can replace with xgboost or whatever model
+X = gridpred.X
+y = gridpred.y
+
+rf = RandomForestGridPred(
+    n_estimators=500, criterion="poisson", random_state=42
+)
+rf.fit(X, y)
+y_pred = rf.predict(X)
+```
+
+```{python}
+# print feature importances
+# TODO: in future, can be logged and plotted
+importances = pd.Series(rf.get_feature_importances(), index=X.columns)
+print(importances.sort_values(ascending=False))
+```
+
+```{python}
+# plotting
+region_grid = gridpred.region_grid
+visualize_predictions(region_grid, y_pred)
+```
+
+### Evaluation Metrics
+
+We can compute a number of standard crime-prediction metrics like the Predictive Accuracy Index (PAI), the Predective Effecicency Index (PEI), and the Rate Recapture Index (RRI) which are already pre-defined in the library. You can pass in a dict of metrics or a simple list of the functions on their own.
+
+Furthermore, you can pass any valid function to `evaluate`. You can also define any other arbitrary set of functions as long as it takes the values `y_true` and `y_pred` as an argument. An example below shows a custom function defined for computing the hit rate (proportion of total crimes in the top x% of predicted hot spots).
+
+```{python}
+# Pass a dict of pre-defined library metrics
+METRICS = {'PAI': pai, 'PEI': pei, 'RRI': rri}
+
+print(
+    evaluate(
+        y_true=gridpred.eval,
+        y_pred=y_pred,
+        metrics=METRICS,
+        region_grid=region_grid,
+        round_digits=2
+    )
+)
+```
+
+You can also define any other kind of metric you want. For example, here's one where we define a hit rate function (proportion of all crimes in hot spot areas).
+
+```{python}
+# function for hit rate, add to dict and evaluate alongside others
+def hit_rate(y_true, y_pred, top_fraction=0.01, **kwargs):
+
+    # ensure arrays
+    y_true = y_true.values
+    k = int(np.ceil(len(y_pred) * top_fraction))
+
+    # top predicted cells
+    idx = np.argsort(y_pred)[-k:]
+
+    return y_true[idx].sum() / y_true.sum() if y_true.sum() > 0 else 0.0
+```
+
+```{python}
+print(
+    evaluate(
+        y_true=gridpred.eval,
+        y_pred=y_pred,
+        metrics=[pai, hit_rate],
+        region_grid=region_grid,
+        round_digits=2,
+    )
+)
+```

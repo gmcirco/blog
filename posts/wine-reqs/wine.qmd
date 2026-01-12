@@ -1,5 +1,5 @@
 ---
-title: "And Now For Somthing Completely Different..."
+title: "And Now For Something Completely Different..."
 subtitle: "Building a personal wine reccomendation bot"
 author: Gio Circo, Ph.D.
 date: 2025-7-14
@@ -216,4 +216,3 @@ The result is a text message to my phone, and a link to my inbox with the AI's b
 ![A selection of bot-curated selections from Jura and Savoie](picks.png){width="75%"}
 
 I have a lot of Jura picks on my list, which most of these are (all except the Belluard). There's two whites, a savagnin from Ganevat and a chardonnay from Tissot, plus another Tissot red and a more obscure Poulsard from Montborgeau. I don't have Montbourgeau explicitly listed on my preferences, but this is a great suggestion. I love Poulsard and I really like the wines from this producer. All five of these wines would be something that I would want to buy, and I got the recs pushed directly to my phone within a minute of the email hitting my inbox!
-

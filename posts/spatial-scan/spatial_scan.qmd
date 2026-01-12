@@ -1,8 +1,8 @@
 ---
 title: "Re-Discovering Spatial Scan Statistics"
-subtitle: "Detecting 'hot spots' of auto accidents"
+subtitle: "Detecting 'hot spots' of SIDS cases"
 author: Gio Circo, Ph.D.
-date: 2025-24-10
+date: 2025-10-24
 categories:
   - R
   - Anomaly Detection
@@ -17,7 +17,7 @@ format:
         mermaid:
             theme: neutral
 theme: flatly
-image: ecdf.png
+image: nc_map.png
 ---
 
 ```{r}
@@ -79,7 +79,7 @@ nc <- st_transform(nc, crs = 32019) # lamberts conformal conic
 
 ## Spatial Scan Statistics
 
-Spatial scan statistics were one of the first topics I studied in grad school. The 
+Spatial scan statistics were one of the first topics I studied in grad school. The
 
 ## Replicating the NC SIDS Study
 
@@ -87,12 +87,12 @@ Spatial scan statistics were one of the first topics I studied in grad school. T
 
 So the basic workflow is as follows:
 
-1. The spatial scan works by passing an ellipse of radius $r$ over each county centroid $c$. 
-2. For each county $c$ we compute the bernoulli log-likelihood ratio within $r$ to the remainder of the study region.
-3. We then repeat steps 1&2 for a fixed value of steps.
-4. The primary cluster is the ellipse which maximizes the bernoulli log-likelihood 
+1.  The spatial scan works by passing an ellipse of radius $r$ over each county centroid $c$.
+2.  For each county $c$ we compute the bernoulli log-likelihood ratio within $r$ to the remainder of the study region.
+3.  We then repeat steps 1&2 for a fixed value of steps.
+4.  The primary cluster is the ellipse which maximizes the bernoulli log-likelihood
 
-Below you can see how I define some constants. I define a minimum and maximum ellipse radius in feet (here I am just using a circle), along with the number of steps we take between the minimum and maximum size. The `ELLIPSE_SIZE_STEPS` gives us a vector of 20 radii to pass over each of the counties. So for 100 counties over 20 different size steps, we get 2000 
+Below you can see how I define some constants. I define a minimum and maximum ellipse radius in feet (here I am just using a circle), along with the number of steps we take between the minimum and maximum size. The `ELLIPSE_SIZE_STEPS` gives us a vector of 20 radii to pass over each of the counties. So for 100 counties over 20 different size steps, we get 2000
 
 ```{r}
 #| eval: false
@@ -157,7 +157,7 @@ for (j in seq_along(ELLIPSE_SIZE_STEPS)) {
 
 ```
 
-After running this we have a fully populated dataframe containing the bernoulli log-likelihood for each potential cluster centroid, the size of the elipse around that centroid, and the number of births and deaths in that cluster. For example the output looks something like this:
+After running this we have a fully populated dataframe containing the bernoulli log-likelihood for each potential cluster centroid, the size of the ellipse around that centroid, and the number of births and deaths in that cluster. For example the output looks something like this:
 
 ```{r}
 #| echo: false
@@ -195,6 +195,4 @@ ggplot() +
 
 Here we see that the location selected is a cluster of 6 counties centered on Robeson county. This region observed 127 cases of SIDS out of 45,976 live births which is a rate of 2.76 cases per 1,000 births. This is in comparison to the global rate for North Carolina at 2.02 per 1,000. To note - my numbers here don't line up exactly with the one from Kulldorff's 1997 paper. I think the sample data I am working with is slightly different. However, more importantly, the primary cluster I identified contains the exact same counties in his paper. So our bit of reverse engineering worked.
 
-## Other Applications: Pedestrian Injuries in NYC
-
-Let's look at another question that originally 
+Maybe this isn't the most insightful blog post I've ever done, but I always find it useful to dig into old methods and confirm I understand how they actually work. I've learned so much more trying to translate the mathematical method into code than just pure reading.

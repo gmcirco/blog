@@ -2,7 +2,7 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://gmcirco.github.io/blog/posts/wine-reqs/wine.html</loc>
-    <lastmod>2025-10-13T02:29:10.034Z</lastmod>
+    <lastmod>2026-01-12T03:51:09.396Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/uv-testing/fine-tuning.html</loc>
@@ -13,32 +13,36 @@
     <lastmod>2025-10-13T02:29:10.031Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/rtm-spatial/rtm.html</loc>
-    <lastmod>2025-10-13T02:29:10.028Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/spatial-scan/spatial_scan.html</loc>
+    <lastmod>2026-01-12T02:53:22.599Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/presidential-polls-2024/election.html</loc>
+    <loc>https://gmcirco.github.io/blog/posts/prompt-testing/prompt_testing.html</loc>
     <lastmod>2025-10-13T02:29:10.013Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
+    <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
     <lastmod>2025-10-13T02:29:10.011Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/nlp-falls/nlp_falls.html</loc>
+    <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
     <lastmod>2025-10-13T02:29:10.009Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/mmm-bayesian/mmm.html</loc>
+    <loc>https://gmcirco.github.io/blog/posts/modern-bert/rank-rerank.html</loc>
     <lastmod>2025-10-13T02:29:10.008Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
-    <lastmod>2025-10-13T02:29:10.006Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/knn-anomaly/knn_anomaly.html</loc>
+    <lastmod>2025-10-13T02:29:10.007Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
-    <lastmod>2025-10-13T02:29:10.003Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/hello-world/hello.html</loc>
+    <lastmod>2025-10-13T02:29:10.004Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/gridpred-demo/gridpred.html</loc>
+    <lastmod>2026-01-12T03:51:52.797Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/fake-tickets/fake-tickets.html</loc>
@@ -89,28 +93,32 @@
     <lastmod>2025-10-13T02:29:10.003Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/hello-world/hello.html</loc>
-    <lastmod>2025-10-13T02:29:10.004Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
+    <lastmod>2025-10-13T02:29:10.003Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/knn-anomaly/knn_anomaly.html</loc>
-    <lastmod>2025-10-13T02:29:10.007Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
+    <lastmod>2025-10-13T02:29:10.006Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/modern-bert/rank-rerank.html</loc>
+    <loc>https://gmcirco.github.io/blog/posts/mmm-bayesian/mmm.html</loc>
     <lastmod>2025-10-13T02:29:10.008Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/outlier-ensemble/alsoe_ensembling.html</loc>
+    <loc>https://gmcirco.github.io/blog/posts/nlp-falls/nlp_falls.html</loc>
     <lastmod>2025-10-13T02:29:10.009Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/pca-timeseries/pca_ts.html</loc>
+    <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
     <lastmod>2025-10-13T02:29:10.011Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/prompt-testing/prompt_testing.html</loc>
+    <loc>https://gmcirco.github.io/blog/posts/presidential-polls-2024/election.html</loc>
     <lastmod>2025-10-13T02:29:10.013Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/rtm-spatial/rtm.html</loc>
+    <lastmod>2025-10-13T02:29:10.028Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/spatial-simulation/spatial-sim.html</loc>
@@ -123,9 +131,5 @@
   <url>
     <loc>https://gmcirco.github.io/blog/posts/vibe-coding/vibe-coding.html</loc>
     <lastmod>2025-10-13T02:29:10.032Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/spatial-scan/spatial_scan.html</loc>
-    <lastmod>2025-10-30T23:43:53.992Z</lastmod>
   </url>
 </urlset>

@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Gio Circo, Ph.D.">
-<meta name="dcterms.date" content="2026-12-10">
+<meta name="dcterms.date" content="2025-10-24">
 
 <title>Re-Discovering Spatial Scan Statistics – A Blog for Data Stuff</title>
 <style>
@@ -4058,7 +4058,7 @@ window.Quarto = {
   <div class="quarto-title-banner page-columns page-full">
     <div class="quarto-title column-body">
       <h1 class="title">Re-Discovering Spatial Scan Statistics</h1>
-            <p class="subtitle lead">Detecting ‘hot spots’ of auto accidents</p>
+            <p class="subtitle lead">Detecting ‘hot spots’ of SIDS cases</p>
                                 <div class="quarto-categories">
                 <div class="quarto-category">R</div>
                 <div class="quarto-category">Anomaly Detection</div>
@@ -4079,7 +4079,7 @@ window.Quarto = {
       <div>
       <div class="quarto-title-meta-heading">Published</div>
       <div class="quarto-title-meta-contents">
-        <p class="date">December 10, 2026</p>
+        <p class="date">October 24, 2025</p>
       </div>
     </div>
     
@@ -4100,7 +4100,6 @@ window.Quarto = {
   <ul class="collapse">
   <li><a href="#identifying-high-clusters" id="toc-identifying-high-clusters" class="nav-link" data-scroll-target="#identifying-high-clusters">Identifying high clusters</a></li>
   </ul></li>
-  <li><a href="#other-applications-pedestrian-injuries-in-nyc" id="toc-other-applications-pedestrian-injuries-in-nyc" class="nav-link" data-scroll-target="#other-applications-pedestrian-injuries-in-nyc">Other Applications: Pedestrian Injuries in NYC</a></li>
   </ul>
 </nav>
     </div>
@@ -4183,7 +4182,7 @@ window.Quarto = {
 <span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 </div>
-<p>After running this we have a fully populated dataframe containing the bernoulli log-likelihood for each potential cluster centroid, the size of the elipse around that centroid, and the number of births and deaths in that cluster. For example the output looks something like this:</p>
+<p>After running this we have a fully populated dataframe containing the bernoulli log-likelihood for each potential cluster centroid, the size of the ellipse around that centroid, and the number of births and deaths in that cluster. For example the output looks something like this:</p>
 <div class="cell">
 <div class="cell-output cell-output-stdout">
 <pre><code># A tibble: 6 × 5
@@ -4221,13 +4220,10 @@ window.Quarto = {
 </div>
 </div>
 <p>Here we see that the location selected is a cluster of 6 counties centered on Robeson county. This region observed 127 cases of SIDS out of 45,976 live births which is a rate of 2.76 cases per 1,000 births. This is in comparison to the global rate for North Carolina at 2.02 per 1,000. To note - my numbers here don’t line up exactly with the one from Kulldorff’s 1997 paper. I think the sample data I am working with is slightly different. However, more importantly, the primary cluster I identified contains the exact same counties in his paper. So our bit of reverse engineering worked.</p>
-</section>
-</section>
-<section id="other-applications-pedestrian-injuries-in-nyc" class="level2">
-<h2 class="anchored" data-anchor-id="other-applications-pedestrian-injuries-in-nyc">Other Applications: Pedestrian Injuries in NYC</h2>
-<p>Let’s look at another question that originally</p>
+<p>Maybe this isn’t the most insightful blog post I’ve ever done, but I always find it useful to dig into old methods and confirm I understand how they actually work. I’ve learned so much more trying to translate the mathematical method into code than just pure reading.</p>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->
