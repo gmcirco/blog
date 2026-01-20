@@ -39,17 +39,19 @@ region_shapefile = f"{root_dir}/input/hartford.shp"
 
 ## Spatial Crime Prediction Models
 
-There are no shortage of crime prediction models available today. In fact, [stuff]
+There are no shortage of crime prediction models available today. In fact, prediction models are fairly ubiqutious nowadays in almost every field. Crime prediction has a specical place - primarily because of fanciful allusions to sci-fi books like [The Minority Report](https://archive.org/details/Fantastic_Universe_v04n06_1956-01/page/n5/mode/2up). However, crime prediction is really not much different than other types of prediction models. Crime, like many other human processes follows consistent, repeatable patterns [@mcdowall2012seasonal]. Prediction models can take advantage of these patterns and provide some insight into the drivers and causes [@brantingham2013crime]. 
 
-My goal for this project was to put together a fairly simple, minimal, and effective workflow for setting up disparate sets of data into something that can be used in a machine learning model (a sort of plug-and-play model). I wanted to avoid overt complexity, because there is ample research that prior crime counts are often the best predictor of future crime events[@gorr2003short]. The actual described workflow below is, in fact, inspired by earlier work that was demonstrated in Dallas[@wheeler2021mapping].
+However, making prediction models *useful* is an entirely different issue altogether. One of the biggest complaints I had when I was in the academic world, is that it is easy to generate very complex, idiosyncratic models that score high on some metric. However, whether the model is   
+
+My goal for this project was to put together a fairly simple, minimal, and effective workflow for setting up disparate sets of data into something that can be used in a machine learning model (a sort of plug-and-play model). I wanted to avoid overt complexity, because there is ample research that prior crime counts are often the best predictor of future crime events[@gorr2003short]. The actual described workflow below is, in fact, inspired by earlier work that was demonstrated in Dallas[@wheeler2021mapping]. In addition, I wanted the results to be simple, clean, and allow for quick assessment 
 
 ## Working with `GridPred`
 
-With this in mind, To this end, the absolute minimal set of functions `GridPred` does is create a spatial grid over a set of input points (like crime), split them into a training and evaluation set, and allows you to pass them into a machine learning model. For a lot of use cases, this might get you 80 - 90% there.
+With all this in mind, I tried to define a limited workflow for my project. The absolute minimal set of functions `GridPred` does is: (1) create a spatial grid over a set of input points (like crime), (2) split them into a training and evaluation set, and (3) allows users to pass them into a machine learning model. For a lot of use cases, this might get someone 80 - 90% to a completed analysis. 
 
-Below, we import the key modules and define define the inputs. The key functions are all contained under the core `GridPred` class under `gridpred.prediction`. The library optionally contains a number of helper functions to aid with model fitting, visualization, and metrics calculations.
+A quick walkthrough: Below, we import the key modules and define define the inputs. The key functions are all contained under the core `GridPred` class under `gridpred.prediction`. The library optionally contains a number of helper functions to aid with model fitting, visualization, and metrics calculations.
 
-For importing, at a minimum you need to provide either a pandas dataframe or csv file containing a longitudinal set of crime data with a date field and longitude and latitude fields:
+For importing, at a minimum, you need to provide either a pandas dataframe or csv file containing a longitudinal set of crime data with a date field and longitude and latitude fields:
 
 ```{python}
 #| eval: false
@@ -99,7 +101,7 @@ gridpred = GridPred(
 )
 ```
 
-The `prepare_data` function takes all of our inputs and creates a tabular dataset `X` that can be used in a prediction model. Printing the object below shows that we have the counts of 2017 robberies, as well as the nearest distance to a variety of potentially criminogenic features (gas stations, bars, night clubs, etc...). `y` is the hold-out evaluation set (by default, it is the most recent time value)
+The `prepare_data` function takes all of the inputs and creates a tabular dataset `X` that can be passed as a list of predictor features in a machine learning model. Using this demo data, printing the generated regression input shows that it created a feature set with the counts of 2017 robberies, as well as the nearest distance to a variety of potentially criminogenic features (gas stations, bars, night clubs, etc...). `y` is the hold-out evaluation set. 
 
 ```{python}
 # This generates the input to the regression model
@@ -114,11 +116,11 @@ gridpred.prepare_data(
 gridpred.X.head(5).round(2)
 ```
 
-By default, when creating the predictor dataset, `GridPred` sets aside $t-2$ as the outcome for training the model, and $t-1$ for evaluation. All remaining time periods are used as count features in the model.
+By default, when creating the predictor dataset, `GridPred` sets aside $t-2$ as the outcome for training the model, and $t-1$ for evaluation. All remaining time periods are used as count features in the model. Here the most recent time value is 2019 robberies.
 
 ### Predictor Models
 
-For the actual modelling portion, users can specify *any* model that accepts a tabular input format. For simplicity we can just use a `RandomForestGridPred` which is primarily a wrapper around a `scikit-learn` Random Forest model with some convience functions added on top. But you could just as easily import any other model and run them separately.
+For the actual modelling portion, users can specify *any* model that accepts a tabular input format. For simplicity we can just use a `RandomForestGridPred` which is primarily a wrapper around a `scikit-learn` Random Forest model with some convenience functions added on top. But you could just as easily import any other model and run them separately.
 
 ```{python}
 # very basic demo model workflow
@@ -148,9 +150,7 @@ visualize_predictions(region_grid, y_pred)
 
 ### Evaluation Metrics
 
-We can compute a number of standard crime-prediction metrics like the Predictive Accuracy Index (PAI), the Predective Effecicency Index (PEI), and the Rate Recapture Index (RRI) which are already pre-defined in the library. You can pass in a dict of metrics or a simple list of the functions on their own.
-
-Furthermore, you can pass any valid function to `evaluate`. You can also define any other arbitrary set of functions as long as it takes the values `y_true` and `y_pred` as an argument. An example below shows a custom function defined for computing the hit rate (proportion of total crimes in the top x% of predicted hot spots).
+`GridPred` has a number of standard crime-prediction metrics like the Predictive Accuracy Index (PAI), the Predective Effecicency Index (PEI), and the Rate Recapture Index (RRI) already pre-defined in the library. These can be passed in a dict of metrics or a simple list of the functions on their own.
 
 ```{python}
 # Pass a dict of pre-defined library metrics
@@ -167,7 +167,7 @@ print(
 )
 ```
 
-You can also define any other kind of metric you want. For example, here's one where we define a hit rate function (proportion of all crimes in hot spot areas).
+Furthermore, you can pass any valid function to `evaluate`. Any other arbitrary set of functions are valid as long as it takes the values `y_true` and `y_pred` as an argument. An example below shows a custom function defined for computing the hit rate (proportion of total crimes in the top x% of predicted hot spots).
 
 ```{python}
 # function for hit rate, add to dict and evaluate alongside others
