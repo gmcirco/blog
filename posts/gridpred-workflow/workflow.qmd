@@ -1,0 +1,418 @@
+---
+title: "Visualizing predictor effects using accumulated local effect (ALE) plots"
+subtitle: "Identifying 'hot spots' of car crashes in NYC"
+author: Gio Circo, Ph.D.
+date: 2026-02-20
+categories:
+  - Python
+  - Data Science Applications
+  - Data Visualization
+bibliography: refs.bib
+format: 
+  html:
+    self-contained: true
+    code-fold: false
+    mainfont: "Roboto"
+    section-divs: true
+    toc: true
+    title-block-banner: true
+    mermaid:
+      theme: neutral
+theme: flatly
+image: ale_plot.png
+---
+
+## Improving Model Explainability with ALE
+
+One of the major drawbacks with many machine learning models is that explainability is often challenging. Unlike methods that rely on more conventional statistical inference, machine learning models are often opaque on *why* a certain prediction was made. Consider the example of a random forest. A specific prediction derives from the aggregation over many shallow decision trees, so understanding how a prediction varies *on average* is much less straightforward than a linear model.
+
+ALE, or accumulated local effects, are a method to help decompose the effect of a predictor feature on the subsequent prediction. In a more conventional setup you can consider these very similar to a partial effects plot. The end goal here is to isolate how the effect of the predictor changes, on average, over different input values (e.g. does it monotonically increase? Does it decay?).
+
+To show this, I put together another example by using `gridpred` to build out a highly simplistic prediction model for car accidents. If you want a more step-by-step process of how `GridPred` works, can you go to the first blog post on it [here](https://gmcirco.github.io/blog/posts/gridpred-demo/gridpred.html).
+
+### Pulling crash data from the NYC data portal
+
+For this example I rely on [car accident report data](https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Crashes/h9gi-nx95/about_data) from the New York City Open Data portal. For predictor features, I also extract the location of pedestrian crossings and bus stops. The assumption here is these locations are more prone to accidents with cars suddenly stopping or moving around busses.
+
+The code below does a lot of work of pulling crash data by interacting with the NYC data via Socrata API requests. I use a bunch of helper functions to query each of the individual datasets, which I then combine into a format that is usable by `GridPred`. At the end of the process we have a gridded map of NYC containing a count of vehicle accidents over a roughly 8 week lookback period, as well as the distance to the nearest set of predictor features.
+
+```{python}
+#| code-fold: true
+
+import os
+from datetime import datetime, timedelta
+
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+import numpy as np
+import skexplain
+from dotenv import load_dotenv
+from shapely.geometry import shape
+from sodapy import Socrata
+
+from gridpred.evaluate.metrics import evaluate, pai, pei, rri
+from gridpred.model.random_forest import RandomForestGridPred
+from gridpred.plotting import visualize_predictions
+from gridpred.prediction import GridPred
+
+# Set up client
+load_dotenv()
+APP_TOKEN = os.getenv("APP_TOKEN")
+client = Socrata("data.cityofnewyork.us", APP_TOKEN)
+
+# Set plotting theme
+sns.set_theme(context='notebook', style="ticks", palette='deep', font='sans-serif', font_scale=1, color_codes=True, rc=None)
+
+# local  funcs for data
+def get_date_lookback(lookback_days=14):
+    "Retrieve a date from a number of lookback days"
+    current_date = datetime.today()
+    lookback_date = current_date - timedelta(days=lookback_days)
+
+    return lookback_date.strftime("%Y-%m-%d")
+
+def get_features(borough):
+    "Retrieve all predictor features"
+
+    # bus stop point locations
+    bus_stops = pd.DataFrame(client.get(
+        "t4f2-8md7",
+        select="'BusStop' AS type,Longitude, Latitude",
+        where=f"boro_name = '{borough.capitalize()}'",
+        limit=1000,
+    ))
+
+    # pedesterian crossings point locations
+    ped_xing = pd.DataFrame(client.get(
+        "xc4v-ntf4",
+        select="'PedXing' AS type, long AS Longitude, lat AS Latitude",
+        limit=7000,
+    ))
+    return pd.concat([bus_stops, ped_xing])
+
+def get_study_region_spatial(borough, espg="4326"):
+    "Retrieve a boro boundaries, parse as a geopandas object"
+    data = client.get("gthc-hcne",
+           select="*",
+           where=f"boroname = '{borough.capitalize()}'")
+
+    # parse api response to geopandas
+    rows = []
+    for r in data:
+        rows.append({
+            **{k: v for k, v in r.items() if k != "the_geom"},
+            "geometry": shape(r["the_geom"])
+        })
+
+    return(gpd.GeoDataFrame(rows, crs=f"EPSG:{espg}"))
+
+# -- Workflow stuff --- #
+
+#  define a borough and a lookback period
+BOROUGH = "BROOKLYN"
+LOOKBACK_DAYS = 28*4
+
+# retrieve point locations of crashes within date range
+date = get_date_lookback(LOOKBACK_DAYS)
+
+results = client.get("h9gi-nx95",
+                     select="crash_date, borough, latitude, longitude",
+                     where=f"crash_date >= '{date}' AND borough = '{BOROUGH}' AND latitude != 0 AND longitude != 0",
+                     limit=10000)
+results_df = pd.DataFrame.from_records(results)
+
+# point features
+feat_df = get_features(BOROUGH)
+
+# region spatial
+boro_region = get_study_region_spatial(BOROUGH)
+
+# create a dataframe where we define time periods
+# model uses t-1 for training
+# t=0 for validation
+
+# Parse datetime
+results_df["crash_date"] = pd.to_datetime(results_df["crash_date"])
+
+# Get the oldest date
+min_date = results_df["crash_date"].min()
+
+# Compute 2-week periods forward in time
+results_df["timevar"] = (
+    (results_df["crash_date"] - min_date).dt.days // 14
+) + 1
+```
+
+After setting up the data we just define the input variables, feature names, and create the `GridPred` object. Below, the workflow runs a test model using the first 6 weeks of data as predictors, week 7 as the outcome, and week 8 as the validation set. We get the performance metrics and then run the model again on the FULL set (weeks 1-7 as predictors, week 8 as outcome) and get predictions for the next week.
+
+```{python}
+#| code-fold: true
+# define variable names
+time_var = "timevar"
+features_var = "type"
+
+# spatial projections
+# includes the coordinate reference system of the input crime data
+# as well as a desired projection for all spatial objects
+input_crime_crs = 4326
+projected_crs = 3857
+
+# size of the grid to use (in units based on projection)
+grid_size = 300
+
+# This initalizes the GridPred class with the specified data
+gridpred = GridPred(
+    input_crime_data=results_df,
+    input_features_data=feat_df,
+    features_names_variable=features_var,
+    crime_time_variable=time_var,
+    input_study_region=boro_region,
+    input_crs=input_crime_crs,
+)
+
+# This generates the input to the regression model
+gridpred.prepare_data(
+    grid_cell_size=grid_size,
+    do_projection=True,
+    projected_crs=3857
+)
+# very basic demo model workflow
+# can replace with xgboost or whatever model
+X = gridpred.X
+y = gridpred.y
+
+rf = RandomForestGridPred(
+    n_estimators=1000, criterion="poisson", random_state=42
+)
+rf.fit(X, y)
+y_pred = rf.predict(X)
+
+# check eval metrics on test then rerun
+region_grid = gridpred.region_grid
+METRICS = {'PAI': pai, 'PEI': pei, 'RRI': rri}
+
+print(
+   evaluate(
+        y_true=gridpred.eval,
+        y_pred=y_pred,
+        metrics=METRICS,
+        region_grid=region_grid,
+        round_digits=2
+    )
+)
+
+# now next-weeks prediction
+Xfinal = gridpred.X_final
+yfinal = gridpred.y_final
+
+rf_final = RandomForestGridPred(
+    n_estimators=1000, criterion="poisson", random_state=42
+)
+rf_final.fit(Xfinal, yfinal)
+y_pred_final = rf_final.predict(Xfinal)
+
+```
+
+For reference, the final input dataset looks like this below, where the predictors are counts of accidents over the prior 7 weeks, as well as the distance, in feet, to the nearest pedestrian crossing `PedXing` and bus stop `BusStop`.
+
+```{python}
+#| echo: false
+gridpred.X.head(10).round(2)
+```
+
+The map below shows the predicted hot spots of car crashes. Primarily, these are near the main highways around the Brooklyn and Williamsburg bridges.
+
+```{python}
+#| echo: false
+#| fig-cap: Predicted intensity of auto accidents for week of 2026-02-23. Gridded squares are 300x300 foot zones.
+visualize_predictions(region_grid, y_pred_final)
+```
+
+## Accumulated Local Effects
+
+To start, I think reading through Christoph Molnar's free book [Interpretable Machine Learning](https://christophm.github.io/interpretable-ml-book/ale.html) is an essential starting point [@molnar2020interpretable]. To reiterate (without getting too much into the weeds) our goal is to identify differences in predictions conditional on a small "window" around the feature set. This second part is important, because ALE plots are constrained to observed, local differences in predictions. This avoids getting predictions from combinations of features that would never exist (one of the examples Molnar gives is an improbable house prediction for a 30 square meter house containing 10 rooms). Because we accumulate predictions over small regions of the observed feature space, we avoid a lot of the issues described above.
+
+For a quick example, we can look at the the most important features in our Random Forest model. We see that distance to the nearest `PedXing` and `BusStop` are the top two features. Now, one question might be "how close to the nearest pedestrian crossing or bus stop is car accident risk increased?" This is actually a plausible question, as it might affect where signs are placed or inform environmental design elements.
+
+
+```{python}
+#| code-fold: true
+importances = pd.Series(rf_final.get_feature_importances(), index=Xfinal.columns)
+print(importances.sort_values(ascending=False))
+```
+
+To do this, we just use some underlying code from `skexplain`. Below I generate estimates of the ALE for all features in the dataset. To generate the ALE we iterate over bootstrap samples of the original dataset for computational efficiency. The result is a multivariate array with ALE estimates for each feature, over each bootstrap sample. I then use some helper functions to pull out the estimates for plotting. `skexplain` has some nice built-in plotting functions, but I prefer to generate the plots myself.
+
+```{python}
+#| code-fold: true
+#| echo: false
+#| warning: false
+explainer = skexplain.ExplainToolkit(
+    estimators=('name', rf_final),
+    X=Xfinal,
+    y=yfinal,
+)
+
+# compute 1d and 2d
+ale_1d_ds = explainer.ale(features='all', n_bootstrap=20,subsample=1000, n_jobs=4, n_bins=20)
+
+# Generate the 2D ALE data
+feature_pairs = [('PedXing', 'BusStop')]
+ale_2d_ds = explainer.ale(
+    features=feature_pairs, 
+    n_bootstrap=20,      
+    subsample=1000, 
+    n_bins=20,
+)
+```
+
+```{python}
+#| code-fold: true
+def unpack_feature(ds, feat_name):
+    """
+    Extracts the bin values and ALE values for a specific feature.
+    """
+
+    # get the bin values and ale calculations for selected feature
+    values_bin = ds[f"{feat_name}__bin_values"].values
+    values_ale = ds[f"{feat_name}__name__ale"].values
+    
+    return values_bin, values_ale
+
+def unpack_feature_2d(ds, feat_x, feat_y):
+    """
+    Extracts bin values and ALE values for a 2D feature interaction.
+    """
+
+    # bin values
+    x_bin = ds[f"{feat_x}__bin_values"].values
+    y_bin = ds[f"{feat_y}__bin_values"].values
+
+    # handle possible ordering of feature names
+    key1 = f"{feat_x}__{feat_y}__name__ale"
+    key2 = f"{feat_y}__{feat_x}__name__ale"
+
+    if key1 in ds:
+        ale_vals = ds[key1].values
+    elif key2 in ds:
+        ale_vals = ds[key2].values
+    else:
+        raise KeyError(f"No 2D ALE found for {feat_x}, {feat_y}")
+
+    return x_bin, y_bin, ale_vals
+
+def plot_feature_ale_1d(ds, feature, xlim=None, ylim=None):
+
+    # unpack feature data
+    values_bin, values_ale = unpack_feature(ds, feature)
+    
+    # aggregate across bootstrap iterations
+    val_min = values_ale.min(axis=0)
+    val_avg = values_ale.mean(axis=0)
+    val_max = values_ale.max(axis=0)
+
+    # plot
+    plt.figure(figsize=(5, 4))
+    plt.fill_between(
+        x=values_bin,
+        y1=val_min,
+        y2=val_max,
+        alpha=0.2,
+        color='#0077BB'
+    )
+    sns.lineplot(
+        x=values_bin,
+        y=val_avg,
+        color='#0077BB',
+        label='Mean ALE'
+    )
+    plt.axhline(y=0, color='#CC3311', linestyle='--', linewidth=1)
+
+    plt.title(f"1D ALE Plot: {feature}")
+    plt.xlabel(f"{feature} Values")
+    plt.ylabel("ALE Effect")
+
+    # axis constraints
+    if xlim is not None:
+        plt.xlim(xlim)
+
+    if ylim is not None:
+        plt.ylim(ylim)
+
+    sns.despine()
+    plt.tight_layout()
+    plt.show()
+
+def plot_feature_ale_2d(
+    ds,
+    feat_x,
+    feat_y,
+    xlim=None,
+    ylim=None,
+    clim=None  # (vmin, vmax) for color scaling
+):
+
+    # unpack
+    x_bin, y_bin, ale_vals = unpack_feature_2d(ds, feat_x, feat_y)
+
+    # aggregate across bootstraps
+    ale_mean = ale_vals.mean(axis=0)
+
+    # meshgrid
+    X, Y = np.meshgrid(x_bin, y_bin, indexing="ij")
+
+    # symmetric scaling by default
+    if clim is None:
+        vmax = np.abs(ale_mean).max()
+        vmin = -vmax
+    else:
+        vmin, vmax = clim
+
+    plt.figure(figsize=(6, 5))
+    contour = plt.contourf(
+        X,
+        Y,
+        ale_mean,
+        levels=20,
+        cmap="RdBu_r",
+        vmin=vmin,
+        vmax=vmax
+    )
+
+    plt.colorbar(contour, label="ALE Effect")
+
+    plt.title(f"2D ALE Plot: {feat_x} × {feat_y}")
+    plt.xlabel(feat_x)
+    plt.ylabel(feat_y)
+
+    # axis constraints
+    if xlim is not None:
+        plt.xlim(xlim)
+
+    if ylim is not None:
+        plt.ylim(ylim)
+
+    sns.despine()
+    plt.tight_layout()
+    plt.show()
+```
+
+Below we get the 1D ALE plots for two of the features: distance to bus stops and pedestrian crossings. We limit the predictions to within the first 1000 feet, since that is well within the area of interest. The ALE effect is the centered effect, so the y-axis is based on increases or decreases from the mean prediction.
+
+```{python}
+#| layout: "[1, 1]"
+#| code-fold: true
+plot_feature_ale_1d(ale_1d_ds, 'PedXing',xlim=(0,1000))
+plot_feature_ale_1d(ale_1d_ds, 'BusStop',xlim=(0,1000))
+```
+
+The results we see here logically make sense. For both pedestrian crossings and bus stops, the closer we are the more likely an auto accident is. This effect decreases pretty steadily as distance increases. For bus stops at around 1000 feet there is no real effect, while increased distance from pedestrian crossings have *lower* number of accidents. The latter effect is probably due to the fact that neighborhoods with fewer crossings are structurally different than those that do.
+
+We can also examine the interaction between both features using a contour plot. Below, we see an interesting interaction where areas very close to a bus stop AND pedestrian crossing have lower risk together. However, the risk of accidents is increased in distances exclusively near bus stops OR pedestrian crossings. Again, some of these results are probably structural elements related to how the road network is set up in different neighborhoods.
+
+```{python}
+#| code-fold: true
+plot_feature_ale_2d(ale_2d_ds, 'PedXing','BusStop',xlim=(0,1000),ylim=(0,1000))
+```

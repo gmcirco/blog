@@ -19,3 +19,6 @@ docs/posts/prompt-testing/notebooks
 posts/prompt-testing/cache
 /posts/prompt-testing/notebooks
 **/*.quarto_ipynb
+
+# envs
+*.env

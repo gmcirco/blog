@@ -203,4 +203,4 @@ print(
 
 ### What's next?
 
-In a few follow-up blog posts, I'll be talking a bit more about features as I continue to add them. Specifically, I'm looking to add additional plotting metrics for feature importance (e.g. SHAP), as well as some diagnostics that help plot out the evaluation metrics like PEI and PAI across different hot spot thresholds. 
+In a few follow-up blog posts, I'll be talking a bit more about features as I continue to add them. Specifically, I'm looking to add additional plotting metrics for feature importance (e.g. SHAP), as well as some diagnostics that help plot out the evaluation metrics like PEI and PAI across different hot spot thresholds.
