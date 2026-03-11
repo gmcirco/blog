@@ -1,0 +1,218 @@
+---
+title: "Structured Data Extraction with Local Models"
+subtitle: "Classifying 311 complaints with Qwen3.5"
+author: Gio Circo, Ph.D.
+date: 2026-03-11
+categories:
+  - Python
+  - Large Language Models
+format: 
+  html:
+    self-contained: true
+    code-fold: false
+    mainfont: "Roboto"
+    section-divs: true
+    toc: true
+    title-block-banner: true
+    mermaid:
+      theme: neutral
+theme: flatly
+image: nyc311.png
+---
+
+## (Not so large) Language Models
+
+I work with LLMs all day at my day job. I am lucky to be in a position where I have access to the most up-to-date models for all the major players (OpenAI, Anthropic, etc...). These companies have done a very good job at making it easy to access their APIs and swap between models. In addition, all of the frontier models today are orders of magnitude too large to run locally. However, with all the big models there has been a pretty remarkable breakthrough in *smaller* models. And when I say small, I mean something that a person with a mid-range PC or laptop might be able to run locally. 
+
+## A Structured Data Extraction Task with Qwen3
+
+For this short test, I wanted to work on a task I have a lot of experience already - text classification. The goal here is for the LLM to read a bit of unstructured text and then apply a pre-defined label onto the text. The data I use here is a tiny, forgotten dataset languishing in the NYC Open Data catalog: [Public feedback on 311 request/complaint types](https://data.cityofnewyork.us/City-Government/Public-feedback-on-311-request-complaint-types/7ffd-6gs9/about_data). This is a tiny selection of complaints that people have written to the 311 reporting page on the NYC website. The complaints come in looking like this:
+
+> Can’t report fake license plates that aren’t paper, the ones bought online that look like real plates from NY and other states like Oklahoma
+
+On the complaint page, these are linked to an agency that handles the complaint. So we have a small labeled set of complaints with partnered agencies
+
+### Defining our problem
+
+For my purposes I wanted to see how quickly I could spin up a small Qwen3.5 model and have it classify unstructured text. I opted for [Qwen3.5-9B](https://huggingface.co/Qwen/Qwen3.5-9B#video-input) which has about a 20 gig footprint total. I installed it via Ollama and was able to get it running in my terminal in under 10 minutes flat. 
+
+After that I wrote up some pretty generic Python code to wrap the invocation in code to parse the complaints from a dataframe. On top of that I defined some Pydantic schemas to constrain the model and perform type checking on the back-end. One cool thing is that even small models like Qwen can support JSON schemas via `response_format={"type": "json_object"}`. It seems like just a year ago this was a headache with some of the earlier OpenAI models and was not available for any notable small models. 
+
+In total, this probably took me less than hour to write. If I vibe-coded it with Codex or Claude Code we could probably knock that down to 15 minutes. Full code is below:
+
+```{python}
+#| code-fold: true
+#| eval: false
+
+import json
+import os
+import pandas as pd
+from openai import OpenAI
+from string import Template
+from enum import Enum
+from pydantic import BaseModel, Field, ValidationError
+
+# define some local AI stuff
+LOCAL_MODEL = 'qwen3:4b'
+CLIENT = client = OpenAI(
+    base_url='http://localhost:11434/v1',
+    api_key='ollama', \
+)
+
+# Define some extraction schema
+class CityAgency(str, Enum):
+    DHS = "Department of Homeless Services"
+    DOB = "Department of Buildings"
+    DSNY = "Department of Sanitation"
+    DEP = "Department of Environmental Protection"
+    NYPD = "New York City Police Department"
+    HPD = "Department of Housing Preservation and Development"
+    DPR = "Department of Parks and Recreation"
+    DOT = "Department of Transportation"
+    DCWP = "Department of Consumer and Worker Protection"
+
+class AgencyExtraction(BaseModel):
+    """Schema for extracting city agency mentions from text."""
+    complaint: str = Field(
+        description="5 word or less description of the complaint"
+    )
+    agency: CityAgency = Field(
+        description="Agency most responsible for the complaint"
+    )
+
+ROLE = ("You route New York City resident complaints to the most relevant agency."
+        "Select only from the provided list of agencies")
+
+BASE_PROMPT_STR = """
+Closely follow these instructions for routing resident complaints:
+1. Review the resident complaint and identify the core issue
+2. Based on determination of the core issue, assign the complaint to the most relevant city agency
+3. Return your output as a JSON output strictly following the schema below:
+
+${extraction_schema}
+
+TEXT TO PROCESS:
+${complaint}
+"""
+
+# Create the template object
+prompt_template = Template(BASE_PROMPT_STR)
+
+
+# invoke qwen
+def invoke(client, user_complaint):
+    schema_str = json.dumps(AgencyExtraction.model_json_schema(), indent=2)
+    prompt = prompt_template.substitute(
+        extraction_schema=schema_str,
+        complaint=user_complaint
+    )
+    try:
+        response = client.chat.completions.create(
+            messages=[
+                {'role': 'system', 'content': ROLE},
+                {'role': 'user', 'content': prompt}
+            ],
+            model=LOCAL_MODEL,
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        raw_content = response.choices[0].message.content
+        return AgencyExtraction.model_validate_json(raw_content)
+    except (ValidationError, Exception) as e:
+        print(f"Error during LLM invocation or validation: {e}")
+        return None
+
+# Parse a single complaint
+def process_complaint(complaint_text):
+    response = invoke(CLIENT, complaint_text)
+
+    if response is None:
+        return None 
+     
+    return {'agency': response.agency.value, 'summary': response.complaint}
+
+def main():
+    path = "data/Public_feedback_on_311_request_complaint_types_20260310.csv"
+    complaints_df = pd.read_csv(path).head(20) 
+    complaint_list = complaints_df["Customer Message"].dropna().astype(str).tolist()
+
+    # just store results in a list
+    all_results = []
+    
+    print(f"Starting extraction for {len(complaint_list)} complaints...")
+    
+    for single_complaint in complaint_list:
+        result = process_complaint(single_complaint)
+        if result:
+            all_results.append(result)
+            print(f"Processed: {result['summary']}")
+
+    # 4. Save the full run as a single JSON object
+    output_file = os.path.join("output", "processed_complaints.json")
+    
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(all_results, f, indent=4)
+
+    print(f"\nSuccessfully saved {len(all_results)} results to {output_file}")
+
+if __name__ == "__main__":
+    main()
+
+```
+
+### Running the model
+
+Now we run the code. My rig is custom and a bit old - I have 64 gigs of ram and a very modest GeForce RTX 3070 with only 8 gigs of VRAM. However, speed-wise, I was quite impressed with the performance. Each invocation took about 20 to 30 seconds, with the full run of 10 records taking about 5 minutes total. Again, pretty impressive on what I think is a pretty old machine. 
+
+After running the model, we get JSON output that looks like this, which corresponds to the first 10 records in the complaint dataframe:
+
+```{json}
+[
+    {
+        "agency": "Department of Homeless Services",
+        "summary": "Shelters steal phones, report online"
+    },
+    {
+        "agency": "Department of Buildings",
+        "summary": "Excessive lighting disturbing neighbors"
+    },
+    {
+        "agency": "Department of Sanitation",
+        "summary": "Dangerous icy walkway conditions"
+    },
+    {
+        "agency": "Department of Sanitation",
+        "summary": "icy sidewalk hazard"
+    },
+    {
+        "agency": "Department of Environmental Protection",
+        "summary": "idling vehicle health hazard"
+    },
+    {
+        "agency": "New York City Police Department",
+        "summary": "Abandoned police barricades"
+    },
+    {
+        "agency": "New York City Police Department",
+        "summary": "Recurring package thefts"
+    },
+    {
+        "agency": "Department of Housing Preservation and Development",
+        "summary": "filthy hallways"
+    },
+    {
+        "agency": "New York City Police Department",
+        "summary": "Report past reckless driving"
+    },
+    {
+        "agency": "Department of Environmental Protection",
+        "summary": "Vehicle exhaust noise option"
+    }
+]
+```
+
+With a tiny local model and a highly minimal prompt, we correctly classify 9/10 of the complaints to their department.
+
+## Think Small
+
+In general I think this bodes well for small LLMs or even "micro" LLMs that can run locally on devices and perform highly specific tasks. For some agencies, being able to deploy a free model locally saves inference costs and also makes business-user agreements with partner companies unnecessary. This is also a big win for agencies that are more privacy focused. You can easily deploy these models internally, and keep the data locked down to the server. Personally, I could see deploying several small models like these in mid-sized departments to help work on repetitive tasks that don't require big LLMs or a lot of overhead. In a world with a lot of big LLMs, it might pay to think *small*!
