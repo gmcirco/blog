@@ -3983,13 +3983,13 @@ vertical-align: -.125em;
 <blockquote class="blockquote">
 <p>Can’t report fake license plates that aren’t paper, the ones bought online that look like real plates from NY and other states like Oklahoma</p>
 </blockquote>
-<p>On the complaint page, these are linked to an agency that handles the complaint. So we have a small labeled set of complaints with partnered agencies</p>
+<p>On the complaint page, these are linked to an agency that handles the complaint. So we have a small labeled set of complaints paired with a agency that handles the request. Our task can then be to identify the core complaint from a comment and pair it with the appropriate agency.</p>
 <section id="defining-our-problem" class="level3">
 <h3 class="anchored" data-anchor-id="defining-our-problem">Defining our problem</h3>
-<p>For my purposes I wanted to see how quickly I could spin up a small Qwen3.5 model and have it classify unstructured text. I opted for <a href="https://huggingface.co/Qwen/Qwen3.5-9B#video-input">Qwen3.5-9B</a> which has about a 20 gig footprint total. I installed it via Ollama and was able to get it running in my terminal in under 10 minutes flat.</p>
-<p>After that I wrote up some pretty generic Python code to wrap the invocation in code to parse the complaints from a dataframe. On top of that I defined some Pydantic schemas to constrain the model and perform type checking on the back-end. One cool thing is that even small models like Qwen can support JSON schemas via <code>response_format={&quot;type&quot;: &quot;json_object&quot;}</code>. It seems like just a year ago this was a headache with some of the earlier OpenAI models and was not available for any notable small models.</p>
+<p>For my purposes I wanted to see how quickly I could spin up a small Qwen3.5 model and have it classify unstructured text. I opted for <a href="https://huggingface.co/Qwen/Qwen3.5-4B">Qwen3.5-4B</a> which has about a 10 gig footprint total. I installed it via Ollama and was able to get it running in my terminal in under 10 minutes flat.</p>
+<p>After that I wrote up some pretty generic Python code to wrap the invocation in code and parse the complaints from a csv. On top of that I defined some Pydantic schemas to constrain the model output and handle type-checking. One cool thing is that even small models like Qwen can support JSON schemas via <code>response_format={&quot;type&quot;: &quot;json_object&quot;}</code>. It seems like just a year ago this was a headache with even some of the earlier OpenAI models, and was definitely not available for any notable small models.</p>
 <p>In total, this probably took me less than hour to write. If I vibe-coded it with Codex or Claude Code we could probably knock that down to 15 minutes. Full code is below:</p>
-<div id="93a038ef" class="cell" data-execution_count="1">
+<div id="dcf031a0" class="cell" data-execution_count="1">
 <details class="code-fold">
 <summary>Code</summary>
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
@@ -4110,7 +4110,7 @@ vertical-align: -.125em;
 </section>
 <section id="running-the-model" class="level3">
 <h3 class="anchored" data-anchor-id="running-the-model">Running the model</h3>
-<p>Now we run the code. My rig is custom and a bit old - I have 64 gigs of ram and a very modest GeForce RTX 3070 with only 8 gigs of VRAM. However, speed-wise, I was quite impressed with the performance. Each invocation took about 20 to 30 seconds, with the full run of 10 records taking about 5 minutes total. Again, pretty impressive on what I think is a pretty old machine.</p>
+<p>Now we run the code. My rig is custom and a bit old - I have 64 gigs of ram and a very modest GeForce RTX 3070 with only 8 gigs of VRAM. However, speed-wise, I was quite impressed with the performance. Each invocation took about 10 to 20 seconds, with the full run of 10 records taking about 2-3 minutes total. Again, pretty impressive on what I think is a pretty old machine.</p>
 <p>After running the model, we get JSON output that looks like this, which corresponds to the first 10 records in the complaint dataframe:</p>
 <pre class="{json}"><code>[
     {
@@ -4159,7 +4159,7 @@ vertical-align: -.125em;
 </section>
 <section id="think-small" class="level2">
 <h2 class="anchored" data-anchor-id="think-small">Think Small</h2>
-<p>In general I think this bodes well for small LLMs or even “micro” LLMs that can run locally on devices and perform highly specific tasks. For some agencies, being able to deploy a free model locally saves inference costs and also makes business-user agreements with partner companies unnecessary. This is also a big win for agencies that are more privacy focused. You can easily deploy these models internally, and keep the data locked down to the server. Personally, I could see deploying several small models like these in mid-sized departments to help work on repetitive tasks that don’t require big LLMs or a lot of overhead. In a world with a lot of big LLMs, it might pay to think <em>small</em>!</p>
+<p>In general I think the future bodes well for small, or even “micro”, LLMs that can run locally on devices and perform highly specific tasks. For some organizations, being able to deploy a free model locally both saves inference costs and also makes business-user agreements with a partner company unnecessary. This is also a big win for organizations that are more privacy focused. You can easily deploy these models internally, and keep the data locked down to the server. Personally, I can see value deploying several small models like these in mid-sized departments to help work on repetitive tasks that don’t require big LLMs or a lot of overhead. In a world with a lot of big LLMs, it might pay to think <em>small</em>!</p>
 
 
 </section>
