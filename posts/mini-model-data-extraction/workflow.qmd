@@ -22,7 +22,7 @@ image: nyc311.png
 
 ## (Not so large) Language Models
 
-I work with LLMs all day at my day job. I am lucky to be in a position where I have access to the most up-to-date models for all the major players (OpenAI, Anthropic, etc...). These companies have done a very good job at making it easy to access their APIs and swap between models. In addition, all of the frontier models today are orders of magnitude too large to run locally. However, with all the big models there has been a pretty remarkable breakthrough in *smaller* models. And when I say small, I mean something that a person with a mid-range PC or laptop might be able to run locally. 
+I work with LLMs all day at my day job. I am lucky to be in a position where I have access to the most up-to-date models for all the major players (OpenAI, Anthropic, etc...). These companies have done a very good job at making it easy to access their APIs and swap between models. In addition, all of the frontier models today are orders of magnitude too large to run locally. However, with all the big models there has been a pretty remarkable breakthrough in *smaller* models. And when I say small, I mean something that a person with a mid-range PC or laptop might be able to run locally.
 
 ## A Structured Data Extraction Task with Qwen3
 
@@ -34,9 +34,9 @@ On the complaint page, these are linked to an agency that handles the complaint.
 
 ### Defining our problem
 
-For my purposes I wanted to see how quickly I could spin up a small Qwen3.5 model and have it classify unstructured text. I opted for [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) which has about a 10 gig footprint total. I installed it via Ollama and was able to get it running in my terminal in under 10 minutes flat. 
+For my purposes I wanted to see how quickly I could spin up a small Qwen3.5 model and have it classify unstructured text. I opted for [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) which has about a 10 gig footprint total. I installed it via Ollama and was able to get it running in my terminal in under 10 minutes flat.
 
-After that I wrote up some pretty generic Python code to wrap the invocation in code and parse the complaints from a csv. On top of that I defined some Pydantic schemas to constrain the model output and handle type-checking. One cool thing is that even small models like Qwen can support JSON schemas via `response_format={"type": "json_object"}`. It seems like just a year ago this was a headache with even some of the earlier OpenAI models, and was definitely not available for any notable small models. 
+After that I wrote up some pretty generic Python code to wrap the invocation in code and parse the complaints from a csv. On top of that I defined some Pydantic schemas to constrain the model output and handle type-checking. One cool thing is that even small models like Qwen can support JSON schemas via `response_format={"type": "json_object"}`. It seems like just a year ago this was a headache with even some of the earlier OpenAI models, and was definitely not available for any notable small models.
 
 In total, this probably took me less than hour to write. If I vibe-coded it with Codex or Claude Code we could probably knock that down to 15 minutes. Full code is below:
 
@@ -162,7 +162,7 @@ if __name__ == "__main__":
 
 ### Running the model
 
-Now we run the code. My rig is custom and a bit old - I have 64 gigs of ram and a very modest GeForce RTX 3070 with only 8 gigs of VRAM. However, speed-wise, I was quite impressed with the performance. Each invocation took about 10 to 20 seconds, with the full run of 10 records taking about 2-3 minutes total. Again, pretty impressive on what I think is a pretty old machine. 
+Now we run the code. My rig is custom and a bit old - I have 64 gigs of ram and a very modest GeForce RTX 3070 with only 8 gigs of VRAM. However, speed-wise, I was quite impressed with the performance. Each invocation took about 10 to 20 seconds, with the full run of 10 records taking about 2-3 minutes total. Again, pretty impressive on what I think is a pretty old machine.
 
 After running the model, we get JSON output that looks like this, which corresponds to the first 10 records in the complaint dataframe:
 

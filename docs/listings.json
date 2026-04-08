@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/ai-calibration/calibration.html",
       "/posts/mini-model-data-extraction/workflow.html",
       "/posts/gridpred-workflow/workflow.html",
       "/posts/gridpred-demo/gridpred.html",

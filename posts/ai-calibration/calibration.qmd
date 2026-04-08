@@ -1,0 +1,298 @@
+---
+title: "How Confident are AI Classifiers About Their Own Confidence?"
+subtitle: "Injury classsification using the 2024 NEISS"
+author: Gio Circo, Ph.D.
+date: 2026-04-08
+categories:
+  - Python
+  - Large Language Models
+format: 
+  html:
+    self-contained: true
+    code-fold: false
+    mainfont: "Roboto"
+    section-divs: true
+    toc: true
+    title-block-banner: true
+    mermaid:
+      theme: neutral
+theme: flatly
+image: conf.png
+bibliography: refs.bib
+---
+
+```{r}
+#| echo: false
+#| warning: false
+library(tidyverse)
+library(knitr)
+
+
+# load parsed csv results, convert logprobs to probabilities
+res <- read_csv(
+  "/home/gmcirco/Documents/Projects/injury-classifier/artifacts/output/narrative_results_20260406-095720.csv"
+) %>%
+  mutate(
+    across(contains("logprob_prob"), ~ exp(.)),
+    across(contains("logprob_label"), ~ as.character(.))
+  )
+
+# calculate calibration for confidence scores and logprobs
+calib_df <- res %>%
+  select(is_correct, confidence, body_part_logprob_prob_1) %>%
+  pivot_longer(-is_correct) %>%
+  mutate(
+    name = case_when(
+        name == 'confidence' ~ "AI confidence",
+        name == 'body_part_logprob_prob_1' ~ "Token log probability"
+    ),
+    bin = cut(value, breaks = seq(0, 1, by = 0.1), include.lowest = TRUE)
+  ) %>%
+  group_by(name, bin) %>%
+  summarise(
+    mean_conf = mean(value),
+    accuracy = mean(is_correct),
+    n = n(),
+    .groups = "drop"
+  )
+```
+
+## AI 'Confidence' Scores
+
+LLMs have found a lot of practical uses as text classifiers across a ton of different areas. In my day job we commonly use them to sort and classify documents into different categories for routing or processing. I would say these have largely supplanted the previous generation of BERT-esque based neural network models for natural language processing. Indeed, LLMs are typically quite good at a variety of classification tasks with fairly minimal instructions or pre-training required. 
+
+### How confident is "confident"?
+
+However, getting classification "probabilities" from an LLM is a bit more challenging than from conventional machine learning or neural network approaches. LLMs don't have an analagous `fit.predict_proba(X)` to retrieve classification probabilities. There are really two ways that I have seen this done for LLM classification models. Broadly speaking, they are:
+
+1. Prompt the LLM to estimate its confidence in the classification and return the result in the output
+2. Directly extract token-level probabilities from the model output
+
+The first is definitely the most common one I've seen, while the latter is slightly more direct and more unusual (but [directly supported](https://developers.openai.com/cookbook/examples/using_logprobs) by OpenAI!). My friend, Andy Wheeler, has a [good example](https://crimede-coder.com/blogposts/2026/ConfClassification) of doing the latter in his book[@wheeler2026large]. With this in mind, what I wanted to do for this post was to look into what For this post, I wanted to explore a bit about how close to reality the AI-generated confidence scores actually are.
+
+## Extracting Primary Injuries from the NEISS
+
+As a source of data for this test, I used the National Electronic Injury Surveillance System (NEISS). This is a useful source of information for testing extraction schemes because they contain hundreds of thousands of labeled examples with short medical naratives. Most of them look akin to this:
+
+> "26YOM STEPPED ON A NAIL WITH HIS RIGHT FOOT YESTERDAY AND STATES IT IS PAINFUL AND SWOLLEN DX: PUNCTURE WOUND RIGHT FOOT"
+
+For my testing purposes, I wrote an LLM-based extraction pipeline to review the medical narrative and then classify the *primary* injury described in the narrative. I ran a batch process on a sample of 500 narratives using `gpt-5-nano` as the LLM.
+
+If you're interested, the full set of code is [here](https://github.com/gmcirco/neiss-injury-classifier/tree/main). The real important parts are just the extraction schema and the prompt. The rest is just routing stuff to OpenAI's batch process. For the prompt I provide the full set of rules from the relevant section in the [NEISS coding manual](https://www.cpsc.gov/s3fs-public/January-2024-NEISS-CPSC-only-Coding-Manual.pdf?VersionId=bEaz2iKYDAlz8KA60KEKKrLrXZW3kLOj) for body parts. In addition, I add a sampling of labeled examples to help ground the AI with some real values (so called "few shot" or "k-shot" examples). In general, the extraction setup is quite minimal. Below I include the extraction schema, and the full prompt is [here](https://github.com/gmcirco/neiss-injury-classifier/blob/main/src/prompt.py).
+
+### Extraction Schema
+
+```python
+class BodyPart(str, Enum):
+    INTERNAL = "0"
+    SHOULDER = "30"
+    UPPER_TRUNK = "31"
+    ELBOW = "32"
+    LOWER_ARM = "33"
+    WRIST = "34"
+    KNEE = "35"
+    LOWER_LEG = "36"
+    ANKLE = "37"
+    PUBIC_REGION = "38"
+    HEAD = "75"
+    FACE = "76"
+    EYEBALL = "77"
+    LOWER_TRUNK = "79"
+    UPPER_ARM = "80"
+    UPPER_LEG = "81"
+    HAND = "82"
+    FOOT = "83"
+    BODY_25_50_PERCENT = "84"
+    ALL_PARTS_BODY = "85"
+    NOT_STATED_UNKNOWN = "87"
+    MOUTH = "88"
+    NECK = "89"
+    FINGER = "92"
+    TOE = "93"
+    EAR = "94"
+
+
+class InjuryClassification(BaseModel):
+    body_part: BodyPart = Field(
+        description="ID code for the primary body part injured or involved in the narrative"
+    )
+    reasoning: str = Field(
+        description="10 word or less description of why the body part was chosen"
+    )
+    confidence: float = Field(
+        description=(
+            "Confidence of the body part classification as a float from 0.0 to 1.0, "
+            "where 1.0 is absolute certainty, and 0.0 is completely unknown"
+        )
+    )
+```
+
+### Classification probabilities
+
+The goal is to get output that looks like this below:
+
+```json
+{"body_part": 88, "reasoning": "Diagnosis states upper lip laceration.", "confidence": 0.98}
+```
+
+My definition of "confidence" is intentionally kept fairly vague. I just tell the AI to keep it in the range of "absolute certainty" and "completely unknown". In my experience, most applications I have seen using confidence scores apply even less structure than this.
+
+For token probabilities, I extract them directly from the response payload, and get the top 5 in a format like this below:
+
+```{json}
+"top_logprobs": [
+                {
+                    "token": "88",
+                    "logprob": -0.0009117019944824278
+                },
+                {
+                    "token": "76",
+                    "logprob": -7.219661712646484
+                },
+                {
+                    "token": "80",
+                    "logprob": -10.270442962646484
+                },
+                {
+                    "token": "30",
+                    "logprob": -10.481380462646484
+                },
+                {
+                    "token": "75",
+                    "logprob": -10.715755462646484
+                }
+            ]
+```
+
+Because our classifications are numeric strings, each body part maps to a unique character token. So for this example, the highest probability token is "88" for "Mouth" with a probability of 0.999. The next-highest probability token is "76" for "Face". Technically we could return the token probabilities for the top 20 or 30 (or whatever value of `top_k` is set), but in practice the probabilities for the chosen token are *highly* biased toward 0.999+, and typically the highest 5 tokens returned are close to 1 in terms of probabilities.
+
+After running the model we get a fairly respectable accuracy of **86%**. I have no doubt that some more detailed prompting and k-shot examples could easily get this north of 95%.
+
+### Evaluating confidence scores
+
+The biggest drawback with these confidence scores is shared with many other classifiers: they are unlikely to be well *calibrated*. This means that there is no guarantee that the probabilities returned from the model closely map to the observed distribution of correct classifications. For example, a 95% probability in a well-calibrated model should expect to return a correct classification 95% of the time. Well-calibrated predictions are useful because they can help easily track to specific business KPIs.
+
+We can quickly get a summary of the confidence scores for the 500 classifications. Below, I have a calibration plot and table for both the AI-generated confidence scores, and the token probability. Looking at the two approaches, there are some notable differences. On the upper end the AI-generated confidence scores are actually really quite close to reality. It's only outside the upper end that thre is clear divergence. For example, the AI estimates a mean confidence of about 45% for 7 cases, but is 100% correct! 
+
+While neither is terribly well-calibrated outside the highest upper-end, the token log-probabilities are highly over-confident relative to the AI-generated ones. 
+
+::: panel-tabset
+
+### AI Confidence
+
+::: {layout-ncol=2}
+```{r}
+#| echo: false
+
+calib_df %>%
+    filter(name == "AI confidence") %>%
+ggplot(aes(x = mean_conf, y = accuracy)) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    color = "#BB5566"
+  ) +
+  geom_line(color = "#004488") +
+  geom_point(
+    size = 3,
+    fill = "#004488",
+    color = "white",
+    shape = 21,
+    stroke = 3
+  ) +
+  labs(
+    x = "Predicted Confidence",
+    y = "Empirical Accuracy",
+    title = "Calibration Plot - AI Generated 'Confidence' Score"
+  ) +
+  xlim(0, 1) +
+  ylim(0, 1) +
+  theme_minimal()
+```
+
+```{r}
+#| echo: false
+
+calib_df %>% filter(name == "AI confidence") %>% select(-name) %>% kable(digits = 2)
+```
+:::
+
+### Token Log-Probability
+
+::: {layout-ncol=2}
+
+```{r}
+#| echo: false
+
+calib_df %>%
+    filter(name == "Token log probability") %>%
+ggplot(aes(x = mean_conf, y = accuracy)) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    color = "#BB5566"
+  ) +
+  geom_line(color = "#DDAA33") +
+  geom_point(
+    size = 3,
+    fill = "#DDAA33",
+    color = "white",
+    shape = 21,
+    stroke = 3
+  ) +
+  labs(
+    x = "Predicted Confidence",
+    y = "Empirical Accuracy",
+    title = "Calibration Plot - Token Log Probability"
+  ) +
+  xlim(0, 1) +
+  ylim(0, 1) +
+  theme_minimal()
+```
+
+```{r}
+#| echo: false
+
+calib_df %>% filter(name == "Token log probability") %>% select(-name) %>% kable(digits = 2)
+```
+:::
+
+:::
+
+
+## Calibrating probabilities
+
+If we want to generate calibrated probabilities, the approach is slightly different in the multi-class scenario compared to the binary one. There are a few approaches, but the simplest seems to be a proposed "top versus all" approachpdf[@le2024confidence]. In short, this is really just a generalization of the binary case where we calibrate based on the correctness of the highest probability. In cases where we have many possible categories (here, over 20), it is difficult and probably not useful to directly calibrate each catgory. Rather, we use a model to calibrate the primary token probability. A simple way to do this is use isotonic regression, which applies a strictly increasing step function that maps back to the probabilities:
+
+```{r}
+# get the correct labels and token probabilities
+correct <- res$is_correct
+pred_prob <- res$body_part_logprob_prob_1
+
+# Do a top-versus-all calibration
+# using isotonic step function
+tva_iso <- isoreg(pred_prob, correct)
+tva_predict <- as.stepfun(tva_iso)
+calibrated_conf_iso <- tva_predict(pred_prob)
+
+# check what a token probability of .8 now maps to
+print(tva_predict(.85))
+```
+
+Now we see that the model re-maps probabilities to bins corresponding to observed accuracy. For example, an original token probability of .85 returns a calibrated probability of .61. The plot below shows how the original probabilities are remapped to a calibrated bins. In an actual production environment I would use a sample of cases to build the calibration model, validate this on a hold-out set, then apply it on future classifications.
+
+```{r}
+#| echo: false
+tibble(original_prob = pred_prob, calibrated_prob = calibrated_conf_iso) %>%
+  ggplot(aes(x = original_prob, y = calibrated_prob)) +
+  geom_point(size = 2, alpha = .3, color="#004488") +
+  geom_rug(alpha = .3, color="#004488")+
+    labs(
+    x = "Token Probability",
+    y = "Calibrated Probability",
+    title = "Isotonic Regression Calibration from Token Probability"
+  ) +
+  theme_minimal()
+```
