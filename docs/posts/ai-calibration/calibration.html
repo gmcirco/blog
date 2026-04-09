@@ -4002,7 +4002,7 @@ vertical-align: -.125em;
 <p>LLMs have found a lot of practical uses as text classifiers across a ton of different areas. In my day job we commonly use them to sort and classify documents into different categories for routing or processing. I would say these have largely supplanted the previous generation of BERT-esque based neural network models for natural language processing. Indeed, LLMs are typically quite good at a variety of classification tasks with fairly minimal instructions or pre-training required.</p>
 <section id="how-confident-is-confident" class="level3">
 <h3 class="anchored" data-anchor-id="how-confident-is-confident">How confident is “confident”?</h3>
-<p>However, getting classification “probabilities” from an LLM is a bit more challenging than from conventional machine learning or neural network approaches. LLMs don’t have an analagous <code>fit.predict_proba(X)</code> to retrieve classification probabilities. There are really two ways that I have seen this done for LLM classification models. Broadly speaking, they are:</p>
+<p>However, getting classification “probabilities” from an LLM is a bit more challenging than from conventional machine learning or neural network approaches. LLMs don’t have an analogous <code>fit.predict_proba(X)</code> to retrieve classification probabilities. There are really two ways that I have seen this done for LLM classification models. Broadly speaking, they are:</p>
 <ol type="1">
 <li>Prompt the LLM to estimate its confidence in the classification and return the result in the output</li>
 <li>Directly extract token-level probabilities from the model output</li>
@@ -4012,7 +4012,7 @@ vertical-align: -.125em;
 </section>
 <section id="extracting-primary-injuries-from-the-neiss" class="level2">
 <h2 class="anchored" data-anchor-id="extracting-primary-injuries-from-the-neiss">Extracting Primary Injuries from the NEISS</h2>
-<p>As a source of data for this test, I used the National Electronic Injury Surveillance System (NEISS). This is a useful source of information for testing extraction schemes because they contain hundreds of thousands of labeled examples with short medical naratives. Most of them look akin to this:</p>
+<p>As a source of data for this test, I used the National Electronic Injury Surveillance System (NEISS). This is a useful source of information for testing extraction schemes because they contain hundreds of thousands of labeled examples with short medical narratives. Most of them look akin to this:</p>
 <blockquote class="blockquote">
 <p>“26YOM STEPPED ON A NAIL WITH HIS RIGHT FOOT YESTERDAY AND STATES IT IS PAINFUL AND SWOLLEN DX: PUNCTURE WOUND RIGHT FOOT”</p>
 </blockquote>
@@ -4099,7 +4099,7 @@ vertical-align: -.125em;
 <section id="evaluating-confidence-scores" class="level3">
 <h3 class="anchored" data-anchor-id="evaluating-confidence-scores">Evaluating confidence scores</h3>
 <p>The biggest drawback with these confidence scores is shared with many other classifiers: they are unlikely to be well <em>calibrated</em>. This means that there is no guarantee that the probabilities returned from the model closely map to the observed distribution of correct classifications. For example, a 95% probability in a well-calibrated model should expect to return a correct classification 95% of the time. Well-calibrated predictions are useful because they can help easily track to specific business KPIs.</p>
-<p>We can quickly get a summary of the confidence scores for the 500 classifications. Below, I have a calibration plot and table for both the AI-generated confidence scores, and the token probability. Looking at the two approaches, there are some notable differences. On the upper end the AI-generated confidence scores are actually really quite close to reality. It’s only outside the upper end that thre is clear divergence. For example, the AI estimates a mean confidence of about 45% for 7 cases, but is 100% correct!</p>
+<p>We can quickly get a summary of the confidence scores for the 500 classifications. Below, I have a calibration plot and table for both the AI-generated confidence scores, and the token probability. Looking at the two approaches, there are some notable differences. On the upper end the AI-generated confidence scores are actually really quite close to reality. It’s only outside the upper end that there is clear divergence. For example, the AI estimates a mean confidence of about 45% for 7 cases, but is 100% correct!</p>
 <p>While neither is terribly well-calibrated outside the highest upper-end, the token log-probabilities are highly over-confident relative to the AI-generated ones.</p>
 <div class="tabset-margin-container"></div><div class="panel-tabset">
 <ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-1-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-1" role="tab" aria-controls="tabset-1-1" aria-selected="true" href>AI Confidence</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-2" role="tab" aria-controls="tabset-1-2" aria-selected="false" href>Token Log-Probability</a></li></ul>
@@ -4256,7 +4256,7 @@ vertical-align: -.125em;
 </section>
 <section id="calibrating-probabilities" class="level2">
 <h2 class="anchored" data-anchor-id="calibrating-probabilities">Calibrating probabilities</h2>
-<p>If we want to generate calibrated probabilities, the approach is slightly different in the multi-class scenario compared to the binary one. There are a few approaches, but the simplest seems to be a proposed “top versus all” approachpdf<span class="citation" data-cites="le2024confidence">(<a href="#ref-le2024confidence" role="doc-biblioref">Le Coz, Herbin, and Adjed 2024</a>)</span>. In short, this is really just a generalization of the binary case where we calibrate based on the correctness of the highest probability. In cases where we have many possible categories (here, over 20), it is difficult and probably not useful to directly calibrate each catgory. Rather, we use a model to calibrate the primary token probability. A simple way to do this is use isotonic regression, which applies a strictly increasing step function that maps back to the probabilities:</p>
+<p>If we want to generate calibrated probabilities, the approach is slightly different in the multi-class scenario compared to the binary one. There are a few approaches, but the simplest seems to be a proposed “top versus all” approach <span class="citation" data-cites="le2024confidence">(<a href="#ref-le2024confidence" role="doc-biblioref">Le Coz, Herbin, and Adjed 2024</a>)</span>. In short, this is really just a generalization of the binary case where we calibrate based on the correctness of the highest probability. In cases where we have many possible categories (here, over 20), it is difficult and probably not useful to directly calibrate each category. Rather, we use a model to calibrate the primary token probability. A simple way to do this is use isotonic regression, which applies a strictly increasing step function that maps back to the probabilities:</p>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># get the correct labels and token probabilities</span></span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>correct <span class="ot">&lt;-</span> res<span class="sc">$</span>is_correct</span>
@@ -4268,7 +4268,7 @@ vertical-align: -.125em;
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>tva_predict <span class="ot">&lt;-</span> <span class="fu">as.stepfun</span>(tva_iso)</span>
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>calibrated_conf_iso <span class="ot">&lt;-</span> <span class="fu">tva_predict</span>(pred_prob)</span>
 <span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="co"># check what a token probability of .8 now maps to</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="co"># check what a token probability of .85 now maps to</span></span>
 <span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">tva_predict</span>(.<span class="dv">85</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 0.6140351</code></pre>
