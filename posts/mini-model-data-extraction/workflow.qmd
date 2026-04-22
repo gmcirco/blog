@@ -40,7 +40,7 @@ After that I wrote up some pretty generic Python code to wrap the invocation in 
 
 In total, this probably took me less than hour to write. If I vibe-coded it with Codex or Claude Code we could probably knock that down to 15 minutes. Full code is below:
 
-```{python}
+```python
 #| code-fold: true
 #| eval: false
 
@@ -166,7 +166,7 @@ Now we run the code. My rig is custom and a bit old - I have 64 gigs of ram and 
 
 After running the model, we get JSON output that looks like this, which corresponds to the first 10 records in the complaint dataframe:
 
-```{json}
+```json
 [
     {
         "agency": "Department of Homeless Services",
@@ -216,3 +216,39 @@ With a tiny local model and a highly minimal prompt, we correctly classify 9/10 
 ## Think Small
 
 In general I think the future bodes well for small, or even "micro", LLMs that can run locally on devices and perform highly specific tasks. For some organizations, being able to deploy a free model locally both saves inference costs and also makes business-user agreements with a partner company unnecessary. This is also a big win for organizations that are more privacy focused. You can easily deploy these models internally, and keep the data locked down to the server. Personally, I can see value deploying several small models like these in mid-sized departments to help work on repetitive tasks that don't require big LLMs or a lot of overhead. In a world with a lot of big LLMs, it might pay to think *small*!
+
+## An Update (4/22/2026)
+
+I've continued tinkering with small local LLMs. When I originally wrote this post I was using [ollama](https://ollama.com/). For reference, ollama is essentially wrapper around the core [llama.cpp](https://github.com/ggml-org/llama.cpp) architecture. It vastly simplifies running models locally, but is often not very performant relative to running directly from llama.cpp. Llama.cpp itself is a tensor library optimized for running quantized versions^[Without getting too much into the weeds, a "quantized" version of a model is essentially a slimmed down version of the original. This typically increases speed at the cost of accuracy] of LLMs, and allows for both cli and server-based inference locally. These use specific versions of LLMs saved as a .gguf (GGML Universal File).
+
+As a test, I downloaded a 4-bit quantized version of Google's [Gemma 4 model](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF). I then booted up a llama.cpp server locally on my PC and routed the original prompt through it. Below we see confirmation from my terminal that the model was loaded and an entrypoint to the server was available:
+
+```bash
+srv          init: init: chat template, thinking = 1
+main: model loaded
+main: server is listening on http://127.0.0.1:8080
+main: starting the main loop...
+srv  update_slots: all slots are idle
+```
+
+I then just swapped the client from ollama to the llama.cpp server:
+
+```python
+CLIENT = client = OpenAI(
+    base_url='http://127.0.0.1:8080',
+)
+```
+
+And ran the pipeline again essentially unchanged. Previously each invocation took on the order of 10-20 seconds, while with llama.cpp each one took between 4-8 seconds. For local inference, this isn't too bad. Partially this is explained by default behavior in the llama.cpp infrastructure. While Ollama is often configured to be 'stateless' to save system resources, llama.cpp allows for persistent, aggressive key-value caching. In my example here, a large proportion of the prompt does not change. Below, the server shows the similarity score(in this case, 91.4%) to determine exactly how much of the previous mathematical state it can recycle. This caching speeds up subsequent calculations because we re-use the ke-value states.
+
+```bash
+#| eval: false
+
+ srv  get_availabl: updating prompt cache
+srv   prompt_save:  - saving prompt with length 1286, total state size = 70.358 MiB
+srv          load:  - looking for better prompt, base f_keep = 0.406, sim = 0.914
+srv        update:  - cache state: 13 prompts, 1468.648 MiB (limits: 8192.000 MiB, 131072 tokens, 131072 est)
+srv        update:    - prompt 0x5d53276160b0:    1256 tokens, checkpoints:  2,    92.631 MiB
+srv        update:    - prompt 0x5d532761bbc0:    1057 tokens, checkpoints:  2,    80.181 MiB
+srv        update:    - prompt 0x5d5327610cd0:    1186 tokens, checkpoints:  2,    87.238 MiB 
+```

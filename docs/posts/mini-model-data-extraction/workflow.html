@@ -3963,6 +3963,7 @@ vertical-align: -.125em;
   <li><a href="#running-the-model" id="toc-running-the-model" class="nav-link" data-scroll-target="#running-the-model">Running the model</a></li>
   </ul></li>
   <li><a href="#think-small" id="toc-think-small" class="nav-link" data-scroll-target="#think-small">Think Small</a></li>
+  <li><a href="#an-update-4222026" id="toc-an-update-4222026" class="nav-link" data-scroll-target="#an-update-4222026">An Update (4/22/2026)</a></li>
   </ul>
 </nav>
     </div>
@@ -3989,182 +3990,210 @@ vertical-align: -.125em;
 <p>For my purposes I wanted to see how quickly I could spin up a small Qwen3.5 model and have it classify unstructured text. I opted for <a href="https://huggingface.co/Qwen/Qwen3.5-4B">Qwen3.5-4B</a> which has about a 10 gig footprint total. I installed it via Ollama and was able to get it running in my terminal in under 10 minutes flat.</p>
 <p>After that I wrote up some pretty generic Python code to wrap the invocation in code and parse the complaints from a csv. On top of that I defined some Pydantic schemas to constrain the model output and handle type-checking. One cool thing is that even small models like Qwen can support JSON schemas via <code>response_format={&quot;type&quot;: &quot;json_object&quot;}</code>. It seems like just a year ago this was a headache with even some of the earlier OpenAI models, and was definitely not available for any notable small models.</p>
 <p>In total, this probably took me less than hour to write. If I vibe-coded it with Codex or Claude Code we could probably knock that down to 15 minutes. Full code is below:</p>
-<div id="dcf031a0" class="cell" data-execution_count="1">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> openai <span class="im">import</span> OpenAI</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> string <span class="im">import</span> Template</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> enum <span class="im">import</span> Enum</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pydantic <span class="im">import</span> BaseModel, Field, ValidationError</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="co"># define some local AI stuff</span></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>LOCAL_MODEL <span class="op">=</span> <span class="st">&#39;qwen3:4b&#39;</span></span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>CLIENT <span class="op">=</span> client <span class="op">=</span> OpenAI(</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    base_url<span class="op">=</span><span class="st">&#39;http://localhost:11434/v1&#39;</span>,</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    api_key<span class="op">=</span><span class="st">&#39;ollama&#39;</span>, <span class="op">\</span></span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="co"># Define some extraction schema</span></span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> CityAgency(<span class="bu">str</span>, Enum):</span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    DHS <span class="op">=</span> <span class="st">&quot;Department of Homeless Services&quot;</span></span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    DOB <span class="op">=</span> <span class="st">&quot;Department of Buildings&quot;</span></span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    DSNY <span class="op">=</span> <span class="st">&quot;Department of Sanitation&quot;</span></span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    DEP <span class="op">=</span> <span class="st">&quot;Department of Environmental Protection&quot;</span></span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    NYPD <span class="op">=</span> <span class="st">&quot;New York City Police Department&quot;</span></span>
-<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    HPD <span class="op">=</span> <span class="st">&quot;Department of Housing Preservation and Development&quot;</span></span>
-<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    DPR <span class="op">=</span> <span class="st">&quot;Department of Parks and Recreation&quot;</span></span>
-<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    DOT <span class="op">=</span> <span class="st">&quot;Department of Transportation&quot;</span></span>
-<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    DCWP <span class="op">=</span> <span class="st">&quot;Department of Consumer and Worker Protection&quot;</span></span>
-<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> AgencyExtraction(BaseModel):</span>
-<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Schema for extracting city agency mentions from text.&quot;&quot;&quot;</span></span>
-<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>    complaint: <span class="bu">str</span> <span class="op">=</span> Field(</span>
-<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>        description<span class="op">=</span><span class="st">&quot;5 word or less description of the complaint&quot;</span></span>
-<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>    agency: CityAgency <span class="op">=</span> Field(</span>
-<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>        description<span class="op">=</span><span class="st">&quot;Agency most responsible for the complaint&quot;</span></span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-fold: true</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">#| eval: false</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> openai <span class="im">import</span> OpenAI</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> string <span class="im">import</span> Template</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> enum <span class="im">import</span> Enum</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pydantic <span class="im">import</span> BaseModel, Field, ValidationError</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="co"># define some local AI stuff</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>LOCAL_MODEL <span class="op">=</span> <span class="st">&#39;qwen3:4b&#39;</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>CLIENT <span class="op">=</span> client <span class="op">=</span> OpenAI(</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    base_url<span class="op">=</span><span class="st">&#39;http://localhost:11434/v1&#39;</span>,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    api_key<span class="op">=</span><span class="st">&#39;ollama&#39;</span>, <span class="op">\</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="co"># Define some extraction schema</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> CityAgency(<span class="bu">str</span>, Enum):</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    DHS <span class="op">=</span> <span class="st">&quot;Department of Homeless Services&quot;</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    DOB <span class="op">=</span> <span class="st">&quot;Department of Buildings&quot;</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    DSNY <span class="op">=</span> <span class="st">&quot;Department of Sanitation&quot;</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    DEP <span class="op">=</span> <span class="st">&quot;Department of Environmental Protection&quot;</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    NYPD <span class="op">=</span> <span class="st">&quot;New York City Police Department&quot;</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    HPD <span class="op">=</span> <span class="st">&quot;Department of Housing Preservation and Development&quot;</span></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    DPR <span class="op">=</span> <span class="st">&quot;Department of Parks and Recreation&quot;</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    DOT <span class="op">=</span> <span class="st">&quot;Department of Transportation&quot;</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    DCWP <span class="op">=</span> <span class="st">&quot;Department of Consumer and Worker Protection&quot;</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> AgencyExtraction(BaseModel):</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Schema for extracting city agency mentions from text.&quot;&quot;&quot;</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>    complaint: <span class="bu">str</span> <span class="op">=</span> Field(</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>        description<span class="op">=</span><span class="st">&quot;5 word or less description of the complaint&quot;</span></span>
 <span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>ROLE <span class="op">=</span> (<span class="st">&quot;You route New York City resident complaints to the most relevant agency.&quot;</span></span>
-<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Select only from the provided list of agencies&quot;</span>)</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    agency: CityAgency <span class="op">=</span> Field(</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>        description<span class="op">=</span><span class="st">&quot;Agency most responsible for the complaint&quot;</span></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>    )</span>
 <span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>BASE_PROMPT_STR <span class="op">=</span> <span class="st">&quot;&quot;&quot;</span></span>
-<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a><span class="st">Closely follow these instructions for routing resident complaints:</span></span>
-<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a><span class="st">1. Review the resident complaint and identify the core issue</span></span>
-<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a><span class="st">2. Based on determination of the core issue, assign the complaint to the most relevant city agency</span></span>
-<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a><span class="st">3. Return your output as a JSON output strictly following the schema below:</span></span>
-<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a><span class="st">$</span><span class="sc">{extraction_schema}</span></span>
-<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a><span class="st">TEXT TO PROCESS:</span></span>
-<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a><span class="st">$</span><span class="sc">{complaint}</span></span>
-<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;&quot;&quot;</span></span>
-<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a><span class="co"># Create the template object</span></span>
-<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>prompt_template <span class="op">=</span> Template(BASE_PROMPT_STR)</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>ROLE <span class="op">=</span> (<span class="st">&quot;You route New York City resident complaints to the most relevant agency.&quot;</span></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Select only from the provided list of agencies&quot;</span>)</span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>BASE_PROMPT_STR <span class="op">=</span> <span class="st">&quot;&quot;&quot;</span></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a><span class="st">Closely follow these instructions for routing resident complaints:</span></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a><span class="st">1. Review the resident complaint and identify the core issue</span></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a><span class="st">2. Based on determination of the core issue, assign the complaint to the most relevant city agency</span></span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a><span class="st">3. Return your output as a JSON output strictly following the schema below:</span></span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a><span class="st">$</span><span class="sc">{extraction_schema}</span></span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a><span class="st">TEXT TO PROCESS:</span></span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a><span class="st">$</span><span class="sc">{complaint}</span></span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;&quot;&quot;</span></span>
 <span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a><span class="co"># invoke qwen</span></span>
-<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> invoke(client, user_complaint):</span>
-<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>    schema_str <span class="op">=</span> json.dumps(AgencyExtraction.model_json_schema(), indent<span class="op">=</span><span class="dv">2</span>)</span>
-<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>    prompt <span class="op">=</span> prompt_template.substitute(</span>
-<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>        extraction_schema<span class="op">=</span>schema_str,</span>
-<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>        complaint<span class="op">=</span>user_complaint</span>
-<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
-<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>        response <span class="op">=</span> client.chat.completions.create(</span>
-<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>            messages<span class="op">=</span>[</span>
-<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>                {<span class="st">&#39;role&#39;</span>: <span class="st">&#39;system&#39;</span>, <span class="st">&#39;content&#39;</span>: ROLE},</span>
-<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>                {<span class="st">&#39;role&#39;</span>: <span class="st">&#39;user&#39;</span>, <span class="st">&#39;content&#39;</span>: prompt}</span>
-<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>            ],</span>
-<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>            model<span class="op">=</span>LOCAL_MODEL,</span>
-<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>            temperature<span class="op">=</span><span class="dv">0</span>,</span>
-<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>            response_format<span class="op">=</span>{<span class="st">&quot;type&quot;</span>: <span class="st">&quot;json_object&quot;</span>}</span>
-<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a>        raw_content <span class="op">=</span> response.choices[<span class="dv">0</span>].message.content</span>
-<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> AgencyExtraction.model_validate_json(raw_content)</span>
-<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> (ValidationError, <span class="pp">Exception</span>) <span class="im">as</span> e:</span>
-<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f&quot;Error during LLM invocation or validation: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">&quot;</span>)</span>
-<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">None</span></span>
-<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a><span class="co"># Parse a single complaint</span></span>
-<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> process_complaint(complaint_text):</span>
-<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> invoke(CLIENT, complaint_text)</span>
-<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> response <span class="kw">is</span> <span class="va">None</span>:</span>
-<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">None</span> </span>
-<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a>     </span>
-<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">&#39;agency&#39;</span>: response.agency.value, <span class="st">&#39;summary&#39;</span>: response.complaint}</span>
-<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> main():</span>
-<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a>    path <span class="op">=</span> <span class="st">&quot;data/Public_feedback_on_311_request_complaint_types_20260310.csv&quot;</span></span>
-<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a>    complaints_df <span class="op">=</span> pd.read_csv(path).head(<span class="dv">20</span>) </span>
-<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a>    complaint_list <span class="op">=</span> complaints_df[<span class="st">&quot;Customer Message&quot;</span>].dropna().astype(<span class="bu">str</span>).tolist()</span>
-<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a>    <span class="co"># just store results in a list</span></span>
-<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>    all_results <span class="op">=</span> []</span>
-<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;Starting extraction for </span><span class="sc">{</span><span class="bu">len</span>(complaint_list)<span class="sc">}</span><span class="ss"> complaints...&quot;</span>)</span>
-<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> single_complaint <span class="kw">in</span> complaint_list:</span>
-<span id="cb1-99"><a href="#cb1-99" aria-hidden="true" tabindex="-1"></a>        result <span class="op">=</span> process_complaint(single_complaint)</span>
-<span id="cb1-100"><a href="#cb1-100" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> result:</span>
-<span id="cb1-101"><a href="#cb1-101" aria-hidden="true" tabindex="-1"></a>            all_results.append(result)</span>
-<span id="cb1-102"><a href="#cb1-102" aria-hidden="true" tabindex="-1"></a>            <span class="bu">print</span>(<span class="ss">f&quot;Processed: </span><span class="sc">{</span>result[<span class="st">&#39;summary&#39;</span>]<span class="sc">}</span><span class="ss">&quot;</span>)</span>
-<span id="cb1-103"><a href="#cb1-103" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-104"><a href="#cb1-104" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 4. Save the full run as a single JSON object</span></span>
-<span id="cb1-105"><a href="#cb1-105" aria-hidden="true" tabindex="-1"></a>    output_file <span class="op">=</span> os.path.join(<span class="st">&quot;output&quot;</span>, <span class="st">&quot;processed_complaints.json&quot;</span>)</span>
-<span id="cb1-106"><a href="#cb1-106" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb1-107"><a href="#cb1-107" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> <span class="bu">open</span>(output_file, <span class="st">&quot;w&quot;</span>, encoding<span class="op">=</span><span class="st">&quot;utf-8&quot;</span>) <span class="im">as</span> f:</span>
-<span id="cb1-108"><a href="#cb1-108" aria-hidden="true" tabindex="-1"></a>        json.dump(all_results, f, indent<span class="op">=</span><span class="dv">4</span>)</span>
-<span id="cb1-109"><a href="#cb1-109" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-110"><a href="#cb1-110" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;</span><span class="ch">\n</span><span class="ss">Successfully saved </span><span class="sc">{</span><span class="bu">len</span>(all_results)<span class="sc">}</span><span class="ss"> results to </span><span class="sc">{</span>output_file<span class="sc">}</span><span class="ss">&quot;</span>)</span>
-<span id="cb1-111"><a href="#cb1-111" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-112"><a href="#cb1-112" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="va">__name__</span> <span class="op">==</span> <span class="st">&quot;__main__&quot;</span>:</span>
-<span id="cb1-113"><a href="#cb1-113" aria-hidden="true" tabindex="-1"></a>    main()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</details>
-</div>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a><span class="co"># Create the template object</span></span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>prompt_template <span class="op">=</span> Template(BASE_PROMPT_STR)</span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a><span class="co"># invoke qwen</span></span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> invoke(client, user_complaint):</span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>    schema_str <span class="op">=</span> json.dumps(AgencyExtraction.model_json_schema(), indent<span class="op">=</span><span class="dv">2</span>)</span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>    prompt <span class="op">=</span> prompt_template.substitute(</span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>        extraction_schema<span class="op">=</span>schema_str,</span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>        complaint<span class="op">=</span>user_complaint</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>        response <span class="op">=</span> client.chat.completions.create(</span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>            messages<span class="op">=</span>[</span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>                {<span class="st">&#39;role&#39;</span>: <span class="st">&#39;system&#39;</span>, <span class="st">&#39;content&#39;</span>: ROLE},</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>                {<span class="st">&#39;role&#39;</span>: <span class="st">&#39;user&#39;</span>, <span class="st">&#39;content&#39;</span>: prompt}</span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>            ],</span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a>            model<span class="op">=</span>LOCAL_MODEL,</span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a>            temperature<span class="op">=</span><span class="dv">0</span>,</span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a>            response_format<span class="op">=</span>{<span class="st">&quot;type&quot;</span>: <span class="st">&quot;json_object&quot;</span>}</span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a>        raw_content <span class="op">=</span> response.choices[<span class="dv">0</span>].message.content</span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> AgencyExtraction.model_validate_json(raw_content)</span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> (ValidationError, <span class="pp">Exception</span>) <span class="im">as</span> e:</span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f&quot;Error during LLM invocation or validation: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">None</span></span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a><span class="co"># Parse a single complaint</span></span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> process_complaint(complaint_text):</span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> invoke(CLIENT, complaint_text)</span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> response <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">None</span> </span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a>     </span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">&#39;agency&#39;</span>: response.agency.value, <span class="st">&#39;summary&#39;</span>: response.complaint}</span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> main():</span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a>    path <span class="op">=</span> <span class="st">&quot;data/Public_feedback_on_311_request_complaint_types_20260310.csv&quot;</span></span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a>    complaints_df <span class="op">=</span> pd.read_csv(path).head(<span class="dv">20</span>) </span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>    complaint_list <span class="op">=</span> complaints_df[<span class="st">&quot;Customer Message&quot;</span>].dropna().astype(<span class="bu">str</span>).tolist()</span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a>    <span class="co"># just store results in a list</span></span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a>    all_results <span class="op">=</span> []</span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-99"><a href="#cb1-99" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;Starting extraction for </span><span class="sc">{</span><span class="bu">len</span>(complaint_list)<span class="sc">}</span><span class="ss"> complaints...&quot;</span>)</span>
+<span id="cb1-100"><a href="#cb1-100" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-101"><a href="#cb1-101" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> single_complaint <span class="kw">in</span> complaint_list:</span>
+<span id="cb1-102"><a href="#cb1-102" aria-hidden="true" tabindex="-1"></a>        result <span class="op">=</span> process_complaint(single_complaint)</span>
+<span id="cb1-103"><a href="#cb1-103" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> result:</span>
+<span id="cb1-104"><a href="#cb1-104" aria-hidden="true" tabindex="-1"></a>            all_results.append(result)</span>
+<span id="cb1-105"><a href="#cb1-105" aria-hidden="true" tabindex="-1"></a>            <span class="bu">print</span>(<span class="ss">f&quot;Processed: </span><span class="sc">{</span>result[<span class="st">&#39;summary&#39;</span>]<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-106"><a href="#cb1-106" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-107"><a href="#cb1-107" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 4. Save the full run as a single JSON object</span></span>
+<span id="cb1-108"><a href="#cb1-108" aria-hidden="true" tabindex="-1"></a>    output_file <span class="op">=</span> os.path.join(<span class="st">&quot;output&quot;</span>, <span class="st">&quot;processed_complaints.json&quot;</span>)</span>
+<span id="cb1-109"><a href="#cb1-109" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-110"><a href="#cb1-110" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> <span class="bu">open</span>(output_file, <span class="st">&quot;w&quot;</span>, encoding<span class="op">=</span><span class="st">&quot;utf-8&quot;</span>) <span class="im">as</span> f:</span>
+<span id="cb1-111"><a href="#cb1-111" aria-hidden="true" tabindex="-1"></a>        json.dump(all_results, f, indent<span class="op">=</span><span class="dv">4</span>)</span>
+<span id="cb1-112"><a href="#cb1-112" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-113"><a href="#cb1-113" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;</span><span class="ch">\n</span><span class="ss">Successfully saved </span><span class="sc">{</span><span class="bu">len</span>(all_results)<span class="sc">}</span><span class="ss"> results to </span><span class="sc">{</span>output_file<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-114"><a href="#cb1-114" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-115"><a href="#cb1-115" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="va">__name__</span> <span class="op">==</span> <span class="st">&quot;__main__&quot;</span>:</span>
+<span id="cb1-116"><a href="#cb1-116" aria-hidden="true" tabindex="-1"></a>    main()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="running-the-model" class="level3">
 <h3 class="anchored" data-anchor-id="running-the-model">Running the model</h3>
 <p>Now we run the code. My rig is custom and a bit old - I have 64 gigs of ram and a very modest GeForce RTX 3070 with only 8 gigs of VRAM. However, speed-wise, I was quite impressed with the performance. Each invocation took about 10 to 20 seconds, with the full run of 10 records taking about 2-3 minutes total. Again, pretty impressive on what I think is a pretty old machine.</p>
 <p>After running the model, we get JSON output that looks like this, which corresponds to the first 10 records in the complaint dataframe:</p>
-<pre class="{json}"><code>[
-    {
-        &quot;agency&quot;: &quot;Department of Homeless Services&quot;,
-        &quot;summary&quot;: &quot;Shelters steal phones, report online&quot;
-    },
-    {
-        &quot;agency&quot;: &quot;Department of Buildings&quot;,
-        &quot;summary&quot;: &quot;Excessive lighting disturbing neighbors&quot;
-    },
-    {
-        &quot;agency&quot;: &quot;Department of Sanitation&quot;,
-        &quot;summary&quot;: &quot;Dangerous icy walkway conditions&quot;
-    },
-    {
-        &quot;agency&quot;: &quot;Department of Sanitation&quot;,
-        &quot;summary&quot;: &quot;icy sidewalk hazard&quot;
-    },
-    {
-        &quot;agency&quot;: &quot;Department of Environmental Protection&quot;,
-        &quot;summary&quot;: &quot;idling vehicle health hazard&quot;
-    },
-    {
-        &quot;agency&quot;: &quot;New York City Police Department&quot;,
-        &quot;summary&quot;: &quot;Abandoned police barricades&quot;
-    },
-    {
-        &quot;agency&quot;: &quot;New York City Police Department&quot;,
-        &quot;summary&quot;: &quot;Recurring package thefts&quot;
-    },
-    {
-        &quot;agency&quot;: &quot;Department of Housing Preservation and Development&quot;,
-        &quot;summary&quot;: &quot;filthy hallways&quot;
-    },
-    {
-        &quot;agency&quot;: &quot;New York City Police Department&quot;,
-        &quot;summary&quot;: &quot;Report past reckless driving&quot;
-    },
-    {
-        &quot;agency&quot;: &quot;Department of Environmental Protection&quot;,
-        &quot;summary&quot;: &quot;Vehicle exhaust noise option&quot;
-    }
-]</code></pre>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ot">[</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;agency&quot;</span><span class="fu">:</span> <span class="st">&quot;Department of Homeless Services&quot;</span><span class="fu">,</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;summary&quot;</span><span class="fu">:</span> <span class="st">&quot;Shelters steal phones, report online&quot;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;agency&quot;</span><span class="fu">:</span> <span class="st">&quot;Department of Buildings&quot;</span><span class="fu">,</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;summary&quot;</span><span class="fu">:</span> <span class="st">&quot;Excessive lighting disturbing neighbors&quot;</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;agency&quot;</span><span class="fu">:</span> <span class="st">&quot;Department of Sanitation&quot;</span><span class="fu">,</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;summary&quot;</span><span class="fu">:</span> <span class="st">&quot;Dangerous icy walkway conditions&quot;</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;agency&quot;</span><span class="fu">:</span> <span class="st">&quot;Department of Sanitation&quot;</span><span class="fu">,</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;summary&quot;</span><span class="fu">:</span> <span class="st">&quot;icy sidewalk hazard&quot;</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;agency&quot;</span><span class="fu">:</span> <span class="st">&quot;Department of Environmental Protection&quot;</span><span class="fu">,</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;summary&quot;</span><span class="fu">:</span> <span class="st">&quot;idling vehicle health hazard&quot;</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;agency&quot;</span><span class="fu">:</span> <span class="st">&quot;New York City Police Department&quot;</span><span class="fu">,</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;summary&quot;</span><span class="fu">:</span> <span class="st">&quot;Abandoned police barricades&quot;</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;agency&quot;</span><span class="fu">:</span> <span class="st">&quot;New York City Police Department&quot;</span><span class="fu">,</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;summary&quot;</span><span class="fu">:</span> <span class="st">&quot;Recurring package thefts&quot;</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;agency&quot;</span><span class="fu">:</span> <span class="st">&quot;Department of Housing Preservation and Development&quot;</span><span class="fu">,</span></span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;summary&quot;</span><span class="fu">:</span> <span class="st">&quot;filthy hallways&quot;</span></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;agency&quot;</span><span class="fu">:</span> <span class="st">&quot;New York City Police Department&quot;</span><span class="fu">,</span></span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;summary&quot;</span><span class="fu">:</span> <span class="st">&quot;Report past reckless driving&quot;</span></span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;agency&quot;</span><span class="fu">:</span> <span class="st">&quot;Department of Environmental Protection&quot;</span><span class="fu">,</span></span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;summary&quot;</span><span class="fu">:</span> <span class="st">&quot;Vehicle exhaust noise option&quot;</span></span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a><span class="ot">]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>With a tiny local model and a highly minimal prompt, we correctly classify 9/10 of the complaints to their department.</p>
 </section>
 </section>
 <section id="think-small" class="level2">
 <h2 class="anchored" data-anchor-id="think-small">Think Small</h2>
 <p>In general I think the future bodes well for small, or even “micro”, LLMs that can run locally on devices and perform highly specific tasks. For some organizations, being able to deploy a free model locally both saves inference costs and also makes business-user agreements with a partner company unnecessary. This is also a big win for organizations that are more privacy focused. You can easily deploy these models internally, and keep the data locked down to the server. Personally, I can see value deploying several small models like these in mid-sized departments to help work on repetitive tasks that don’t require big LLMs or a lot of overhead. In a world with a lot of big LLMs, it might pay to think <em>small</em>!</p>
+</section>
+<section id="an-update-4222026" class="level2">
+<h2 class="anchored" data-anchor-id="an-update-4222026">An Update (4/22/2026)</h2>
+<p>I’ve continued tinkering with small local LLMs. When I originally wrote this post I was using <a href="https://ollama.com/">ollama</a>. For reference, ollama is essentially wrapper around the core <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> architecture. It vastly simplifies running models locally, but is often not very performant relative to running directly from llama.cpp. Llama.cpp itself is a tensor library optimized for running quantized versions<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a> of LLMs, and allows for both cli and server-based inference locally. These use specific versions of LLMs saved as a .gguf (GGML Universal File).</p>
+<p>As a test, I downloaded a 4-bit quantized version of Google’s <a href="https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF">Gemma 4 model</a>. I then booted up a llama.cpp server locally on my PC and routed the original prompt through it. Below we see confirmation from my terminal that the model was loaded and an entrypoint to the server was available:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">srv</span>          init: init: chat template, thinking = 1</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">main:</span> model loaded</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ex">main:</span> server is listening on http://127.0.0.1:8080</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">main:</span> starting the main loop...</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="ex">srv</span>  update_slots: all slots are idle</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>I then just swapped the client from ollama to the llama.cpp server:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>CLIENT <span class="op">=</span> client <span class="op">=</span> OpenAI(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    base_url<span class="op">=</span><span class="st">&#39;http://127.0.0.1:8080&#39;</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>And ran the pipeline again essentially unchanged. Previously each invocation took on the order of 10-20 seconds, while with llama.cpp each one took between 4-8 seconds. For local inference, this isn’t too bad. Partially this is explained by default behavior in the llama.cpp infrastructure. While Ollama is often configured to be ‘stateless’ to save system resources, llama.cpp allows for persistent, aggressive key-value caching. In my example here, a large proportion of the prompt does not change. Below, the server shows the similarity score(in this case, 91.4%) to determine exactly how much of the previous mathematical state it can recycle. This caching speeds up subsequent calculations because we re-use the ke-value states.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">#| eval: false</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a> <span class="ex">srv</span>  get_availabl: updating prompt cache</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="ex">srv</span>   prompt_save:  <span class="at">-</span> saving prompt with length 1286, total state size = 70.358 MiB</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="ex">srv</span>          load:  <span class="at">-</span> looking for better prompt, base f_keep = 0.406, sim = 0.914</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="ex">srv</span>        update:  <span class="at">-</span> cache state: 13 prompts, 1468.648 MiB <span class="er">(</span><span class="ex">limits:</span> 8192.000 MiB, 131072 tokens, 131072 est<span class="kw">)</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="ex">srv</span>        update:    <span class="at">-</span> prompt 0x5d53276160b0:    1256 tokens, checkpoints:  2,    92.631 MiB</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="ex">srv</span>        update:    <span class="at">-</span> prompt 0x5d532761bbc0:    1057 tokens, checkpoints:  2,    80.181 MiB</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="ex">srv</span>        update:    <span class="at">-</span> prompt 0x5d5327610cd0:    1186 tokens, checkpoints:  2,    87.238 MiB </span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>
 
-</main> <!-- /main -->
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document" role="doc-endnotes"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>Without getting too much into the weeds, a “quantized” version of a model is essentially a slimmed down version of the original. This typically increases speed at the cost of accuracy<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section></div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
   window.document.addEventListener("DOMContentLoaded", function (event) {
     const icon = "";
