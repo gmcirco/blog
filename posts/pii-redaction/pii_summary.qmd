@@ -1,0 +1,527 @@
+---
+title: "A Few Practical Notes on PII Redaction"
+subtitle: "A 'layered' approach using OpenAI's privacy filter"
+author: Gio Circo, Ph.D.
+date: 2026-05-11
+categories:
+  - Python
+  - Large Language Models
+format: 
+  html:
+    self-contained: true
+    code-fold: false
+    mainfont: "Roboto"
+    section-divs: true
+    toc: true
+    title-block-banner: true
+    mermaid:
+      theme: neutral
+theme: flatly
+image: redact.png
+---
+
+## Preserving Privacy in LLM Summaries
+
+For those of us working in the healthcare industry, ensuring the safety of personally-identifiable information (PII) and personal health information (PHI) is a critical concern. Restrictions on the sharing and storing of PII and PHI make the use of it in some user-facing products difficult. One real scenario I have encountered is the need to create LLM summaries of calls between call center agents and customers and return a full summary that omits ANY PHI or PII. Now, you might think "what's the big deal, just tell the LLM to not repeat any PHI or PII in its summary?". While it is good practice to instruct the LLM on what is permissible and not permissible to report, in the real world this is often *not* sufficient to guarantee leakage of information. Without proper guardrails, a single hallucination could cause the model to inadvertently repeat restricted information.
+
+### OpenAI's "Privacy Filter"
+
+Recently I got notice that OpenAI released a model specifically designed for privacy filtering. While they're not the first entrant to this field, it is notable that its coming from one of the big guys in the AI space. Per their own notes:
+
+> OpenAI Privacy Filter is a bidirectional token-classification model for personally identifiable information (PII) detection and masking in text. It is intended > for high-throughput data sanitization workflows where teams need a model that they can run on-premises that is fast, context-aware, and tunable.
+
+
+It's a bidirectional model which places it close to a BERT model. These types of models have already been used extensively for named entity recognition (NER), and even more specifically for [PII redaction](https://huggingface.co/nvidia/gliner-PII). At the time I am writing this there are already some [fine-tuned](https://huggingface.co/OpenMed/privacy-filter-nemotron) versions of the OpenAI model specifically trained for medical privacy. The availability of fine-tunes is pretty common. In the past I have relied on other fine-tuned models like BioBERT to serve as the starting point for training a new classification task. For the purposes of this post, however, I'll just rely on the base OpenAI model.
+
+## Layering Approaches to Privacy
+
+While OpenAI's privacy pipeline looks pretty robust, as I said before, it is never prudent to rely on only a single method for redaction. Rather, we should have several passes of security to give us the most confidence that restricted information is not present in the result. The full 'pipeline' for this problem is quite simple. We ingest a transcript (here, just a static text file), redact the input transcript using the OpenAI privacy model + regex fallback, then pass it to the LLM for processing. The full code is below, which contains the prompts, pydantic schema, and redaction functions:
+
+<details>
+<summary>Full Code</summary>
+```python
+"Simple example of a two-stage process for PII-safe call summarization."
+
+from enum import Enum
+import re
+from transformers import pipeline
+from pathlib import Path
+from openai import OpenAI
+from string import Template
+from pydantic import BaseModel, Field
+import json
+import re
+
+# Define local AI client
+CLIENT = client = OpenAI(base_url="http://127.0.0.1:8080")
+
+
+# Define extraction and summarization schema
+class CallReason(str, Enum):
+    BILLING = "Billing Issue"
+    TECHNICAL = "Technical Support"
+    ACCOUNT = "Account Management"
+    SUPPORT = "General Support"
+    OTHER = "Other"
+
+
+class CallSummary(BaseModel):
+    """Schema for summarizing customer service calls."""
+
+    reason: CallReason = Field(description="Primary reason for the customer's call")
+    summary: str = Field(
+        description="Short, 1-2 sentence summary of the customer's issue and resolution"
+    )
+
+
+# Define prompts and templates
+ROLE = """
+You are an expert call center agent that summarizes customer service calls.
+
+Closely follow the following instructions for summarizing the call:
+
+## Summarization Guidelines:
+- Focus exclusively on the customer's issue and the resolution provided by the agent.
+- Avoid including any personally identifiable information (PII) such as names, phone numbers,addresses, or account numbers. 
+- Never quote any direct statements from the customer or agent in the summary.
+- If the call includes multiple issues, summarize each issue and its resolution separately.
+- Always identify if the primary reason for the call was resolved.
+
+## Style Guidelines:
+- Use clear and concise language.
+- Write in the past tense, as if describing a completed event.
+- Limit the summary to 2-3 sentences.
+- Refer to the caller as 'customer' and the agent as 'agent'.
+
+## Output Format:
+Return your output as JSON following the schema below:
+${schema}
+
+## Example Output:
+{
+  "reason": "Billing Issue",
+  "summary": "Customer called about an unexpected charge on their account. Agent explained the charge was for a subscription renewal and provided instructions on how to cancel if they wish to do so. Customer verified that their issue was resolved and thanked the agent for their help."
+}
+
+{
+"reason": "Technical Support",
+"summary": "Customer reported that their internet connection was dropping frequently. Agent walked customer through the issue and resolved it by having them reset the modem. Customer confirmed that the connection was stable and expressed satisfaction with the support provided."
+}
+
+{
+"reason": "Account Management",
+"summary": "Customer wanted to update their account information. Agent assisted customer in changing their email address and phone number on file. Agent identified that the customer was no longer enrolled and told customer they would need to be transferred to a re-enrollment representative." 
+}   
+"""
+
+PROMPT = """
+Summarize the following customer service call:
+
+## Call Transcript:
+${text}
+"""
+
+role_template = Template(ROLE)
+prompt_template = Template(PROMPT)
+
+
+# Local functions
+def init_pii_classifier():
+    "Initialize a token classification pipeline for PII redaction."
+    pii_classifier = pipeline(
+        task="token-classification",
+        model="openai/privacy-filter",
+        aggregation_strategy="simple",
+        device=-1,
+    )
+    return pii_classifier
+
+def redact_pii(text: str) -> str:
+    "Redact personally identifiable information (PII) from the input text using a token classification model."
+    pii_classifier = init_pii_classifier()
+
+    entities = pii_classifier(text)
+    merged = []
+    for e in entities:
+        if (
+            merged
+            and e["entity_group"] == merged[-1]["entity_group"]
+            and e["start"] <= merged[-1]["end"]
+        ):
+            merged[-1]["end"] = max(merged[-1]["end"], e["end"])
+        else:
+            merged.append(
+                {
+                    "start": e["start"],
+                    "end": e["end"],
+                    "entity_group": e["entity_group"],
+                }
+            )
+    for e in reversed(merged):
+        label = e["entity_group"].removeprefix("private_").upper()
+        text = text[: e["start"]] + f"[{label}]" + text[e["end"] :]
+
+    return text
+
+def regex_redact(text: str) -> str:
+    "Fallback regex reduction for cases not handled by OpenAI classfier"
+
+    # four-digit numbers (e.g., last 4 of a phone number or account number)
+    text = re.sub(r"\b\d{4}\b", "[FOUR_DIGITS]", text)
+
+    return text
+
+def import_text(file_path: str, redact: bool = False, use_regex: bool = False) -> str:
+    "Import transcript with optional pii redaction. Optional regex fallback for cases not handled by OpenAI classifier."
+    text = Path(file_path).read_text(encoding="utf-8")
+    if redact:
+        text = redact_pii(text)
+    if use_regex:
+        text = regex_redact(text)
+    return text
+
+def invoke(client, transcript):
+    "Invoke the LLM to summarize the call transcript."
+    schema_str = json.dumps(CallSummary.model_json_schema(), indent=2)
+    role_str = role_template.substitute(schema=schema_str)
+    prompt_str = prompt_template.substitute(text=transcript)
+    try:
+        response = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": role_str},
+                {"role": "user", "content": prompt_str},
+            ],
+            model="local_mode",
+            temperature=1,
+            top_p=0.95,
+            response_format={"type": "json_object"},
+            reasoning_effort="low",
+        )
+        raw_content = response.choices[0].message.content
+        return CallSummary.model_validate_json(raw_content)
+    except Exception as e:
+        print(f"Error during LLM invocation or validation: {e}")
+        return None
+
+# now main run
+def main():
+    text = import_text("transcripts/transcript_001.txt", redact=True, use_regex=False)
+    print(text)
+    summary = invoke(CLIENT, text)
+    if summary:
+        print(f"Call Reason: {summary.reason.value}")
+        print(f"Summary: {summary.summary}")
+    else:
+        print("Failed to summarize the call.")
+
+
+if __name__ == "__main__":
+    main()
+```
+</details>
+
+### Transcript Redaction
+
+Using just the OpenAI privacy filter as our first pass, it does a pretty good job. Names, dates, addresses and full account numbers are fully redacted. For example, this section of the transcripts appears to be cleaned completely, with the clear exception that it misses 4-digit identifiers (e.g. last 4 of SSN)
+
+> AGENT [00:19]: "Can I have your full name please?"
+>
+> CUSTOMER [00:22]: "Yeah it’s **[PERSON]**."
+>
+> AGENT [00:25]: "Thank you **[PERSON]**. And can you confirm your date of birth?"
+>
+> CUSTOMER [00:30]: "**[DATE]**."
+>
+> AGENT [00:33]: "Great. For security can you also verify the last four digits of your Social Security number?"
+>
+> CUSTOMER [00:39]: "Uh yeah, it’s 4821."
+>
+> AGENT [00:42]: "Perfect. And I also see we have an account number ending in **[ACCOUNT_NUMBER]**, does that sound right?"
+
+To accomodate this, we can build a second pass that performs a harder regex check for specific patterns. While it is highly simple, its quite effective and easy to build in:
+
+```{.python}
+def regex_redact(text: str) -> str:
+    "Fallback regex reduction for cases not handled by OpenAI classfier"
+
+    # four-digit numbers (e.g., last 4 of a phone number or account number)
+    text = re.sub(r"\b\d{4}\b", "[FOUR_DIGITS]", text)
+
+    return text
+```
+
+Putting these two steps together, you can see below, first and second passes of the redaction workflow. The OpenAI privacy filter handles most of the occurances of PII, and we clean up the remaining 4 digit patterns manually via regex.
+
+### Redaction Flow
+
+::: panel-tabset
+
+## Unredacted
+
+> AGENT [00:01]: "Thank you for calling Medical Care Services, this is Angela, how can I help you today?"
+>
+> CUSTOMER [00:05]: "Hey yeah, um, I’m locked out of my account again and I need to reset my password."
+>
+> AGENT [00:11]: "I can definitely help with that. Before we get started I’ll need to verify some information on the account."
+>
+> CUSTOMER [00:17]: "Okay."
+>
+> AGENT [00:19]: "Can I have your full name please?"
+>
+> CUSTOMER [00:22]: "Yeah it’s Daniel Harper."
+>
+> AGENT [00:25]: "Thank you Mr. Harper. And can you confirm your date of birth?"
+>
+> CUSTOMER [00:30]: "March 14th, 1987."
+>
+> AGENT [00:33]: "Great. For security can you also verify the last four digits of your Social Security number?"
+>
+> CUSTOMER [00:39]: "Uh yeah, it’s 4821."
+>
+> AGENT [00:42]: "Perfect. And I also see we have an account number ending in 774593, does that sound right?"
+>
+> CUSTOMER [00:49]: "Yeah that should be it."
+>
+> AGENT [00:52]: "Okay, thank you. What happens when you try to log in?"
+>
+> CUSTOMER [00:57]: "It says my password expired and then when I try the reset link it tells me my email can’t be verified."
+>
+> AGENT [01:04]: "Got it. Let me check the email address we have on file. I’m showing dharper1987@gmail.com."
+>
+> CUSTOMER [01:12]: "Ohhh okay yeah I don’t use that one anymore."
+>
+> AGENT [01:16]: "No problem. What email would you like to update it to?"
+>
+> CUSTOMER [01:21]: "Use daniel.harper.rx@outlook.com."
+>
+> AGENT [01:26]: "Alright, give me one moment while I update that."
+>
+> CUSTOMER [01:30]: "Sure."
+>
+> AGENT [01:36]: "Okay, that email has been updated. I’m sending a temporary password now. You should get it in the next minute or so."
+>
+> CUSTOMER [01:45]: "Alright let me refresh... yeah okay I got it."
+>
+> AGENT [01:50]: "Perfect. Go ahead and read back the temporary code just so I know you received the correct one."
+>
+> CUSTOMER [01:56]: "Uh, capital M, lowercase t, 9, 4, exclamation point, B."
+>
+> AGENT [02:04]: "That should be correct. Once you log in it’ll prompt you to create a new password."
+>
+> CUSTOMER [02:09]: "Okay cool. While I have you, can you tell me what phone number and address you guys have on the account?"
+>
+> AGENT [02:16]: "Sure. I have a phone number ending in 2218 and the address listed is 458 Willow Creek Drive, Rochester, New York, 14618."
+>
+> CUSTOMER [02:27]: "Yeah the address is right but my phone changed."
+>
+> AGENT [02:31]: "No problem, what’s the new number?"
+>
+> CUSTOMER [02:35]: "It’s 585-443-9082."
+>
+> AGENT [02:39]: "Thank you. I’ve updated that for you."
+>
+> CUSTOMER [02:43]: "Awesome."
+>
+> AGENT [02:45]: "Anything else I can help with today?"
+>
+> CUSTOMER [02:49]: "Actually yeah, I had a question about my member ID too. I need it for an appointment tomorrow."
+>
+> AGENT [02:56]: "Absolutely. Your member ID is MCX-44729106."
+>
+> CUSTOMER [03:03]: "Perfect, thank you."
+>
+> AGENT [03:06]: "You’re welcome. And just a reminder, once you log in with the temporary password, make sure you change it within 24 hours."
+>
+> CUSTOMER [03:14]: "Yep, I’ll do that."
+>
+> AGENT [03:16]: "Alright Mr. Harper, thanks for calling Medical Care Services and have a great day."
+>
+> CUSTOMER [03:22]: "You too, thanks."
+
+## First Pass
+
+> AGENT [00:01]: "Thank you for calling Medical Care Services, this is **[PERSON]**, how can I help you today?"
+>
+> CUSTOMER [00:05]: "Hey yeah, um, I’m locked out of my account again and I need to reset my password."
+>
+> AGENT [00:11]: "I can definitely help with that. Before we get started I’ll need to verify some information on the account."
+>
+> CUSTOMER [00:17]: "Okay."
+>
+> AGENT [00:19]: "Can I have your full name please?"
+>
+> CUSTOMER [00:22]: "Yeah it’s **[PERSON]**."
+>
+> AGENT [00:25]: "Thank you **[PERSON]**. And can you confirm your date of birth?"
+>
+> CUSTOMER [00:30]: "**[DATE]**."
+>
+> AGENT [00:33]: "Great. For security can you also verify the last four digits of your Social Security number?"
+>
+> CUSTOMER [00:39]: "Uh yeah, it’s 4821."
+>
+> AGENT [00:42]: "Perfect. And I also see we have an account number ending in **[ACCOUNT_NUMBER]**, does that sound right?"
+>
+> CUSTOMER [00:49]: "Yeah that should be it."
+>
+> AGENT [00:52]: "Okay, thank you. What happens when you try to log in?"
+>
+> CUSTOMER [00:57]: "It says my password expired and then when I try the reset link it tells me my email can’t be verified."
+>
+> AGENT [01:04]: "Got it. Let me check the email address we have on file. I’m showing **[EMAIL]**."
+>
+> CUSTOMER [01:12]: "Ohhh okay yeah I don’t use that one anymore."
+>
+> AGENT [01:16]: "No problem. What email would you like to update it to?"
+>
+> CUSTOMER [01:21]: "Use **[EMAIL]**."
+>
+> AGENT [01:26]: "Alright, give me one moment while I update that."
+>
+> CUSTOMER [01:30]: "Sure."
+>
+> AGENT [01:36]: "Okay, that email has been updated. I’m sending a temporary password now. You should get it in the next minute or so."
+>
+> CUSTOMER [01:45]: "Alright let me refresh... yeah okay I got it."
+>
+> AGENT [01:50]: "Perfect. Go ahead and read back the temporary code just so I know you received the correct one."
+>
+> CUSTOMER [01:56]: "Uh, capital M, lowercase t, 9, 4, exclamation point, B."
+>
+> AGENT [02:04]: "That should be correct. Once you log in it’ll prompt you to create a new password."
+>
+> CUSTOMER [02:09]: "Okay cool. While I have you, can you tell me what phone number and address you guys have on the account?"
+>
+> AGENT [02:16]: "Sure. I have a phone number ending in 2218 and the address listed is **[ADDRESS]**."
+>
+> CUSTOMER [02:27]: "Yeah the address is right but my phone changed."
+>
+> AGENT [02:31]: "No problem, what’s the new number?"
+>
+> CUSTOMER [02:35]: "It’s **[PHONE]**."
+>
+> AGENT [02:39]: "Thank you. I’ve updated that for you."
+>
+> CUSTOMER [02:43]: "Awesome."
+>
+> AGENT [02:45]: "Anything else I can help with today?"
+>
+> CUSTOMER [02:49]: "Actually yeah, I had a question about my member ID too. I need it for an appointment tomorrow."
+>
+> AGENT [02:56]: "Absolutely. Your member ID is **[ACCOUNT_NUMBER]**."
+>
+> CUSTOMER [03:03]: "Perfect, thank you."
+>
+> AGENT [03:06]: "You’re welcome. And just a reminder, once you log in with the temporary password, make sure you change it within 24 hours."
+>
+> CUSTOMER [03:14]: "Yep, I’ll do that."
+>
+> AGENT [03:16]: "Alright **[PERSON]**, thanks for calling Medical Care Services and have a great day."
+>
+> CUSTOMER [03:22]: "You too, thanks."
+
+## Second Pass
+
+> AGENT [00:01]: "Thank you for calling Medical Care Services, this is **[PERSON]**, how can I help you today?"
+>
+> CUSTOMER [00:05]: "Hey yeah, um, I’m locked out of my account again and I need to reset my password."
+>
+> AGENT [00:11]: "I can definitely help with that. Before we get started I’ll need to verify some information on the account."
+>
+> CUSTOMER [00:17]: "Okay."
+>
+> AGENT [00:19]: "Can I have your full name please?"
+>
+> CUSTOMER [00:22]: "Yeah it’s **[PERSON]**."
+>
+> AGENT [00:25]: "Thank you **[PERSON]**. And can you confirm your date of birth?"
+>
+> CUSTOMER [00:30]: "**[DATE]**."
+>
+> AGENT [00:33]: "Great. For security can you also verify the last four digits of your Social Security number?"
+>
+> CUSTOMER [00:39]: "Uh yeah, it’s **[FOUR_DIGITS]**"
+>
+> AGENT [00:42]: "Perfect. And I also see we have an account number ending in **[ACCOUNT_NUMBER]**, does that sound right?"
+>
+> CUSTOMER [00:49]: "Yeah that should be it."
+>
+> AGENT [00:52]: "Okay, thank you. What happens when you try to log in?"
+>
+> CUSTOMER [00:57]: "It says my password expired and then when I try the reset link it tells me my email can’t be verified."
+>
+> AGENT [01:04]: "Got it. Let me check the email address we have on file. I’m showing **[EMAIL]**."
+>
+> CUSTOMER [01:12]: "Ohhh okay yeah I don’t use that one anymore."
+>
+> AGENT [01:16]: "No problem. What email would you like to update it to?"
+>
+> CUSTOMER [01:21]: "Use **[EMAIL]**."
+>
+> AGENT [01:26]: "Alright, give me one moment while I update that."
+>
+> CUSTOMER [01:30]: "Sure."
+>
+> AGENT [01:36]: "Okay, that email has been updated. I’m sending a temporary password now. You should get it in the next minute or so."
+>
+> CUSTOMER [01:45]: "Alright let me refresh... yeah okay I got it."
+>
+> AGENT [01:50]: "Perfect. Go ahead and read back the temporary code just so I know you received the correct one."
+>
+> CUSTOMER [01:56]: "Uh, capital M, lowercase t, 9, 4, exclamation point, B."
+>
+> AGENT [02:04]: "That should be correct. Once you log in it’ll prompt you to create a new password."
+>
+> CUSTOMER [02:09]: "Okay cool. While I have you, can you tell me what phone number and address you guys have on the account?"
+>
+> AGENT [02:16]: "Sure. I have a phone number ending in **[FOUR_DIGITS]** and the address listed is **[ADDRESS]**."
+>
+> CUSTOMER [02:27]: "Yeah the address is right but my phone changed."
+>
+> AGENT [02:31]: "No problem, what’s the new number?"
+>
+> CUSTOMER [02:35]: "It’s **[PHONE]**."
+>
+> AGENT [02:39]: "Thank you. I’ve updated that for you."
+>
+> CUSTOMER [02:43]: "Awesome."
+>
+> AGENT [02:45]: "Anything else I can help with today?"
+>
+> CUSTOMER [02:49]: "Actually yeah, I had a question about my member ID too. I need it for an appointment tomorrow."
+>
+> AGENT [02:56]: "Absolutely. Your member ID is **[ACCOUNT_NUMBER]**."
+>
+> CUSTOMER [03:03]: "Perfect, thank you."
+>
+> AGENT [03:06]: "You’re welcome. And just a reminder, once you log in with the temporary password, make sure you change it within 24 hours."
+>
+> CUSTOMER [03:14]: "Yep, I’ll do that."
+>
+> AGENT [03:16]: "Alright **[PERSON]**, thanks for calling Medical Care Services and have a great day."
+>
+> CUSTOMER [03:22]: "You too, thanks."
+
+:::
+
+### Generating the Summary
+
+However, you might notice that *neither* approach handled a more unusual situation: A person verbally quoting a verification code that is transcribed into text:
+
+> AGENT [01:50]: "Perfect. Go ahead and read back the temporary code just so I know you received the correct one."
+>
+> CUSTOMER [01:56]: "Uh, capital M, lowercase t, 9, 4, exclamation point, B."
+
+This is a situation where we might want an LLM to do the final pass of just excluding this information from the final summary. In the prompt we create a set of rules to allow the LLM to more safely generate a clean summary. In addition to instructing it to never quote customer information or repeat any PHI or PII, we also provide examples of valid summaries that don't contain any of this information. So, before we generate the summary we have already removed almost all of the PHI and PII from the transcript, and let the LLM handle whatever small pieces might have gone through at the end.
+
+After running all the redaction steps, we can get an LLM summary of the call with significantly more confidence that PHI or PII didn't leak into the text. For this post, I generated the summary below using a small, local Gemma-4 model (so, not terribly smart!). However even this model is more than sufficient for a simple task like summarization, and we have the added benefit of manually redacting nearly all the problematic data. 
+
+> **Call Reason:** Account Management
+>
+> **Summary:** Customer called because they were locked out of their account, and the password reset process was failing due to an outdated email address. The agent 
+> updated the email, issued a temporary password, and subsequently helped the customer update their phone number and retrieve their member ID. All of the 
+> customer's requests and issues were successfully resolved.
+
+## Layering Tasks
+
+If I had a point to this post, it is that in many cases one single tool isn't sufficient for many tasks. In cases where there is added complexity, its often more useful to do pre-processing or post-processing tasks that take work off the the LLM. In some projects I have seen folks struggling with long, convoluted prompts to try and get the LLM to follow all their rules. However, taking some of the work off the LLM can help clean up the end-to-end process, make testing easier, and give your greater confidence at the end product. A true LLM pipeline should contain a mix of tools to yield the solution.

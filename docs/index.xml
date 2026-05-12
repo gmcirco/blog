@@ -10,7 +10,984 @@
 <atom:link href="https://gmcirco.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>A space for all things data</description>
 <generator>quarto-1.8.25</generator>
-<lastBuildDate>Wed, 08 Apr 2026 04:00:00 GMT</lastBuildDate>
+<lastBuildDate>Mon, 11 May 2026 04:00:00 GMT</lastBuildDate>
+<item>
+  <title>A Few Practical Notes on PII Redaction</title>
+  <dc:creator>Gio Circo, Ph.D.</dc:creator>
+  <link>https://gmcirco.github.io/blog/posts/pii-redaction/pii_summary.html</link>
+  <description><![CDATA[ 
+
+
+
+
+
+<section id="preserving-privacy-in-llm-summaries" class="level2">
+<h2 class="anchored" data-anchor-id="preserving-privacy-in-llm-summaries">Preserving Privacy in LLM Summaries</h2>
+<p>For those of us working in the healthcare industry, ensuring the safety of personally-identifiable information (PII) and personal health information (PHI) is a critical concern. Restrictions on the sharing and storing of PII and PHI make the use of it in some user-facing products difficult. One real scenario I have encountered is the need to create LLM summaries of calls between call center agents and customers and return a full summary that omits ANY PHI or PII. Now, you might think “what’s the big deal, just tell the LLM to not repeat any PHI or PII in its summary?”. While it is good practice to instruct the LLM on what is permissible and not permissible to report, in the real world this is often <em>not</em> sufficient to guarantee leakage of information. Without proper guardrails, a single hallucination could cause the model to inadvertently repeat restricted information.</p>
+<section id="openais-privacy-filter" class="level3">
+<h3 class="anchored" data-anchor-id="openais-privacy-filter">OpenAI’s “Privacy Filter”</h3>
+<p>Recently I got notice that OpenAI released a model specifically designed for privacy filtering. While they’re not the first entrant to this field, it is notable that its coming from one of the big guys in the AI space. Per their own notes:</p>
+<blockquote class="blockquote">
+<p>OpenAI Privacy Filter is a bidirectional token-classification model for personally identifiable information (PII) detection and masking in text. It is intended &gt; for high-throughput data sanitization workflows where teams need a model that they can run on-premises that is fast, context-aware, and tunable.</p>
+</blockquote>
+<p>It’s a bidirectional model which places it close to a BERT model. These types of models have already been used extensively for named entity recognition (NER), and even more specifically for <a href="https://huggingface.co/nvidia/gliner-PII">PII redaction</a>. At the time I am writing this there are already some <a href="https://huggingface.co/OpenMed/privacy-filter-nemotron">fine-tuned</a> versions of the OpenAI model specifically trained for medical privacy. The availability of fine-tunes is pretty common. In the past I have relied on other fine-tuned models like BioBERT to serve as the starting point for training a new classification task. For the purposes of this post, however, I’ll just rely on the base OpenAI model.</p>
+</section>
+</section>
+<section id="layering-approaches-to-privacy" class="level2">
+<h2 class="anchored" data-anchor-id="layering-approaches-to-privacy">Layering Approaches to Privacy</h2>
+<p>While OpenAI’s privacy pipeline looks pretty robust, as I said before, it is never prudent to rely on only a single method for redaction. Rather, we should have several passes of security to give us the most confidence that restricted information is not present in the result. The full ‘pipeline’ for this problem is quite simple. We ingest a transcript (here, just a static text file), redact the input transcript using the OpenAI privacy model + regex fallback, then pass it to the LLM for processing. The full code is below, which contains the prompts, pydantic schema, and redaction functions:</p>
+<details>
+<summary>
+Full Code
+</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"Simple example of a two-stage process for PII-safe call summarization."</span></span>
+<span id="cb1-2"></span>
+<span id="cb1-3"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> enum <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> Enum</span>
+<span id="cb1-4"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> re</span>
+<span id="cb1-5"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> transformers <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> pipeline</span>
+<span id="cb1-6"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> pathlib <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> Path</span>
+<span id="cb1-7"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> openai <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> OpenAI</span>
+<span id="cb1-8"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> string <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> Template</span>
+<span id="cb1-9"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> pydantic <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> BaseModel, Field</span>
+<span id="cb1-10"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> json</span>
+<span id="cb1-11"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> re</span>
+<span id="cb1-12"></span>
+<span id="cb1-13"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Define local AI client</span></span>
+<span id="cb1-14">CLIENT <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> client <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> OpenAI(base_url<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"http://127.0.0.1:8080"</span>)</span>
+<span id="cb1-15"></span>
+<span id="cb1-16"></span>
+<span id="cb1-17"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Define extraction and summarization schema</span></span>
+<span id="cb1-18"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">class</span> CallReason(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>, Enum):</span>
+<span id="cb1-19">    BILLING <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Billing Issue"</span></span>
+<span id="cb1-20">    TECHNICAL <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Technical Support"</span></span>
+<span id="cb1-21">    ACCOUNT <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Account Management"</span></span>
+<span id="cb1-22">    SUPPORT <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"General Support"</span></span>
+<span id="cb1-23">    OTHER <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Other"</span></span>
+<span id="cb1-24"></span>
+<span id="cb1-25"></span>
+<span id="cb1-26"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">class</span> CallSummary(BaseModel):</span>
+<span id="cb1-27">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"""Schema for summarizing customer service calls."""</span></span>
+<span id="cb1-28"></span>
+<span id="cb1-29">    reason: CallReason <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Field(description<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Primary reason for the customer's call"</span>)</span>
+<span id="cb1-30">    summary: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Field(</span>
+<span id="cb1-31">        description<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Short, 1-2 sentence summary of the customer's issue and resolution"</span></span>
+<span id="cb1-32">    )</span>
+<span id="cb1-33"></span>
+<span id="cb1-34"></span>
+<span id="cb1-35"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Define prompts and templates</span></span>
+<span id="cb1-36">ROLE <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb1-37"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">You are an expert call center agent that summarizes customer service calls.</span></span>
+<span id="cb1-38"></span>
+<span id="cb1-39"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">Closely follow the following instructions for summarizing the call:</span></span>
+<span id="cb1-40"></span>
+<span id="cb1-41"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">## Summarization Guidelines:</span></span>
+<span id="cb1-42"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">- Focus exclusively on the customer's issue and the resolution provided by the agent.</span></span>
+<span id="cb1-43"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">- Avoid including any personally identifiable information (PII) such as names, phone numbers,addresses, or account numbers. </span></span>
+<span id="cb1-44"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">- Never quote any direct statements from the customer or agent in the summary.</span></span>
+<span id="cb1-45"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">- If the call includes multiple issues, summarize each issue and its resolution separately.</span></span>
+<span id="cb1-46"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">- Always identify if the primary reason for the call was resolved.</span></span>
+<span id="cb1-47"></span>
+<span id="cb1-48"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">## Style Guidelines:</span></span>
+<span id="cb1-49"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">- Use clear and concise language.</span></span>
+<span id="cb1-50"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">- Write in the past tense, as if describing a completed event.</span></span>
+<span id="cb1-51"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">- Limit the summary to 2-3 sentences.</span></span>
+<span id="cb1-52"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">- Refer to the caller as 'customer' and the agent as 'agent'.</span></span>
+<span id="cb1-53"></span>
+<span id="cb1-54"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">## Output Format:</span></span>
+<span id="cb1-55"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">Return your output as JSON following the schema below:</span></span>
+<span id="cb1-56"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">$</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{schema}</span></span>
+<span id="cb1-57"></span>
+<span id="cb1-58"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">## Example Output:</span></span>
+<span id="cb1-59"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-60"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">  "reason": "Billing Issue",</span></span>
+<span id="cb1-61"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">  "summary": "Customer called about an unexpected charge on their account. Agent explained the charge was for a subscription renewal and provided instructions on how to cancel if they wish to do so. Customer verified that their issue was resolved and thanked the agent for their help."</span></span>
+<span id="cb1-62"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb1-63"></span>
+<span id="cb1-64"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-65"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"reason": "Technical Support",</span></span>
+<span id="cb1-66"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"summary": "Customer reported that their internet connection was dropping frequently. Agent walked customer through the issue and resolved it by having them reset the modem. Customer confirmed that the connection was stable and expressed satisfaction with the support provided."</span></span>
+<span id="cb1-67"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb1-68"></span>
+<span id="cb1-69"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-70"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"reason": "Account Management",</span></span>
+<span id="cb1-71"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"summary": "Customer wanted to update their account information. Agent assisted customer in changing their email address and phone number on file. Agent identified that the customer was no longer enrolled and told customer they would need to be transferred to a re-enrollment representative." </span></span>
+<span id="cb1-72"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">}   </span></span>
+<span id="cb1-73"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb1-74"></span>
+<span id="cb1-75">PROMPT <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb1-76"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">Summarize the following customer service call:</span></span>
+<span id="cb1-77"></span>
+<span id="cb1-78"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">## Call Transcript:</span></span>
+<span id="cb1-79"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">$</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{text}</span></span>
+<span id="cb1-80"><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"""</span></span>
+<span id="cb1-81"></span>
+<span id="cb1-82">role_template <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Template(ROLE)</span>
+<span id="cb1-83">prompt_template <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Template(PROMPT)</span>
+<span id="cb1-84"></span>
+<span id="cb1-85"></span>
+<span id="cb1-86"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Local functions</span></span>
+<span id="cb1-87"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> init_pii_classifier():</span>
+<span id="cb1-88">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"Initialize a token classification pipeline for PII redaction."</span></span>
+<span id="cb1-89">    pii_classifier <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pipeline(</span>
+<span id="cb1-90">        task<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"token-classification"</span>,</span>
+<span id="cb1-91">        model<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"openai/privacy-filter"</span>,</span>
+<span id="cb1-92">        aggregation_strategy<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"simple"</span>,</span>
+<span id="cb1-93">        device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=-</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>,</span>
+<span id="cb1-94">    )</span>
+<span id="cb1-95">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> pii_classifier</span>
+<span id="cb1-96"></span>
+<span id="cb1-97"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> redact_pii(text: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>:</span>
+<span id="cb1-98">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"Redact personally identifiable information (PII) from the input text using a token classification model."</span></span>
+<span id="cb1-99">    pii_classifier <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> init_pii_classifier()</span>
+<span id="cb1-100"></span>
+<span id="cb1-101">    entities <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pii_classifier(text)</span>
+<span id="cb1-102">    merged <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> []</span>
+<span id="cb1-103">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> e <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> entities:</span>
+<span id="cb1-104">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> (</span>
+<span id="cb1-105">            merged</span>
+<span id="cb1-106">            <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">and</span> e[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"entity_group"</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> merged[<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>][<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"entity_group"</span>]</span>
+<span id="cb1-107">            <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">and</span> e[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"start"</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;=</span> merged[<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>][<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"end"</span>]</span>
+<span id="cb1-108">        ):</span>
+<span id="cb1-109">            merged[<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>][<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"end"</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">max</span>(merged[<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>][<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"end"</span>], e[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"end"</span>])</span>
+<span id="cb1-110">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb1-111">            merged.append(</span>
+<span id="cb1-112">                {</span>
+<span id="cb1-113">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"start"</span>: e[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"start"</span>],</span>
+<span id="cb1-114">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"end"</span>: e[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"end"</span>],</span>
+<span id="cb1-115">                    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"entity_group"</span>: e[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"entity_group"</span>],</span>
+<span id="cb1-116">                }</span>
+<span id="cb1-117">            )</span>
+<span id="cb1-118">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> e <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">reversed</span>(merged):</span>
+<span id="cb1-119">        label <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> e[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"entity_group"</span>].removeprefix(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"private_"</span>).upper()</span>
+<span id="cb1-120">        text <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> text[: e[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"start"</span>]] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"[</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>label<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> text[e[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"end"</span>] :]</span>
+<span id="cb1-121"></span>
+<span id="cb1-122">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> text</span>
+<span id="cb1-123"></span>
+<span id="cb1-124"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> regex_redact(text: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>:</span>
+<span id="cb1-125">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"Fallback regex reduction for cases not handled by OpenAI classfier"</span></span>
+<span id="cb1-126"></span>
+<span id="cb1-127">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># four-digit numbers (e.g., last 4 of a phone number or account number)</span></span>
+<span id="cb1-128">    text <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> re.sub(<span class="vs" style="color: #20794D;
+background-color: null;
+font-style: inherit;">r"</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\b\d</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{4}</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\b</span><span class="vs" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"[FOUR_DIGITS]"</span>, text)</span>
+<span id="cb1-129"></span>
+<span id="cb1-130">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> text</span>
+<span id="cb1-131"></span>
+<span id="cb1-132"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> import_text(file_path: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>, redact: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">bool</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span>, use_regex: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">bool</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>:</span>
+<span id="cb1-133">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"Import transcript with optional pii redaction. Optional regex fallback for cases not handled by OpenAI classifier."</span></span>
+<span id="cb1-134">    text <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Path(file_path).read_text(encoding<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"utf-8"</span>)</span>
+<span id="cb1-135">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> redact:</span>
+<span id="cb1-136">        text <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> redact_pii(text)</span>
+<span id="cb1-137">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> use_regex:</span>
+<span id="cb1-138">        text <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> regex_redact(text)</span>
+<span id="cb1-139">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> text</span>
+<span id="cb1-140"></span>
+<span id="cb1-141"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> invoke(client, transcript):</span>
+<span id="cb1-142">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"Invoke the LLM to summarize the call transcript."</span></span>
+<span id="cb1-143">    schema_str <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> json.dumps(CallSummary.model_json_schema(), indent<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span>)</span>
+<span id="cb1-144">    role_str <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> role_template.substitute(schema<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>schema_str)</span>
+<span id="cb1-145">    prompt_str <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> prompt_template.substitute(text<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>transcript)</span>
+<span id="cb1-146">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">try</span>:</span>
+<span id="cb1-147">        response <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> client.chat.completions.create(</span>
+<span id="cb1-148">            messages<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>[</span>
+<span id="cb1-149">                {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"role"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"system"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"content"</span>: role_str},</span>
+<span id="cb1-150">                {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"role"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"user"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"content"</span>: prompt_str},</span>
+<span id="cb1-151">            ],</span>
+<span id="cb1-152">            model<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"local_mode"</span>,</span>
+<span id="cb1-153">            temperature<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>,</span>
+<span id="cb1-154">            top_p<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.95</span>,</span>
+<span id="cb1-155">            response_format<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"type"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"json_object"</span>},</span>
+<span id="cb1-156">            reasoning_effort<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"low"</span>,</span>
+<span id="cb1-157">        )</span>
+<span id="cb1-158">        raw_content <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> response.choices[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>].message.content</span>
+<span id="cb1-159">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> CallSummary.model_validate_json(raw_content)</span>
+<span id="cb1-160">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">except</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Exception</span> <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> e:</span>
+<span id="cb1-161">        <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"Error during LLM invocation or validation: </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>e<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>)</span>
+<span id="cb1-162">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span></span>
+<span id="cb1-163"></span>
+<span id="cb1-164"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># now main run</span></span>
+<span id="cb1-165"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> main():</span>
+<span id="cb1-166">    text <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> import_text(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"transcripts/transcript_001.txt"</span>, redact<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span>, use_regex<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span>)</span>
+<span id="cb1-167">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(text)</span>
+<span id="cb1-168">    summary <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> invoke(CLIENT, text)</span>
+<span id="cb1-169">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> summary:</span>
+<span id="cb1-170">        <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"Call Reason: </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>summary<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>reason<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>value<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>)</span>
+<span id="cb1-171">        <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"Summary: </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>summary<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>summary<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>)</span>
+<span id="cb1-172">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb1-173">        <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Failed to summarize the call."</span>)</span>
+<span id="cb1-174"></span>
+<span id="cb1-175"></span>
+<span id="cb1-176"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">__name__</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"__main__"</span>:</span>
+<span id="cb1-177">    main()</span></code></pre></div></div>
+</details>
+<section id="transcript-redaction" class="level3">
+<h3 class="anchored" data-anchor-id="transcript-redaction">Transcript Redaction</h3>
+<p>Using just the OpenAI privacy filter as our first pass, it does a pretty good job. Names, dates, addresses and full account numbers are fully redacted. For example, this section of the transcripts appears to be cleaned completely, with the clear exception that it misses 4-digit identifiers (e.g.&nbsp;last 4 of SSN)</p>
+<blockquote class="blockquote">
+<p>AGENT [00:19]: “Can I have your full name please?”</p>
+<p>CUSTOMER [00:22]: “Yeah it’s <strong>[PERSON]</strong>.”</p>
+<p>AGENT [00:25]: “Thank you <strong>[PERSON]</strong>. And can you confirm your date of birth?”</p>
+<p>CUSTOMER [00:30]: “<strong>[DATE]</strong>.”</p>
+<p>AGENT [00:33]: “Great. For security can you also verify the last four digits of your Social Security number?”</p>
+<p>CUSTOMER [00:39]: “Uh yeah, it’s 4821.”</p>
+<p>AGENT [00:42]: “Perfect. And I also see we have an account number ending in <strong>[ACCOUNT_NUMBER]</strong>, does that sound right?”</p>
+</blockquote>
+<p>To accomodate this, we can build a second pass that performs a harder regex check for specific patterns. While it is highly simple, its quite effective and easy to build in:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> regex_redact(text: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>:</span>
+<span id="cb2-2">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"Fallback regex reduction for cases not handled by OpenAI classfier"</span></span>
+<span id="cb2-3"></span>
+<span id="cb2-4">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># four-digit numbers (e.g., last 4 of a phone number or account number)</span></span>
+<span id="cb2-5">    text <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> re.sub(<span class="vs" style="color: #20794D;
+background-color: null;
+font-style: inherit;">r"</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\b\d</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{4}</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\b</span><span class="vs" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"[FOUR_DIGITS]"</span>, text)</span>
+<span id="cb2-6"></span>
+<span id="cb2-7">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> text</span></code></pre></div></div>
+<p>Putting these two steps together, you can see below, first and second passes of the redaction workflow. The OpenAI privacy filter handles most of the occurances of PII, and we clean up the remaining 4 digit patterns manually via regex.</p>
+</section>
+<section id="redaction-flow" class="level3">
+<h3 class="anchored" data-anchor-id="redaction-flow">Redaction Flow</h3>
+<div class="tabset-margin-container"></div><div class="panel-tabset">
+<ul class="nav nav-tabs"><li class="nav-item"><a class="nav-link active" id="tabset-1-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-1" aria-controls="tabset-1-1" aria-selected="true" href="">Unredacted</a></li><li class="nav-item"><a class="nav-link" id="tabset-1-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-2" aria-controls="tabset-1-2" aria-selected="false" href="">First Pass</a></li><li class="nav-item"><a class="nav-link" id="tabset-1-3-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-3" aria-controls="tabset-1-3" aria-selected="false" href="">Second Pass</a></li></ul>
+<div class="tab-content">
+<div id="tabset-1-1" class="tab-pane active" aria-labelledby="tabset-1-1-tab">
+<blockquote class="blockquote">
+<p>AGENT [00:01]: “Thank you for calling Medical Care Services, this is Angela, how can I help you today?”</p>
+<p>CUSTOMER [00:05]: “Hey yeah, um, I’m locked out of my account again and I need to reset my password.”</p>
+<p>AGENT [00:11]: “I can definitely help with that. Before we get started I’ll need to verify some information on the account.”</p>
+<p>CUSTOMER [00:17]: “Okay.”</p>
+<p>AGENT [00:19]: “Can I have your full name please?”</p>
+<p>CUSTOMER [00:22]: “Yeah it’s Daniel Harper.”</p>
+<p>AGENT [00:25]: “Thank you Mr.&nbsp;Harper. And can you confirm your date of birth?”</p>
+<p>CUSTOMER [00:30]: “March 14th, 1987.”</p>
+<p>AGENT [00:33]: “Great. For security can you also verify the last four digits of your Social Security number?”</p>
+<p>CUSTOMER [00:39]: “Uh yeah, it’s 4821.”</p>
+<p>AGENT [00:42]: “Perfect. And I also see we have an account number ending in 774593, does that sound right?”</p>
+<p>CUSTOMER [00:49]: “Yeah that should be it.”</p>
+<p>AGENT [00:52]: “Okay, thank you. What happens when you try to log in?”</p>
+<p>CUSTOMER [00:57]: “It says my password expired and then when I try the reset link it tells me my email can’t be verified.”</p>
+<p>AGENT [01:04]: “Got it. Let me check the email address we have on file. I’m showing dharper1987@gmail.com.”</p>
+<p>CUSTOMER [01:12]: “Ohhh okay yeah I don’t use that one anymore.”</p>
+<p>AGENT [01:16]: “No problem. What email would you like to update it to?”</p>
+<p>CUSTOMER [01:21]: “Use daniel.harper.rx@outlook.com.”</p>
+<p>AGENT [01:26]: “Alright, give me one moment while I update that.”</p>
+<p>CUSTOMER [01:30]: “Sure.”</p>
+<p>AGENT [01:36]: “Okay, that email has been updated. I’m sending a temporary password now. You should get it in the next minute or so.”</p>
+<p>CUSTOMER [01:45]: “Alright let me refresh… yeah okay I got it.”</p>
+<p>AGENT [01:50]: “Perfect. Go ahead and read back the temporary code just so I know you received the correct one.”</p>
+<p>CUSTOMER [01:56]: “Uh, capital M, lowercase t, 9, 4, exclamation point, B.”</p>
+<p>AGENT [02:04]: “That should be correct. Once you log in it’ll prompt you to create a new password.”</p>
+<p>CUSTOMER [02:09]: “Okay cool. While I have you, can you tell me what phone number and address you guys have on the account?”</p>
+<p>AGENT [02:16]: “Sure. I have a phone number ending in 2218 and the address listed is 458 Willow Creek Drive, Rochester, New York, 14618.”</p>
+<p>CUSTOMER [02:27]: “Yeah the address is right but my phone changed.”</p>
+<p>AGENT [02:31]: “No problem, what’s the new number?”</p>
+<p>CUSTOMER [02:35]: “It’s 585-443-9082.”</p>
+<p>AGENT [02:39]: “Thank you. I’ve updated that for you.”</p>
+<p>CUSTOMER [02:43]: “Awesome.”</p>
+<p>AGENT [02:45]: “Anything else I can help with today?”</p>
+<p>CUSTOMER [02:49]: “Actually yeah, I had a question about my member ID too. I need it for an appointment tomorrow.”</p>
+<p>AGENT [02:56]: “Absolutely. Your member ID is MCX-44729106.”</p>
+<p>CUSTOMER [03:03]: “Perfect, thank you.”</p>
+<p>AGENT [03:06]: “You’re welcome. And just a reminder, once you log in with the temporary password, make sure you change it within 24 hours.”</p>
+<p>CUSTOMER [03:14]: “Yep, I’ll do that.”</p>
+<p>AGENT [03:16]: “Alright Mr.&nbsp;Harper, thanks for calling Medical Care Services and have a great day.”</p>
+<p>CUSTOMER [03:22]: “You too, thanks.”</p>
+</blockquote>
+</div>
+<div id="tabset-1-2" class="tab-pane" aria-labelledby="tabset-1-2-tab">
+<blockquote class="blockquote">
+<p>AGENT [00:01]: “Thank you for calling Medical Care Services, this is <strong>[PERSON]</strong>, how can I help you today?”</p>
+<p>CUSTOMER [00:05]: “Hey yeah, um, I’m locked out of my account again and I need to reset my password.”</p>
+<p>AGENT [00:11]: “I can definitely help with that. Before we get started I’ll need to verify some information on the account.”</p>
+<p>CUSTOMER [00:17]: “Okay.”</p>
+<p>AGENT [00:19]: “Can I have your full name please?”</p>
+<p>CUSTOMER [00:22]: “Yeah it’s <strong>[PERSON]</strong>.”</p>
+<p>AGENT [00:25]: “Thank you <strong>[PERSON]</strong>. And can you confirm your date of birth?”</p>
+<p>CUSTOMER [00:30]: “<strong>[DATE]</strong>.”</p>
+<p>AGENT [00:33]: “Great. For security can you also verify the last four digits of your Social Security number?”</p>
+<p>CUSTOMER [00:39]: “Uh yeah, it’s 4821.”</p>
+<p>AGENT [00:42]: “Perfect. And I also see we have an account number ending in <strong>[ACCOUNT_NUMBER]</strong>, does that sound right?”</p>
+<p>CUSTOMER [00:49]: “Yeah that should be it.”</p>
+<p>AGENT [00:52]: “Okay, thank you. What happens when you try to log in?”</p>
+<p>CUSTOMER [00:57]: “It says my password expired and then when I try the reset link it tells me my email can’t be verified.”</p>
+<p>AGENT [01:04]: “Got it. Let me check the email address we have on file. I’m showing <strong>[EMAIL]</strong>.”</p>
+<p>CUSTOMER [01:12]: “Ohhh okay yeah I don’t use that one anymore.”</p>
+<p>AGENT [01:16]: “No problem. What email would you like to update it to?”</p>
+<p>CUSTOMER [01:21]: “Use <strong>[EMAIL]</strong>.”</p>
+<p>AGENT [01:26]: “Alright, give me one moment while I update that.”</p>
+<p>CUSTOMER [01:30]: “Sure.”</p>
+<p>AGENT [01:36]: “Okay, that email has been updated. I’m sending a temporary password now. You should get it in the next minute or so.”</p>
+<p>CUSTOMER [01:45]: “Alright let me refresh… yeah okay I got it.”</p>
+<p>AGENT [01:50]: “Perfect. Go ahead and read back the temporary code just so I know you received the correct one.”</p>
+<p>CUSTOMER [01:56]: “Uh, capital M, lowercase t, 9, 4, exclamation point, B.”</p>
+<p>AGENT [02:04]: “That should be correct. Once you log in it’ll prompt you to create a new password.”</p>
+<p>CUSTOMER [02:09]: “Okay cool. While I have you, can you tell me what phone number and address you guys have on the account?”</p>
+<p>AGENT [02:16]: “Sure. I have a phone number ending in 2218 and the address listed is <strong>[ADDRESS]</strong>.”</p>
+<p>CUSTOMER [02:27]: “Yeah the address is right but my phone changed.”</p>
+<p>AGENT [02:31]: “No problem, what’s the new number?”</p>
+<p>CUSTOMER [02:35]: “It’s <strong>[PHONE]</strong>.”</p>
+<p>AGENT [02:39]: “Thank you. I’ve updated that for you.”</p>
+<p>CUSTOMER [02:43]: “Awesome.”</p>
+<p>AGENT [02:45]: “Anything else I can help with today?”</p>
+<p>CUSTOMER [02:49]: “Actually yeah, I had a question about my member ID too. I need it for an appointment tomorrow.”</p>
+<p>AGENT [02:56]: “Absolutely. Your member ID is <strong>[ACCOUNT_NUMBER]</strong>.”</p>
+<p>CUSTOMER [03:03]: “Perfect, thank you.”</p>
+<p>AGENT [03:06]: “You’re welcome. And just a reminder, once you log in with the temporary password, make sure you change it within 24 hours.”</p>
+<p>CUSTOMER [03:14]: “Yep, I’ll do that.”</p>
+<p>AGENT [03:16]: “Alright <strong>[PERSON]</strong>, thanks for calling Medical Care Services and have a great day.”</p>
+<p>CUSTOMER [03:22]: “You too, thanks.”</p>
+</blockquote>
+</div>
+<div id="tabset-1-3" class="tab-pane" aria-labelledby="tabset-1-3-tab">
+<blockquote class="blockquote">
+<p>AGENT [00:01]: “Thank you for calling Medical Care Services, this is <strong>[PERSON]</strong>, how can I help you today?”</p>
+<p>CUSTOMER [00:05]: “Hey yeah, um, I’m locked out of my account again and I need to reset my password.”</p>
+<p>AGENT [00:11]: “I can definitely help with that. Before we get started I’ll need to verify some information on the account.”</p>
+<p>CUSTOMER [00:17]: “Okay.”</p>
+<p>AGENT [00:19]: “Can I have your full name please?”</p>
+<p>CUSTOMER [00:22]: “Yeah it’s <strong>[PERSON]</strong>.”</p>
+<p>AGENT [00:25]: “Thank you <strong>[PERSON]</strong>. And can you confirm your date of birth?”</p>
+<p>CUSTOMER [00:30]: “<strong>[DATE]</strong>.”</p>
+<p>AGENT [00:33]: “Great. For security can you also verify the last four digits of your Social Security number?”</p>
+<p>CUSTOMER [00:39]: “Uh yeah, it’s <strong>[FOUR_DIGITS]</strong>”</p>
+<p>AGENT [00:42]: “Perfect. And I also see we have an account number ending in <strong>[ACCOUNT_NUMBER]</strong>, does that sound right?”</p>
+<p>CUSTOMER [00:49]: “Yeah that should be it.”</p>
+<p>AGENT [00:52]: “Okay, thank you. What happens when you try to log in?”</p>
+<p>CUSTOMER [00:57]: “It says my password expired and then when I try the reset link it tells me my email can’t be verified.”</p>
+<p>AGENT [01:04]: “Got it. Let me check the email address we have on file. I’m showing <strong>[EMAIL]</strong>.”</p>
+<p>CUSTOMER [01:12]: “Ohhh okay yeah I don’t use that one anymore.”</p>
+<p>AGENT [01:16]: “No problem. What email would you like to update it to?”</p>
+<p>CUSTOMER [01:21]: “Use <strong>[EMAIL]</strong>.”</p>
+<p>AGENT [01:26]: “Alright, give me one moment while I update that.”</p>
+<p>CUSTOMER [01:30]: “Sure.”</p>
+<p>AGENT [01:36]: “Okay, that email has been updated. I’m sending a temporary password now. You should get it in the next minute or so.”</p>
+<p>CUSTOMER [01:45]: “Alright let me refresh… yeah okay I got it.”</p>
+<p>AGENT [01:50]: “Perfect. Go ahead and read back the temporary code just so I know you received the correct one.”</p>
+<p>CUSTOMER [01:56]: “Uh, capital M, lowercase t, 9, 4, exclamation point, B.”</p>
+<p>AGENT [02:04]: “That should be correct. Once you log in it’ll prompt you to create a new password.”</p>
+<p>CUSTOMER [02:09]: “Okay cool. While I have you, can you tell me what phone number and address you guys have on the account?”</p>
+<p>AGENT [02:16]: “Sure. I have a phone number ending in <strong>[FOUR_DIGITS]</strong> and the address listed is <strong>[ADDRESS]</strong>.”</p>
+<p>CUSTOMER [02:27]: “Yeah the address is right but my phone changed.”</p>
+<p>AGENT [02:31]: “No problem, what’s the new number?”</p>
+<p>CUSTOMER [02:35]: “It’s <strong>[PHONE]</strong>.”</p>
+<p>AGENT [02:39]: “Thank you. I’ve updated that for you.”</p>
+<p>CUSTOMER [02:43]: “Awesome.”</p>
+<p>AGENT [02:45]: “Anything else I can help with today?”</p>
+<p>CUSTOMER [02:49]: “Actually yeah, I had a question about my member ID too. I need it for an appointment tomorrow.”</p>
+<p>AGENT [02:56]: “Absolutely. Your member ID is <strong>[ACCOUNT_NUMBER]</strong>.”</p>
+<p>CUSTOMER [03:03]: “Perfect, thank you.”</p>
+<p>AGENT [03:06]: “You’re welcome. And just a reminder, once you log in with the temporary password, make sure you change it within 24 hours.”</p>
+<p>CUSTOMER [03:14]: “Yep, I’ll do that.”</p>
+<p>AGENT [03:16]: “Alright <strong>[PERSON]</strong>, thanks for calling Medical Care Services and have a great day.”</p>
+<p>CUSTOMER [03:22]: “You too, thanks.”</p>
+</blockquote>
+</div>
+</div>
+</div>
+</section>
+<section id="generating-the-summary" class="level3">
+<h3 class="anchored" data-anchor-id="generating-the-summary">Generating the Summary</h3>
+<p>However, you might notice that <em>neither</em> approach handled a more unusual situation: A person verbally quoting a verification code that is transcribed into text:</p>
+<blockquote class="blockquote">
+<p>AGENT [01:50]: “Perfect. Go ahead and read back the temporary code just so I know you received the correct one.”</p>
+<p>CUSTOMER [01:56]: “Uh, capital M, lowercase t, 9, 4, exclamation point, B.”</p>
+</blockquote>
+<p>This is a situation where we might want an LLM to do the final pass of just excluding this information from the final summary. In the prompt we create a set of rules to allow the LLM to more safely generate a clean summary. In addition to instructing it to never quote customer information or repeat any PHI or PII, we also provide examples of valid summaries that don’t contain any of this information. So, before we generate the summary we have already removed almost all of the PHI and PII from the transcript, and let the LLM handle whatever small pieces might have gone through at the end.</p>
+<p>After running all the redaction steps, we can get an LLM summary of the call with significantly more confidence that PHI or PII didn’t leak into the text. For this post, I generated the summary below using a small, local Gemma-4 model (so, not terribly smart!). However even this model is more than sufficient for a simple task like summarization, and we have the added benefit of manually redacting nearly all the problematic data.</p>
+<blockquote class="blockquote">
+<p><strong>Call Reason:</strong> Account Management</p>
+<p><strong>Summary:</strong> Customer called because they were locked out of their account, and the password reset process was failing due to an outdated email address. The agent updated the email, issued a temporary password, and subsequently helped the customer update their phone number and retrieve their member ID. All of the customer’s requests and issues were successfully resolved.</p>
+</blockquote>
+</section>
+</section>
+<section id="layering-tasks" class="level2">
+<h2 class="anchored" data-anchor-id="layering-tasks">Layering Tasks</h2>
+<p>If I had a point to this post, it is that in many cases one single tool isn’t sufficient for many tasks. In cases where there is added complexity, its often more useful to do pre-processing or post-processing tasks that take work off the the LLM. In some projects I have seen folks struggling with long, convoluted prompts to try and get the LLM to follow all their rules. However, taking some of the work off the LLM can help clean up the end-to-end process, make testing easier, and give your greater confidence at the end product. A true LLM pipeline should contain a mix of tools to yield the solution.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>Python</category>
+  <category>Large Language Models</category>
+  <guid>https://gmcirco.github.io/blog/posts/pii-redaction/pii_summary.html</guid>
+  <pubDate>Mon, 11 May 2026 04:00:00 GMT</pubDate>
+  <media:content url="https://gmcirco.github.io/blog/posts/pii-redaction/redact.png" medium="image" type="image/png" height="96" width="144"/>
+</item>
 <item>
   <title>How Confident are AI Classifiers About Their Own Confidence?</title>
   <dc:creator>Gio Circo, Ph.D.</dc:creator>
@@ -16161,600 +17138,6 @@ F-statistic: 8.381 on 5 and 24 DF,  p-value: 0.0001068</code></pre>
   <guid>https://gmcirco.github.io/blog/posts/chipotle-weight/youtube-food.html</guid>
   <pubDate>Wed, 03 Apr 2024 04:00:00 GMT</pubDate>
   <media:content url="https://gmcirco.github.io/blog/posts/chipotle-weight/burrito.jpg" medium="image" type="image/jpeg"/>
-</item>
-<item>
-  <title>Don’t Evaluate Your Model On a SMOTE Dataset</title>
-  <dc:creator>Gio Circo, Ph.D.</dc:creator>
-  <link>https://gmcirco.github.io/blog/posts/tiny-recid/recid.html</link>
-  <description><![CDATA[ 
-
-
-
-
-
-<section id="the-paper" class="level2">
-<h2 class="anchored" data-anchor-id="the-paper">The Paper</h2>
-<p>I recently found a paper published called “<a href="https://books.google.com/books?id=HWD8EAAAQBAJ&amp;newbks=0&amp;printsec=frontcover&amp;pg=PA184&amp;hl=en&amp;source=newbks_fb">Advancing Recidivism Prediction for Male Juvenile Offenders: A Machine Learning Approach Applied to Prisoners in Hunan Province</a>”. In it, the authors make use of a very small recidivism data set focusing on youth in Hunan province, which originally appears in a 2017 PLOS ONE article here: “<a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0169251">Predicting Reoffending Using the Structured Assessment of Violence Risk in Youth (SAVRY): A 5-Year Follow-Up Study of Male Juvenile Offenders in Hunan Province, China</a>”.</p>
-<p>The authors of the new study explain how they can use machine learning to improve the prediction of recidivism (which, in of itself is a highly contentious topic). In general, it is a pretty harmless paper of virtually zero significance. They’re using an absurdly tiny data set to test out machine learning models that only really work well when you are flush with data. However, a single line stuck out to me when I was scanning their paper:</p>
-<blockquote class="blockquote">
-<p>“The proposed ML models perform best on the oversampled dataset, as illustrated in Fig. 2.”</p>
-</blockquote>
-<p>Uh oh.</p>
-<p>Looking at the associated figure and table they show off some impressive metrics. Their random forest model has a precision and recall of 97%! On a recidivism prediction task this alone is highly suspicious. For example, in the competition I participated (and won in several categories), our model only averaged about .78 to .8. Why is theirs so good here? Well, it’s all about that line above. Let’s run through the data and explain:</p>
-<p><img src="https://gmcirco.github.io/blog/posts/tiny-recid/table_4.png" class="img-fluid"></p>
-<section id="the-data" class="level3">
-<h3 class="anchored" data-anchor-id="the-data">The Data</h3>
-<p>Below, I pull the original data set from the PLOS One paper (thanks to the authors for making it publically available!). There is a single missing value for education, which I impute to the median value.</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(tidyverse)</span>
-<span id="cb1-2"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(pROC)</span>
-<span id="cb1-3"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(glmnet)</span>
-<span id="cb1-4"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(randomForest)</span>
-<span id="cb1-5"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">library</span>(smotefamily)</span>
-<span id="cb1-6"></span>
-<span id="cb1-7"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">set.seed</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">978545</span>)</span>
-<span id="cb1-8"></span>
-<span id="cb1-9"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># load data</span></span>
-<span id="cb1-10"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># impute single missing value with median of education (8)</span></span>
-<span id="cb1-11">df <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span></span>
-<span id="cb1-12">  haven<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">::</span><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">read_sav</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"../../../data/savry.sav"</span>) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-13">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">select</span>(Reoffending, age, education, familyincome, <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">contains</span>(<span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"SAVRY"</span>), P1<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span>P6) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-14">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">replace_na</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">list</span>(<span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">education =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">8</span>)) <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">%&gt;%</span></span>
-<span id="cb1-15">  <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">mutate</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">across</span>(familyincome<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span>P6, as.factor))</span>
-<span id="cb1-16"></span>
-<span id="cb1-17"></span>
-<span id="cb1-18">TEST_PROP <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> .<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span></span>
-<span id="cb1-19">N <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">nrow</span>(df)</span></code></pre></div></div>
-</div>
-</section>
-</section>
-<section id="doing-it-the-normal-way" class="level2">
-<h2 class="anchored" data-anchor-id="doing-it-the-normal-way">Doing it the Normal Way</h2>
-<p>The normal workflow in this case is to set up a test-train split, fit a model on the training data set, then evaluate the out-of-sample performance on the test set. Despite the very small sample size here I’ll just follow the bog standard approach to illustrate. A 20% test set gives us: <img src="https://latex.codecogs.com/png.latex?246%20-%20(246*.2)%20=%20196.8">. So just under 200 cases to train on, which is really <em>quite</em> small.</p>
-<div class="cell">
-<details class="code-fold">
-<summary>Code</summary>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># indices of train-test</span></span>
-<span id="cb2-2">test_size <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">round</span>(N<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">*</span>TEST_PROP)</span>
-<span id="cb2-3">test_idx <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">sample</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span>N, test_size)</span>
-<span id="cb2-4">train_idx <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">setdiff</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span>N, test_idx)</span>
-<span id="cb2-5"></span>
-<span id="cb2-6"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># set up y and X</span></span>
-<span id="cb2-7"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># one-hot encoding categorical vars</span></span>
-<span id="cb2-8">y <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> df<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>Reoffending</span>
-<span id="cb2-9">X <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">model.matrix</span>(<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">~</span> . <span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">data =</span> df[<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>])</span>
-<span id="cb2-10"></span>
-<span id="cb2-11"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># test-train splits</span></span>
-<span id="cb2-12">y_test <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> y[test_idx]</span>
-<span id="cb2-13">X_test <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> X[test_idx,]</span>
-<span id="cb2-14">y_train <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> y[train_idx]</span>
-<span id="cb2-15">X_train <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> X[train_idx,]</span></code></pre></div></div>
-</details>
-</div>
-<p>Despite the authors of the previous paper using some boosting methods, this data is far, far too small to make use of those approaches usefully. Here, I’m just fitting a logistic regression with no regularization and a random forest with 500 trees.</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># fit multiple linear models</span></span>
-<span id="cb3-2"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># logit, no regularization &amp; random forest</span></span>
-<span id="cb3-3">fit_1_glm <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">glmnet</span>(X_train,y_train, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">family =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"binomial"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">alpha =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">lambda =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span>)</span>
-<span id="cb3-4">fit_1_rf <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">randomForest</span>(X_train ,<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.factor</span>(y_train))</span></code></pre></div></div>
-</div>
-<p>Now we just evaluate the area under the curve:</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1">pred_1_glm <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.numeric</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">predict</span>(fit_1_glm, X_test, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">type =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'response'</span>))</span>
-<span id="cb4-2">pred_1_rf <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.numeric</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">predict</span>(fit_1_rf, X_test, <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"prob"</span>)[,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>])</span>
-<span id="cb4-3"></span>
-<span id="cb4-4"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># get auc</span></span>
-<span id="cb4-5"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">roc</span>(y_test, pred_1_glm, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">quiet =</span> T)<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>auc</span></code></pre></div></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Area under the curve: 0.7482</code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">roc</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.factor</span>(y_test), pred_1_rf, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">quiet =</span> T)<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>auc</span></code></pre></div></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Area under the curve: 0.7197</code></pre>
-</div>
-</div>
-<p>So about .74 for the logistic regression and .72 for the random forest. Not great, not terrible.</p>
-</section>
-<section id="doing-it-with-smote" class="level2">
-<h2 class="anchored" data-anchor-id="doing-it-with-smote">Doing it with SMOTE</h2>
-<p>So the argument with SMOTE is that training models on data sets with very large imbalances in positive vs.&nbsp;negative cases is that the models only learn from the negative cases and not the positive ones. A good example might be a fraud data set where you have 100,000 legitimate credit card transactions and only 500 cases of fraud (so something like .5%). SMOTE is intended to help with training a model by synthesizing a balanced data set where the ratio of positive to negative cases are much closer to 50/50. Without going too much into it, this actually rarely solves and problems and often induces some.</p>
-<p>What I suspect the authors of this paper did is that they generated a SMOTE data set with a balanced ratio of positive to negative cases, then created a test-train split from <em>that</em> data set, and evaluated their metrics on a test data set derived from the SMOTE model. That is very, <em>very</em> wrong.</p>
-<section id="doing-smote-the-wrong-way" class="level3">
-<h3 class="anchored" data-anchor-id="doing-smote-the-wrong-way">Doing SMOTE the wrong way</h3>
-<p>So let’s try it. I’ll synthesize a SMOTE data set from the full set of cases, then walk through the whole process using <em>only</em> the synthesized data. This creates a data set with 126 new observations, and brings the balance of positive to negative cases to almost exactly 50/50 (rather than 25/75 in the original).</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># create a smote dataset from the FULL dataset, then split</span></span>
-<span id="cb8-2">smote_df_full <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">data.frame</span>(X,y)</span>
-<span id="cb8-3">smote_model_full <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">SMOTE</span>(smote_df_full[<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">63</span>], <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">target =</span> smote_df_full[<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">63</span>], <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">dup_size =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>)</span>
-<span id="cb8-4"></span>
-<span id="cb8-5">X_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> smote_model_full<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>data[<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">63</span>]</span>
-<span id="cb8-6">y_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.numeric</span>(smote_model_full<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>data<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>class)</span>
-<span id="cb8-7"></span>
-<span id="cb8-8"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">table</span>(y_smote)</span></code></pre></div></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>y_smote
-  0   1 
-183 189 </code></pre>
-</div>
-</div>
-<p>Now we just pull a test-train split on the SMOTE data, then fit the models.</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># indices of train-test</span></span>
-<span id="cb10-2">test_idx_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">sample</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span>N, test_size)</span>
-<span id="cb10-3">train_idx_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">setdiff</span>(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span><span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">:</span>N, test_idx_smote)</span>
-<span id="cb10-4"></span>
-<span id="cb10-5"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># test-train splits</span></span>
-<span id="cb10-6">y_test_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> y_smote[test_idx_smote]</span>
-<span id="cb10-7">X_test_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.matrix</span>(X_smote[test_idx_smote,])</span>
-<span id="cb10-8">y_train_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> y_smote[train_idx_smote]</span>
-<span id="cb10-9">X_train_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">=</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.matrix</span>(X_smote[train_idx_smote,])</span>
-<span id="cb10-10"></span>
-<span id="cb10-11"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># fit and evaluate models</span></span>
-<span id="cb10-12">fit_2_glm_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">glmnet</span>(X_train_smote,y_train_smote, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">family =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"binomial"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">alpha =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">lambda =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span>)</span>
-<span id="cb10-13">fit_2_rf_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">randomForest</span>(X_train_smote ,<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.factor</span>(y_train_smote))</span>
-<span id="cb10-14"></span>
-<span id="cb10-15">pred_2_glm_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.numeric</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">predict</span>(fit_2_glm_smote, X_test_smote, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">type =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'response'</span>))</span>
-<span id="cb10-16">pred_2_rf_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.numeric</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">predict</span>(fit_2_rf_smote, X_test_smote, <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"prob"</span>)[,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>])</span>
-<span id="cb10-17"></span>
-<span id="cb10-18"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># get auc</span></span>
-<span id="cb10-19"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">roc</span>(y_test_smote, pred_2_glm_smote, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">quiet =</span> T)<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>auc</span></code></pre></div></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Area under the curve: 0.8408</code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">roc</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.factor</span>(y_test_smote), pred_2_rf_smote, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">quiet =</span> T)<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>auc</span></code></pre></div></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Area under the curve: 0.9765</code></pre>
-</div>
-</div>
-<p>Wow! Look at that, we just increased our AUC for the random forest model from .72 to .97! But what if we do what we’re supposed to and see how it works on real out-of sample data?</p>
-</section>
-<section id="doing-smote-the-less-wrong-way" class="level3">
-<h3 class="anchored" data-anchor-id="doing-smote-the-less-wrong-way">Doing SMOTE the (less) wrong way</h3>
-<p>Same as above, except we create a SMOTE data set from our original training data and then we evaluate our model on the original <em>test</em> data set that is not synthetically balanced.</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1">smote_df <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">data.frame</span>(X_train,y_train)</span>
-<span id="cb14-2">smote_model <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">SMOTE</span>(smote_df[<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">63</span>], <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">target =</span> smote_df[<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">63</span>], <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">dup_size =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>)</span>
-<span id="cb14-3"></span>
-<span id="cb14-4">X_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> smote_model<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>data[<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">63</span>]</span>
-<span id="cb14-5">y_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.numeric</span>(smote_model<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>data<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>class)</span>
-<span id="cb14-6"></span>
-<span id="cb14-7">fit_3_glm_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">glmnet</span>(X_smote,y_smote, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">family =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"binomial"</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">alpha =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span>, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">lambda =</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span>)</span>
-<span id="cb14-8">fit_3_rf_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">randomForest</span>(X_smote ,<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.factor</span>(y_smote))</span>
-<span id="cb14-9"></span>
-<span id="cb14-10">pred_3_glm_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.numeric</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">predict</span>(fit_3_glm_smote, X_test, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">type =</span> <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'response'</span>))</span>
-<span id="cb14-11">pred_3_rf_smote <span class="ot" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">&lt;-</span> <span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.numeric</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">predict</span>(fit_3_rf_smote, X_test, <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"prob"</span>)[,<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2</span>])</span>
-<span id="cb14-12"></span>
-<span id="cb14-13"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">roc</span>(y_test, pred_3_glm_smote, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">quiet =</span> T)<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>auc</span></code></pre></div></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Area under the curve: 0.7077</code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16" style="background: #f1f3f5;"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">roc</span>(<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">as.factor</span>(y_test), pred_3_rf_smote, <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">quiet =</span> T)<span class="sc" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">$</span>auc</span></code></pre></div></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Area under the curve: 0.7335</code></pre>
-</div>
-</div>
-<p>Oh.</p>
-</section>
-</section>
-<section id="summary" class="level2">
-<h2 class="anchored" data-anchor-id="summary">Summary</h2>
-<p>In summary, if you wrongfully evaluate your model that was trained on a SMOTE data set against a hold-out sample from that same SMOTE data your out-of-sample metrics will be falsely confident. It is much easier to perform classification on data that are artificially balanced. However, actually using these models in real life entails data that almost never follow this.</p>
-<p>Finally, I don’t mean to focus on these authors specifically. The analysis they are doing is with some good intentions, but is mostly misguided. The data here are mostly unsuited for examining more complex models and processes. In addition, what I see here is a common issue for many data analysts, which is why being thoughtful and careful at the start of your analysis is very important.</p>
-
-
-</section>
-
- ]]></description>
-  <category>R</category>
-  <category>Machine Learning &amp; Prediction</category>
-  <guid>https://gmcirco.github.io/blog/posts/tiny-recid/recid.html</guid>
-  <pubDate>Tue, 26 Mar 2024 04:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
