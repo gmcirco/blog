@@ -22,7 +22,7 @@
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/pii-redaction/pii_summary.html</loc>
-    <lastmod>2026-05-12T19:35:37.451Z</lastmod>
+    <lastmod>2026-05-31T21:13:59.559Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/pca-anomaly/pca_anomaly.html</loc>
@@ -37,84 +37,88 @@
     <lastmod>2025-10-13T02:29:10.008Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/knn-anomaly/knn_anomaly.html</loc>
-    <lastmod>2025-10-13T02:29:10.007Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/hello-world/hello.html</loc>
-    <lastmod>2025-10-13T02:29:10.004Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/gridpred-workflow/workflow.html</loc>
-    <lastmod>2026-03-03T20:54:42.551Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/gmm/gmm.html</loc>
-    <lastmod>2025-10-13T02:29:10.003Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/duck-db/duckdb.html</loc>
-    <lastmod>2025-10-13T02:29:10.002Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/did-short/did-short.html</loc>
-    <lastmod>2025-10-13T02:29:10.001Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/coffee/coffee.html</loc>
-    <lastmod>2025-10-13T02:29:10.001Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/bayes-study-1/bayes-study-1.html</loc>
-    <lastmod>2025-10-13T02:29:09.992Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/ai-calibration/calibration.html</loc>
-    <lastmod>2026-04-09T12:41:48.981Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/about.html</loc>
-    <lastmod>2025-10-14T12:51:10.317Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/index.html</loc>
-    <lastmod>2026-03-09T13:08:28.754Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</loc>
-    <lastmod>2025-10-13T02:29:09.992Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/chipotle-weight/youtube-food.html</loc>
-    <lastmod>2026-05-07T19:22:25.363Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/crime-guns/crime-guns.html</loc>
-    <lastmod>2025-10-13T02:29:10.001Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/distance-plotting/distance-plotting.html</loc>
-    <lastmod>2025-10-13T02:29:10.001Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/fake-tickets/fake-tickets.html</loc>
-    <lastmod>2025-10-13T02:29:10.002Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/gridpred-demo/gridpred.html</loc>
-    <lastmod>2026-02-25T13:48:47.347Z</lastmod>
-  </url>
-  <url>
-    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
-    <lastmod>2025-10-13T02:29:10.003Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/mini-model-data-extraction/workflow.html</loc>
+    <lastmod>2026-05-04T12:38:02.552Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/hlm-osha/osha_shrinkage.html</loc>
     <lastmod>2025-10-13T02:29:10.006Z</lastmod>
   </url>
   <url>
-    <loc>https://gmcirco.github.io/blog/posts/mini-model-data-extraction/workflow.html</loc>
-    <lastmod>2026-05-04T12:38:02.552Z</lastmod>
+    <loc>https://gmcirco.github.io/blog/posts/hbos-anomaly/hbos_anomaly.html</loc>
+    <lastmod>2025-10-13T02:29:10.003Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/gridpred-demo/gridpred.html</loc>
+    <lastmod>2026-02-25T13:48:47.347Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/fake-tickets/fake-tickets.html</loc>
+    <lastmod>2025-10-13T02:29:10.002Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/distance-plotting/distance-plotting.html</loc>
+    <lastmod>2025-10-13T02:29:10.001Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/crime-guns/crime-guns.html</loc>
+    <lastmod>2025-10-13T02:29:10.001Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/chipotle-weight/youtube-food.html</loc>
+    <lastmod>2026-05-07T19:22:25.363Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/austin-vehicle/spatial_merging.html</loc>
+    <lastmod>2025-10-13T02:29:09.992Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/index.html</loc>
+    <lastmod>2026-03-09T13:08:28.754Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/about.html</loc>
+    <lastmod>2025-10-14T12:51:10.317Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/ai-calibration/calibration.html</loc>
+    <lastmod>2026-04-09T12:41:48.981Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/bayes-study-1/bayes-study-1.html</loc>
+    <lastmod>2025-10-13T02:29:09.992Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/coffee/coffee.html</loc>
+    <lastmod>2025-10-13T02:29:10.001Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/did-short/did-short.html</loc>
+    <lastmod>2025-10-13T02:29:10.001Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/duck-db/duckdb.html</loc>
+    <lastmod>2025-10-13T02:29:10.002Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/gmm/gmm.html</loc>
+    <lastmod>2025-10-13T02:29:10.003Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/gridpred-workflow/workflow.html</loc>
+    <lastmod>2026-03-03T20:54:42.551Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/hello-world/hello.html</loc>
+    <lastmod>2025-10-13T02:29:10.004Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/knn-anomaly/knn_anomaly.html</loc>
+    <lastmod>2025-10-13T02:29:10.007Z</lastmod>
+  </url>
+  <url>
+    <loc>https://gmcirco.github.io/blog/posts/mini-model-ocr-vision/workflow.html</loc>
+    <lastmod>2026-06-01T12:51:36.176Z</lastmod>
   </url>
   <url>
     <loc>https://gmcirco.github.io/blog/posts/modern-bert/rank-rerank.html</loc>
