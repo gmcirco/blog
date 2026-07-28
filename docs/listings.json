@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/recipe-index/recipe.html",
       "/posts/mini-model-ocr-vision/workflow.html",
       "/posts/pii-redaction/pii_summary.html",
       "/posts/ai-calibration/calibration.html",

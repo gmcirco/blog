@@ -1,0 +1,291 @@
+---
+title: "Recipe Linking using LLMs"
+subtitle: "A deep dive into antiquated French cuisine"
+author: Gio Circo, Ph.D.
+date: 2026-07-28
+categories:
+  - Python
+  - Large Language Models
+format: 
+  html:
+    self-contained: true
+    code-fold: false
+    mainfont: "Roboto"
+    section-divs: true
+    toc: true
+    title-block-banner: true
+    mermaid:
+      theme: neutral
+theme: flatly
+image: linkage.png
+---
+
+```{python}
+#| include: false
+import json
+import matplotlib.pyplot as plt
+import networkx as nx
+
+with open("edgelist.json", "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+edgelist = [(source, target) for source, target in data["edges"]]
+
+G = nx.DiGraph()
+G.add_edges_from(edgelist)
+```
+
+## Escoffier, French Cusine, and Complicated Recipes
+
+### Le guide culinaire
+
+Auguste Escoffier's 1903 "Le guide culinaire" is a legendary French cookbook. At just under 1,000 pages this book codified much of what modern French cusine has become. In its time, Escoffier's book was revolutionary for its standardization and rigor. This book bridged the gap between Carême's complex, 18th-century court cuisine to a more streamlined and simplified product. Previously long recipes with multiple steps were broken down into their logical, constituent parts, and provided as citations throughout the book. A classic example: making a demi-glace^[A rich, concentrated, meat-based sauce] requires one to first cook down a sauce Espagnole, which *itself* requires one to make a brown "Estouffade" stock^[A long-simmered, clear beef broth]. This hierarchical format requires a cook to build each individual piece as a building block for the next step.
+
+Recipes in Escoffier's book are numbered sequentially like: (No. 1, No. 2, No. 3 ...), and often rely on cross-references to other recipies like:
+
+> ...finish the sauce away from the fire with four oz. of butter “Maître d’Hôtel” (No. 150)
+
+To analyze the book I extracted the table of contents from the book, which lists each recipe with its corresponding numeric index (see below). For my purposes, this is useful because we can easily refer to recipes strictly by their numeric index:
+
+> ``` text
+> "ORDINARY OR WHITE CONSOMMÉ": "1",
+> "THE PREPARATION OF CLARIFIED CONSOMMÉ FOR CLEAR SOUPS": "2",
+> "CHICKEN CONSOMMÉ": "3",
+> "FISH CONSOMMÉ": "4",
+> "GAME CONSOMMÉ": "5",
+> "SPECIAL CONSOMMÉS FOR SUPPERS": "6",
+> "BROWN STOCK OR “ESTOUFFADE”": "7",
+> "BROWN GAME STOCK": "8",
+> "BROWN VEAL STOCK": "9",
+> "WHITE VEAL STOCK, AND POULTRY STOCK": "10",
+> "WHITE FISH STOCK": "11",
+> "FISH STOCK WITH RED WINE": "12",
+> "VARIOUS ESSENCES": "13",
+> ```
+
+This hierarchy is a classic part of French cuisine, which is based around a number of "mother sauces". These [mother sauces](https://en.wikipedia.org/wiki/French_mother_sauces) are intermediate stages between raw ingredients and a final sauce. A classic example is the progression from brown stock to demi-glace:
+
+```{mermaid}
+flowchart LR
+    A[Brown Stock] --> B[Sauce Espagnole] --> C[Sauce Demi-Glace]
+```
+
+Brown Stock is a rich, clear, beef stock that is typically cooked over many hours. This is then combined with a browned flour paste (roux), tomato, wine, and a mix of cooked vegetables to make the mother sauce Espagnole. From this, Demi-glace derives from Espagnole by cooking down the Espagnole by about 2/3rds into a highly concentrated sauce. Demi-glace itself can then be used as a constituent part in many other sauces (like sauce diable or sauce madere). If it isn't clear already, classic French sauces derive from a strict hierarchy of ingredients that naturally lend to more detailed examination.
+
+What I wanted to do here is find out which base recipes are the most utilized by linking back all their "ancestor" recipes.
+
+## Creating the Linkages
+
+For this experiment I took the first 100 recipes in the book, which are almost exclusively related to sauces. My goal was to link constituent recipes back to the primary recipe. Doing this would help uncover the hierarchies of sauce creation. Creating the actual linkages was a bit tricky to automate, so I used an LLM to create the edge list.
+
+The full prompt is here, below, but the gist of the workflow was:
+
+1.  Go to a single source recipe.
+2.  Identify any other recipes noted in the source recipe.
+3.  For each recipe noted in the source, get its index number.
+4.  Create an edge as a list like `[source, reference]`.
+
+Most of the relevant prompting is shown below, following patterns I use across most of my projects. Specifically, I define extraction objects using pydantic schemas and validate the schema on completion. This formalizes the shape and rules of an extraction task, which I then supplement with more specific prompting. For this project I had to do a bit of nudging to get the LLM to not link recipes which are mentioned but are not constituent parts. I ended up just running this using `gpt-5.4`. While I am a fan of very small local models, this project required a bit more thinking that some of the tiny models couldn't quite manage.
+
+```{python}
+#| eval: false
+#| code-fold: true
+
+# Define extraction and summarization schema
+class LinkTuple(NamedTuple):
+    from_recipe: str
+    to_recipe: str
+
+class RecipeLink(BaseModel):
+    """Holds an edge list representing the linkages between recipes."""
+
+    # We use a list of LinkTuples to represent the edges
+    edges: List[LinkTuple] = Field(
+        default_factory=list,
+        description="An edge list of (from_recipe, to_recipe) pairs",
+    )
+
+ROLE = """
+You link recipes together based on references in the recipe text.
+
+## TASK
+Given a source recipe's full text, identify every OTHER recipe that is used
+as a CONSTITUENT PART (an ingredient, sub-component, or base preparation)
+of the source recipe. Output one edge per constituent recipe found.
+
+## WHAT COUNTS AS A CONSTITUENT LINK (include these)
+A constituent link exists when the source recipe's preparation directly
+REQUIRES, USES, or IS BUILT FROM another recipe as an ingredient or base step.
+
+Positive examples:
+- "cook down 4 cups of brown stock (Formula 7)" -> LINK to brown stock
+  (the stock is a required ingredient)
+- "First prepare an Allemande Sauce" -> LINK to Allemande Sauce
+  (it's a required sub-preparation)
+- "add one pint of thickened Velouté" -> LINK to Velouté
+  (it's a required ingredient)
+- "proceed in exactly the same way as for meat glaze (Formula 15)" -> LINK
+  to meat glaze (the source recipe's METHOD is derived from it, which
+  counts as constituent for this purpose)
+
+## WHAT DOES NOT COUNT (exclude these)
+Do NOT link when the other recipe is only mentioned as: a downstream use,
+a serving suggestion, a comparison, a stylistic note, or a vague category
+reference not tied to an actual ingredient/step in the source.
+
+Negative examples:
+- "this sauce is often added to steak dishes to add richness" -> NO LINK
+  (steak is an application, not a component of this recipe)
+- "similar to Sauce Espagnole but lighter in color" -> NO LINK
+  (comparison, not an ingredient used here)
+- "serve with roasted vegetables" -> NO LINK
+  (accompaniment, not a constituent part)
+- "as discussed in the introduction to sauces" -> NO LINK
+  (general reference, not a specific recipe used as an ingredient)
+
+## DECISION TEST
+Before adding an edge, confirm: "Is this other recipe physically used AS
+AN INGREDIENT OR STEP to build the source recipe?" If the answer is
+merely "they're related," "similar," "often served together," or
+"mentioned for context" -- exclude it.
+
+If uncertain whether a reference is constituent or contextual, EXCLUDE it.
+False negatives are acceptable; false positive edges are not.
+
+## RESOLVING UNNUMBERED REFERENCES
+Plain-text mentions (e.g. "an Allemande Sauce") must be matched to a
+specific recipe ID using the table of contents below. Match on exact or
+near-exact title only. If no confident match exists in the table of
+contents, exclude the reference rather than guessing.
+
+## TABLE OF CONTENTS
+${toc}
+
+## OUTPUT FORMAT
+Return ONLY valid JSON, no other text, in exactly this shape:
+
+{"edges": [["<to_recipe_id>"], ["<to_recipe_id>"]]}
+
+Each inner list contains only the TARGET recipe ID being referenced (the
+source ID is already known from context and should NOT be included).
+If no constituent links are found, return {"edges": []}.
+
+Do not include self-references. Do not include duplicate edges.
+
+"""
+
+PROMPT = """
+Closely follow the JSON schema below for linking recipies together:
+
+## SCHEMA
+${schema}
+
+## RECIPE TEXT
+${recipe_text}
+"""
+
+```
+
+The end result is an object for each recipe like this:
+
+`[2,1]`
+
+which would build an edge between recipe 2 (clarified consomme) to the constiuent part in recipe 1 (ordinary white consomme).
+
+### Edge list construction
+
+After creating the edge list we can now pass it into any off-the-shelf graph library. Here I am using `networkx`. Since the graph is directed, I am able to distinguish between "ancestor" and "descendant" recipes. An ancestor would be a constituent part of another recipe. For visualizing the graph I used the number of descendant recipes to scale the size of the nodes.
+
+**Volia!**
+
+Below we have a full graph of the first 100 recipes in Le guide culinaire. The direction of the arrows designate dependence on base recipe. For example, an arrow pointing from *#22* (Sauce Espagnole) to *#7* (Brown Stock) indicates the dependence of the higher recipe on a lower ingredient. While the graph is definitely messy, a few items are clearly visible. For example: we see the outsized influence on core ingredients like mirepoix[^1] (*#228*), brown stock (*#7*), brown roux (*#19*), and sauce espagnole (*#22*). These specific recipes are bases for a large number of the sauces in the book.
+
+[^1]: A sauteed mix of onions, carrots, and celery in oil or butter.
+
+```{python}
+#| echo: false
+#| fig-cap: "Node size is scaled by number of recipes that link back to an 'ancestor' recipe. More ancestors = larger size."
+
+# for the node size
+# scale by the number of recipes that depend on that node
+threshold = 5
+
+foundational_score = {n: len(nx.ancestors(G, n)) for n in G.nodes()}
+labels = {n: n for n, score in foundational_score.items() if score >= threshold}
+node_size = [max(v,.5) * 12.5 for v in foundational_score.values()]
+
+# plot full graph
+pos = nx.kamada_kawai_layout(G)
+nx.draw(
+    G,
+    with_labels=True,
+    labels=labels,
+    node_color="#0077BB",
+    node_size=node_size,
+    font_size=8,
+    font_weight="bold",
+    arrows=True,
+    arrowsize=10,
+    edge_color="gainsboro",
+    alpha=0.4,
+)
+plt.show()
+```
+
+On the periphery of the graph, there are number of small subgraphs disconnected from the rest of the recipes. These are primarily butter or cream based sauces (or derivatives thereof) that do not rely on meat stocks or roux. For example,
+
+Perhaps an even easier way to see what is going on, is to isolate the graph to just a single recipe. We can observe the core recipe and all of its constituent parts. Below, we have linkages for one of the finest French sauces - Sauce Bordelaise. A true Bordelaise is a demi-glace based sauce combined with beef drippings, red wine, and bone marrow. It is a truly magical addition to roast beef. Escoffier's full recipe is below (highlights mine):
+
+<details>
+
+<summary>32—SAUCE BORDELAISE</summary>
+
+> Put into a vegetable-pan two oz. of very finely minced shallots,\
+> one-half pint of good red wine, a pinch of mignonette pepper, and\
+> bits of thyme and bay. Reduce the wine by three-quarters, and add\
+> one-half pint of **demi-glace**. Keep the sauce simmering for half an hour;\
+> despumate it from time to time, and strain it through linen or a sieve.\
+> When dishing it up, finish it with two tablespoonfuls of dissolved\
+> **meat glaze**, a few drops of lemon-juice, and four oz. of beef-marrow,\
+> cut into slices or cubes and poached in slightly salted boiling water.\
+> This sauce may be buttered to the extent of about three oz. per pint,\
+> which makes it smoother, but less clear. It is especially suitable for\
+> grilled butcher’s meat.
+
+</details>
+
+What we see in the graph here are all of the connected elements. Several elements depend on brown stock (*#7*) - specifically the Espagnole (*#22*) and Demi-Glace (*#23*). Espagnole also requires additional elements including a mirepoix (*#228*), and a brown roux (*#19*). The added beef glaze is a descendant from brown veal stock (*#9*) which inherits instructions from a similar white veal stock (*#10*).
+
+```{python}
+#| echo: false
+#| fig-cap: "Sauce Bordelaise (*#32*) depends of a handful of other recipes to construct. Beef and veal stocks are the key base components."
+
+# isolate just a set of ancestors from a single source recipe
+node = "32"
+
+# everything this recipe depends on, transitively (its full ingredient tree)
+descendants = nx.descendants(G, node)
+sub_nodes = descendants | {node}  # include the recipe itself
+subG = G.subgraph(sub_nodes)
+
+# plot just this subgraph
+pos = nx.spring_layout(subG, seed=1)
+nx.draw(
+    subG,
+    pos=pos,
+    with_labels=True,
+    node_color="#33BBEE",
+    node_size=800,
+    font_size=8,
+    font_weight="bold",
+    arrows=True,
+    arrowsize=12,
+    edge_color="gainsboro",
+)
+plt.show()
+
+```
+
+## Discussion
+
+While my analysis of old French recipes is a bit silly, it does highlight two useful things that LLMs can help with. First, building edge lists from a complicated text is a non-trivial task here. With LLMs I can build out rules cleanly and get a fairly accurate first pass. Second, if I wanted to use this edge list downstream for another task, I could use it as part of a [GraphRAG](https://arxiv.org/abs/2501.00309) workflow. Perhaps more to come on that second one?
